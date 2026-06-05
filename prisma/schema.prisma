@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// NextAuth Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Core App Models
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  password      String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts                Account[]
+  sessions                Session[]
+  plaidItems              PlaidItem[]
+  financialAccounts       FinancialAccount[]
+  transactions            Transaction[]
+  recurringPatterns       RecurringPattern[]
+  financialMemories       FinancialMemory[]
+  dailyFinancialSnapshots DailyFinancialSnapshot[]
+  financialGoals          FinancialGoal[]
+}
+
+model PlaidItem {
+  id                   String   @id @default(cuid())
+  userId               String
+  institutionName      String?
+  institutionId        String?
+  plaidItemId          String   @unique
+  encryptedAccessToken String
+  cursor               String?
+  status               String   @default("active")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FinancialAccount {
+  id               String   @id @default(cuid())
+  userId           String
+  plaidItemId      String
+  plaidAccountId   String   @unique
+  name             String
+  officialName     String?
+  type             String
+  subtype          String?
+  mask             String?
+  currentBalance   Float?
+  availableBalance Float?
+  isoCurrencyCode  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id                          String    @id @default(cuid())
+  userId                      String
+  plaidTransactionId          String    @unique
+  accountId                   String
+  date                        String    // YYYY-MM-DD
+  authorizedDate              String?
+  name                        String
+  merchantName                String?
+  amount                      Float
+  isoCurrencyCode             String?
+  pending                     Boolean   @default(false)
+  categoryPrimary             String?
+  categoryDetailed            String?
+  customCategory              String?
+  paymentChannel              String?
+  isRecurringCandidate        Boolean   @default(false)
+  isTenantPaymentCandidate    Boolean   @default(false)
+  isUtilityCandidate          Boolean   @default(false)
+  isFoodCandidate             Boolean   @default(false)
+  isTransportationCandidate   Boolean   @default(false)
+  isFlagged                   Boolean   @default(false)
+  note                        String?   @db.Text
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecurringPattern {
+  id                    String   @id @default(cuid())
+  userId                String
+  merchantName          String?
+  normalizedName        String
+  category              String?
+  averageAmount         Float
+  frequency             String
+  firstSeen             String
+  lastSeen              String
+  confidenceScore       Float
+  direction             String   // "income" or "expense"
+  exampleTransactionIds String[] // Array of transaction IDs
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FinancialMemory {
+  id               String   @id @default(cuid())
+  userId           String
+  type             String
+  title            String
+  content          String   @db.Text
+  source           String
+  importanceScore  Float
+  pineconeVectorId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DailyFinancialSnapshot {
+  id                  String   @id @default(cuid())
+  userId              String
+  date                String   // YYYY-MM-DD
+  totalSpent          Float
+  totalIncome         Float
+  foodSpend           Float
+  transportationSpend Float
+  billsSpend          Float
+  discretionarySpend  Float
+  recurringSpend      Float
+  accountBalanceTotal Float
+  dailyScore          Float
+  summary             String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model FinancialGoal {
+  id            String    @id @default(cuid())
+  userId        String
+  name          String
+  targetAmount  Float
+  currentAmount Float
+  targetDate    String?   // YYYY-MM-DD
+  category      String?
+  status        String    @default("active") // "active", "completed", "abandoned"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
