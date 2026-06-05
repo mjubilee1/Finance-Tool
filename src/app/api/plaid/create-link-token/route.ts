@@ -23,6 +23,7 @@ export async function POST() {
         country_codes: plaidCountryCodes,
         language: "en",
         webhook: webhookUrl,
+        redirect_uri: process.env.PLAID_REDIRECT_URI || undefined,
       })
     );
 

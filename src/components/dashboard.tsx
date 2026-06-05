@@ -62,7 +62,7 @@ export function Dashboard() {
     }
   };
 
-  const { transactions = [], snapshots = [], aiInsight, accounts = [] } = data || {};
+  const { transactions = [], snapshots = [], aiInsight, accounts = [], plaidUsage } = data || {};
 
   const filteredAndSortedTransactions = useMemo(() => {
     let result = [...transactions];
@@ -122,8 +122,9 @@ export function Dashboard() {
     );
   }
 
-  const NavItem = ({ tab, icon: Icon, label }: { tab: TabType, icon: any, label: string }) => (
+  const renderNavItem = (tab: TabType, Icon: any, label: string) => (
     <button
+      key={tab}
       onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
       className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all ${
         activeTab === tab 
@@ -162,11 +163,11 @@ export function Dashboard() {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <NavItem tab="chat" icon={BrainCircuit} label="AI Chat" />
-          <NavItem tab="overview" icon={LayoutDashboard} label="Overview" />
-          <NavItem tab="projections" icon={TrendingUp} label="Projections" />
-          <NavItem tab="accounts" icon={Wallet} label="Accounts" />
-          <NavItem tab="transactions" icon={Receipt} label="Transactions" />
+          {renderNavItem("chat", BrainCircuit, "AI Chat")}
+          {renderNavItem("overview", LayoutDashboard, "Overview")}
+          {renderNavItem("projections", TrendingUp, "Projections")}
+          {renderNavItem("accounts", Wallet, "Accounts")}
+          {renderNavItem("transactions", Receipt, "Transactions")}
         </nav>
 
         <div className="p-4 border-t border-zinc-200">
@@ -194,14 +195,20 @@ export function Dashboard() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full min-w-0 bg-white">
-        {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-zinc-100 bg-white/80 backdrop-blur-md sticky top-0 z-30">
+        {/* Header */}
+        <header className="flex items-center justify-between p-4 border-b border-zinc-100 bg-white/80 backdrop-blur-md sticky top-0 z-30">
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-zinc-600 hover:bg-zinc-100 rounded-lg">
+            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 -ml-2 text-zinc-600 hover:bg-zinc-100 rounded-lg">
               <Menu size={24} />
             </button>
-            <span className="font-semibold text-lg capitalize">{activeTab}</span>
+            <span className="md:hidden font-semibold text-lg capitalize">{activeTab}</span>
           </div>
+          
+          {plaidUsage && (
+            <div className="text-xs font-medium px-3 py-1.5 rounded-full border bg-zinc-50 text-zinc-600 border-zinc-200 shadow-sm ml-auto">
+              Plaid API calls today: <span className="text-zinc-900">{plaidUsage.totalCalls}</span>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">

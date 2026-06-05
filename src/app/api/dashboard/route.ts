@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getCurrentPlaidUsage } from "@/lib/plaid-tracker";
 
 export async function GET() {
   try {
@@ -35,11 +36,14 @@ export async function GET() {
       where: { userId },
     });
 
+    const plaidUsage = await getCurrentPlaidUsage();
+
     return NextResponse.json({
       transactions,
       snapshots: snapshots.reverse(), // chronologically for charts
       aiInsight,
       accounts,
+      plaidUsage,
     });
   } catch (error) {
     console.error("Failed to fetch dashboard data:", error);
