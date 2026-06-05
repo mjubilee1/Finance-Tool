@@ -5,7 +5,39 @@ import { plaidClient } from "@/lib/plaid";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import type { AccountSummary } from "@/lib/finance";
-import { withPlaidTracking } from "@/lib/plaid-tracker";
+import { getPlaidConfig } from "@/lib/env";
+import { isPlaidEndpointDailyLimitReached, withPlaidTracking } from "@/lib/plaid-tracker";
+
+const BALANCE_ENDPOINT = "accountsBalanceGet";
+
+const { dailyBalanceCallLimit } = getPlaidConfig();
+
+async function getCachedAccountsForItem(
+  userId: string,
+  plaidItemId: string,
+  institutionName: string | null,
+): Promise<AccountSummary[]> {
+  const cachedAccounts = await prisma.financialAccount.findMany({
+    where: {
+      userId,
+      plaidItemId,
+    },
+  });
+
+  return cachedAccounts.map((account) => ({
+    accountId: account.plaidAccountId,
+    itemId: account.plaidItemId,
+    institutionName,
+    name: account.name,
+    officialName: account.officialName,
+    type: account.type,
+    subtype: account.subtype,
+    mask: account.mask,
+    currentBalance: account.currentBalance,
+    availableBalance: account.availableBalance,
+    isoCurrencyCode: account.isoCurrencyCode,
+  }));
+}
 
 export async function GET() {
   try {
@@ -26,8 +58,28 @@ export async function GET() {
 
     for (const item of items) {
       try {
+        const isBalanceCapReached = await isPlaidEndpointDailyLimitReached(
+          BALANCE_ENDPOINT,
+          session.user.id,
+          dailyBalanceCallLimit,
+        );
+
+        if (isBalanceCapReached) {
+          console.warn(
+            `[PLAID TRACKER] Daily ${BALANCE_ENDPOINT} cap of ${dailyBalanceCallLimit} reached. Using cached balances for item ${item.id}.`,
+          );
+          accounts.push(
+            ...(await getCachedAccountsForItem(
+              session.user.id,
+              item.plaidItemId,
+              item.institutionName,
+            )),
+          );
+          continue;
+        }
+
         const accessToken = decrypt(item.encryptedAccessToken);
-        const balances = await withPlaidTracking("accountsBalanceGet", session.user.id, () => 
+        const balances = await withPlaidTracking(BALANCE_ENDPOINT, session.user.id, () => 
           plaidClient.accountsBalanceGet({
             access_token: accessToken,
           })
@@ -75,7 +127,13 @@ export async function GET() {
         }
       } catch (err) {
         console.error(`Failed to fetch balances for item ${item.id}`, err);
-        // Continue with other items
+        accounts.push(
+          ...(await getCachedAccountsForItem(
+            session.user.id,
+            item.plaidItemId,
+            item.institutionName,
+          )),
+        );
       }
     }
 

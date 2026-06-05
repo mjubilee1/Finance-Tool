@@ -1,18 +1,42 @@
 import { prisma } from "./prisma";
 
-export async function getCurrentPlaidUsage() {
+function getStartOfToday() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  return today;
+}
 
+export async function getCurrentPlaidUsage() {
   const totalCalls = await prisma.plaidApiLog.count({
     where: {
-      createdAt: { gte: today },
+      createdAt: { gte: getStartOfToday() },
     },
   });
 
   return {
     totalCalls,
   };
+}
+
+export async function getDailyPlaidEndpointCalls(endpoint: string, userId?: string) {
+  return prisma.plaidApiLog.count({
+    where: {
+      endpoint,
+      userId: userId ?? null,
+      createdAt: { gte: getStartOfToday() },
+    },
+  });
+}
+
+export async function isPlaidEndpointDailyLimitReached(
+  endpoint: string,
+  userId: string | undefined,
+  limit: number,
+) {
+  if (limit <= 0) return true;
+
+  const callsToday = await getDailyPlaidEndpointCalls(endpoint, userId);
+  return callsToday >= limit;
 }
 
 export async function logPlaidCall(endpoint: string, userId?: string) {

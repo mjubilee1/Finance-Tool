@@ -6,6 +6,10 @@ const envSchema = z.object({
   PLAID_SECRET: z.string().min(1).optional(),
   PLAID_TEST_SECRET: z.string().min(1).optional(),
   PLAID_PROD_SECRET: z.string().min(1).optional(),
+  PLAID_DAILY_BALANCE_CALL_LIMIT: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(0).default(3),
+  ),
 });
 
 function resolveSecret(parsed: z.infer<typeof envSchema>): string {
@@ -30,5 +34,6 @@ export function getPlaidConfig() {
     clientId: parsed.PLAID_CLIENT_ID,
     secret: resolveSecret(parsed),
     env: parsed.PLAID_ENV,
+    dailyBalanceCallLimit: parsed.PLAID_DAILY_BALANCE_CALL_LIMIT,
   };
 }
