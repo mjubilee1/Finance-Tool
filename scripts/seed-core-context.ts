@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { getEmbedding } from "../src/lib/openai";
 import { getPineconeIndex } from "../src/lib/pinecone";
@@ -91,16 +92,9 @@ async function main() {
     const vectorId = crypto.randomUUID();
     const embedding = await getEmbedding(context.content);
     
-    await index.upsert([{
-      id: vectorId,
-      values: embedding,
-      metadata: {
-        userId,
-        content: context.content,
-        type: "CORE_CONTEXT",
-        createdAt: new Date().toISOString(),
-      }
-    }]);
+    await index.upsert([
+      { id: vectorId, values: embedding, metadata: { userId, content: context.content, type: "CORE_CONTEXT", createdAt: new Date().toISOString() } }
+    ] as any);
 
     await prisma.financialMemory.create({
       data: {

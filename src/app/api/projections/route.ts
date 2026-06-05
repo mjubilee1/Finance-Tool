@@ -46,8 +46,8 @@ export async function GET(request: Request) {
     // Calculate metrics
     let totalSpend = 0;
     let totalIncome = 0;
-    let earliestDate = DateTime.now();
-    let latestDate = DateTime.now().minus({ years: 10 }); // Just a far past date
+    let earliestDate = DateTime.now() as any;
+    let latestDate = DateTime.now().minus({ years: 10 }) as any;
 
     transactions.forEach((t) => {
       // Ignore transfers for spend/income calculation to avoid double counting

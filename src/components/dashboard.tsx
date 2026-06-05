@@ -8,7 +8,7 @@ import { Projections } from "./projections";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Search, ChevronLeft, ChevronRight, ArrowDownUp } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, ArrowDownUp, ChevronDown, ChevronUp } from "lucide-react";
 
 function fetchDashboard() {
   return fetch("/api/dashboard").then((res) => res.json());
@@ -29,7 +29,33 @@ export function Dashboard() {
   const [sortOrder, setSortOrder] = useState<"date" | "amount_desc" | "amount_asc">("amount_desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [isAccountsExpanded, setIsAccountsExpanded] = useState(true);
+  const [actionStatuses, setActionStatuses] = useState<Record<string, 'idle' | 'loading' | 'sent'>>({});
   const itemsPerPage = 10;
+
+  const handleTakeAction = async (sub: any) => {
+    setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'loading' }));
+    try {
+      const res = await fetch("/api/action/remind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant: sub.merchant,
+          amount: sub.averageAmount,
+          frequency: sub.frequency
+        })
+      });
+      if (res.ok) {
+        setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'sent' }));
+      } else {
+        setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'idle' }));
+        alert("Failed to send reminder.");
+      }
+    } catch (e) {
+      setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'idle' }));
+      alert("Failed to send reminder.");
+    }
+  };
 
   const { transactions = [], snapshots = [], aiInsight, accounts = [] } = data || {};
 
@@ -126,82 +152,153 @@ export function Dashboard() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold">Your Accounts</h2>
+            <button 
+              onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <h2 className="font-semibold">Your Accounts</h2>
+              {isAccountsExpanded ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
+            </button>
             <ConnectBankButton onLinked={handleBankLinked} className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200 border-none min-h-0 py-2 px-4 text-xs w-auto" />
           </div>
-          {selectedAccountId && (
-            <button 
-              onClick={() => { setSelectedAccountId(null); setCurrentPage(1); }}
-              className="text-xs text-emerald-600 font-medium hover:underline mb-2 block"
-            >
-              Clear filter (Show all transactions)
-            </button>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {accounts.map((acc: any) => (
-              <div 
-                key={acc.id} 
-                onClick={() => { 
-                  setSelectedAccountId(prev => prev === acc.plaidAccountId ? null : acc.plaidAccountId);
-                  setCurrentPage(1);
-                }}
-                className={`p-5 rounded-2xl border bg-white shadow-sm flex flex-col justify-between transition-all hover:border-emerald-200 hover:shadow-md cursor-pointer ${
-                  selectedAccountId === acc.plaidAccountId 
-                    ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/30' 
-                    : 'border-zinc-200'
-                }`}
-              >
-                <div>
-                  <p className="font-semibold text-zinc-900 truncate" title={acc.name}>{acc.name}</p>
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider mt-0.5">
-                    {acc.subtype} {acc.mask ? `•••• ${acc.mask}` : ''}
-                  </p>
-                </div>
-                <p className="text-2xl font-bold mt-4 text-zinc-900">
-                  {formatCurrency(acc.currentBalance ?? 0)}
-                </p>
+          
+          {isAccountsExpanded && (
+            <>
+              {selectedAccountId && (
+                <button 
+                  onClick={() => { setSelectedAccountId(null); setCurrentPage(1); }}
+                  className="text-xs text-emerald-600 font-medium hover:underline mb-2 block"
+                >
+                  Clear filter (Show all transactions)
+                </button>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {accounts.map((acc: any) => (
+                  <div 
+                    key={acc.id} 
+                    onClick={() => { 
+                      setSelectedAccountId(prev => prev === acc.plaidAccountId ? null : acc.plaidAccountId);
+                      setCurrentPage(1);
+                    }}
+                    className={`p-5 rounded-2xl border bg-white shadow-sm flex flex-col justify-between transition-all hover:border-emerald-200 hover:shadow-md cursor-pointer ${
+                      selectedAccountId === acc.plaidAccountId 
+                        ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/30' 
+                        : 'border-zinc-200'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-semibold text-zinc-900 truncate" title={acc.name}>{acc.name}</p>
+                      <p className="text-xs text-zinc-500 uppercase tracking-wider mt-0.5">
+                        {acc.subtype} {acc.mask ? `•••• ${acc.mask}` : ''}
+                      </p>
+                    </div>
+                    <p className="text-2xl font-bold mt-4 text-zinc-900">
+                      {formatCurrency(acc.currentBalance ?? 0)}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Actionable Insights Panel */}
+      {aiInsight && (
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Safe to Spend Widget */}
+          <div className="bg-emerald-900 text-white p-6 rounded-3xl shadow-xl flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-start mb-2">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <span className="bg-emerald-400 w-2 h-2 rounded-full animate-pulse"></span>
+                  Safe to Spend Today
+                </h2>
+              </div>
+              <p className="text-zinc-300 text-sm mb-4">
+                Based on your current balance, upcoming recurring bills, and daily average spend, here is your worry-free limit for today.
+              </p>
+            </div>
+            
+            <div className="bg-black/20 p-6 rounded-2xl border border-white/10 text-center">
+              <p className="text-5xl font-bold text-emerald-400 mb-2">
+                {formatCurrency(
+                  Math.max(0, 
+                    (accounts.reduce((sum: number, acc: any) => sum + (acc.currentBalance || 0), 0) * 0.4) / 14
+                  )
+                )}
+              </p>
+              <p className="text-sm text-emerald-200/70 uppercase tracking-wider font-semibold">Remaining Daily Allowance</p>
+            </div>
+          </div>
+
+          {/* AI Coach Panel */}
+          <div className="bg-zinc-900 text-white p-6 rounded-3xl shadow-xl">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                AI Financial Coach
+              </h2>
+              <div className="text-right">
+                <p className="text-xs text-zinc-400 uppercase tracking-wider">Health Score</p>
+                <p className="text-2xl font-bold text-emerald-400">{aiInsight.financialHealthScore}/100</p>
+              </div>
+            </div>
+            
+            <p className="text-sm sm:text-base mb-6 leading-relaxed text-zinc-200">
+              {aiInsight.dailySummary}
+            </p>
+
+            {aiInsight.recommendedActions?.[0] && (
+              <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-xl">
+                <p className="text-xs uppercase text-emerald-300 font-semibold mb-1">Recommended Action</p>
+                <p className="text-sm font-medium">{aiInsight.recommendedActions[0].title}</p>
+                <p className="text-xs text-zinc-300 mt-1">{aiInsight.recommendedActions[0].reason}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* AI Coach Panel */}
-      {aiInsight && (
-        <div className="bg-zinc-900 text-white p-6 rounded-3xl shadow-xl">
-          <div className="flex justify-between items-start mb-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <span className="bg-emerald-500 w-2 h-2 rounded-full animate-pulse"></span>
-              AI Coach
-            </h2>
-            <div className="text-right">
-              <p className="text-xs text-zinc-400 uppercase tracking-wider">Health Score</p>
-              <p className="text-2xl font-bold text-emerald-400">{aiInsight.financialHealthScore}/100</p>
+      {/* Subscription Review Panel */}
+      {aiInsight?.recurringTransactionsToReview?.length > 0 && (
+        <div className="bg-white border border-rose-200 p-6 rounded-3xl shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-rose-100 p-2 rounded-lg">
+              <span className="text-xl">✂️</span>
+            </div>
+            <div>
+              <h2 className="font-semibold text-rose-900 text-lg">Subscriptions to Review</h2>
+              <p className="text-sm text-zinc-500">The AI flagged these recurring charges. Canceling them could save you money.</p>
             </div>
           </div>
           
-          <p className="text-lg mb-6 leading-relaxed">
-            {aiInsight.dailySummary}
-          </p>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="bg-white/10 p-4 rounded-xl">
-              <p className="text-xs uppercase text-emerald-400 font-semibold mb-1">Win</p>
-              <p className="text-sm">{aiInsight.wins?.[0] || "Doing great."}</p>
-            </div>
-            <div className="bg-white/10 p-4 rounded-xl">
-              <p className="text-xs uppercase text-orange-400 font-semibold mb-1">Warning</p>
-              <p className="text-sm">{aiInsight.warnings?.[0] || "Nothing urgent."}</p>
-            </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {aiInsight.recurringTransactionsToReview.map((sub: any, i: number) => (
+              <div key={i} className="border border-rose-100 bg-rose-50/50 hover:bg-rose-50 p-5 rounded-2xl flex flex-col justify-between transition-colors">
+                <div>
+                  <div className="flex justify-between items-start mb-2">
+                    <p className="font-bold text-rose-950 truncate pr-2">{sub.merchant}</p>
+                    <p className="font-bold text-rose-700">{formatCurrency(sub.averageAmount)}</p>
+                  </div>
+                  <p className="text-xs uppercase tracking-wider text-rose-500/80 font-semibold mb-3">{sub.frequency}</p>
+                  <p className="text-sm text-rose-900/80 leading-relaxed">{sub.recommendation}</p>
+                </div>
+                <button 
+                  onClick={() => handleTakeAction(sub)}
+                  disabled={actionStatuses[sub.merchant] === 'loading' || actionStatuses[sub.merchant] === 'sent'}
+                  className={`mt-4 w-full border text-sm font-semibold py-2 rounded-xl transition-colors ${
+                    actionStatuses[sub.merchant] === 'sent'
+                      ? 'bg-emerald-100 border-emerald-200 text-emerald-700'
+                      : 'bg-white border-rose-200 text-rose-700 hover:bg-rose-100'
+                  }`}
+                >
+                  {actionStatuses[sub.merchant] === 'loading' ? 'Sending...' : 
+                   actionStatuses[sub.merchant] === 'sent' ? 'Reminder Sent!' : 
+                   'Take Action'}
+                </button>
+              </div>
+            ))}
           </div>
-
-          {aiInsight.recommendedActions?.[0] && (
-            <div className="mt-4 bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-xl">
-              <p className="text-xs uppercase text-emerald-300 font-semibold mb-1">Next Action</p>
-              <p className="text-sm font-medium">{aiInsight.recommendedActions[0].title}</p>
-              <p className="text-xs text-zinc-300 mt-1">{aiInsight.recommendedActions[0].reason}</p>
-            </div>
-          )}
         </div>
       )}
 

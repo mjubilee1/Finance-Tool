@@ -146,16 +146,9 @@ Generate a JSON response exactly matching this structure:
       const vectorId = crypto.randomUUID();
       const embedding = await getEmbedding(mem.content);
       
-      await index.upsert([{
-        id: vectorId,
-        values: embedding,
-        metadata: {
-          userId,
-          content: mem.content,
-          type: "AI_GENERATED",
-          createdAt: new Date().toISOString(),
-        }
-      }]);
+      await index.upsert([
+        { id: vectorId, values: embedding, metadata: { userId, content: mem.content, type: "AI_GENERATED", createdAt: new Date().toISOString() } }
+      ] as any);
 
       await prisma.financialMemory.create({
         data: {

@@ -103,7 +103,7 @@ export function Projections() {
                 tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} 
               />
               <Tooltip 
-                formatter={(value: number) => [formatCurrency(value), "Projected Balance"]}
+                formatter={(value: any) => [formatCurrency(value as number), "Projected Balance"]}
                 labelFormatter={(label) => new Date(label).toLocaleDateString()}
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />

@@ -37,28 +37,43 @@ export async function syncTransactionsForItem(itemId: string) {
           transaction.amount,
         );
 
-        await prisma.transaction.create({
-          data: {
-            userId: item.userId,
-            plaidTransactionId: transaction.transaction_id,
-            accountId: transaction.account_id,
-            date: transaction.date,
-            authorizedDate: transaction.authorized_date,
-            name: transaction.name,
-            merchantName: transaction.merchant_name,
-            amount: transaction.amount,
-            isoCurrencyCode: transaction.iso_currency_code,
-            pending: transaction.pending,
-            paymentChannel: transaction.payment_channel,
-            categoryPrimary: rules.categoryPrimary || transaction.personal_finance_category?.primary,
-            categoryDetailed: transaction.personal_finance_category?.detailed,
-            isFoodCandidate: rules.isFoodCandidate,
-            isTransportationCandidate: rules.isTransportationCandidate,
-            isUtilityCandidate: rules.isUtilityCandidate,
-            isTenantPaymentCandidate: rules.isTenantPaymentCandidate,
-          },
-        });
-        addedCount++;
+        try {
+          await prisma.transaction.upsert({
+            where: { plaidTransactionId: transaction.transaction_id },
+            update: {
+              date: transaction.date,
+              authorizedDate: transaction.authorized_date,
+              name: transaction.name,
+              merchantName: transaction.merchant_name,
+              amount: transaction.amount,
+              pending: transaction.pending,
+              categoryPrimary: rules.categoryPrimary || transaction.personal_finance_category?.primary,
+              categoryDetailed: transaction.personal_finance_category?.detailed,
+            },
+            create: {
+              userId: item.userId,
+              plaidTransactionId: transaction.transaction_id,
+              accountId: transaction.account_id,
+              date: transaction.date,
+              authorizedDate: transaction.authorized_date,
+              name: transaction.name,
+              merchantName: transaction.merchant_name,
+              amount: transaction.amount,
+              isoCurrencyCode: transaction.iso_currency_code,
+              pending: transaction.pending,
+              paymentChannel: transaction.payment_channel,
+              categoryPrimary: rules.categoryPrimary || transaction.personal_finance_category?.primary,
+              categoryDetailed: transaction.personal_finance_category?.detailed,
+              isFoodCandidate: rules.isFoodCandidate,
+              isTransportationCandidate: rules.isTransportationCandidate,
+              isUtilityCandidate: rules.isUtilityCandidate,
+              isTenantPaymentCandidate: rules.isTenantPaymentCandidate,
+            },
+          });
+          addedCount++;
+        } catch (e) {
+          console.error(`Error saving transaction ${transaction.transaction_id}`, e);
+        }
       }
 
       // Handle Modified
