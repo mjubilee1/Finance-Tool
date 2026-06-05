@@ -5,6 +5,7 @@ import { plaidClient } from "@/lib/plaid";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import { CountryCode } from "plaid";
+import { withPlaidTracking } from "@/lib/plaid-tracker";
 
 export async function POST(request: Request) {
   try {
@@ -19,18 +20,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing public_token" }, { status: 400 });
     }
 
-    const exchange = await plaidClient.itemPublicTokenExchange({ public_token });
+    const exchange = await withPlaidTracking("itemPublicTokenExchange", session.user.id, () => 
+      plaidClient.itemPublicTokenExchange({ public_token })
+    );
     const { access_token, item_id } = exchange.data;
 
-    const itemResponse = await plaidClient.itemGet({ access_token });
+    const itemResponse = await withPlaidTracking("itemGet", session.user.id, () => 
+      plaidClient.itemGet({ access_token })
+    );
     const institutionId = itemResponse.data.item.institution_id ?? null;
 
     let institutionName = institution?.name ?? null;
     if (institutionId && !institutionName) {
-      const institutionResponse = await plaidClient.institutionsGetById({
-        institution_id: institutionId,
-        country_codes: [CountryCode.Us],
-      });
+      const institutionResponse = await withPlaidTracking("institutionsGetById", session.user.id, () => 
+        plaidClient.institutionsGetById({
+          institution_id: institutionId,
+          country_codes: [CountryCode.Us],
+        })
+      );
       institutionName = institutionResponse.data.institution.name;
     }
 

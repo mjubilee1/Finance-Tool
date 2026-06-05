@@ -1,0 +1,12 @@
+---
+description: Ensure sensitive data and credentials are handled securely
+alwaysApply: true
+---
+
+# Sensitive Data Handling
+
+- **No Hardcoded Secrets**: NEVER hardcode API keys, passwords, tokens, or other credentials in the codebase.
+- **Environment Variables**: ALWAYS use environment variables (`process.env.VAR_NAME`) to access sensitive configuration.
+- **No Sensitive Logging**: NEVER log sensitive information (e.g., raw tokens, passwords, full API responses containing credentials, or PII) to the console or log files.
+- **Configuration Files**: Be extremely cautious when creating or modifying files like `.env`, and never commit actual secrets to version control (ensure they stay in `.gitignore`).
+- **Data Privacy**: Treat user financial data and Personally Identifiable Information (PII) with the utmost care. Mask or redact sensitive information in UI components or logs when appropriate.

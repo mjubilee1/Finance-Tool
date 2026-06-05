@@ -5,6 +5,7 @@ import { plaidClient } from "@/lib/plaid";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import type { AccountSummary } from "@/lib/finance";
+import { withPlaidTracking } from "@/lib/plaid-tracker";
 
 export async function GET() {
   try {
@@ -26,9 +27,11 @@ export async function GET() {
     for (const item of items) {
       try {
         const accessToken = decrypt(item.encryptedAccessToken);
-        const balances = await plaidClient.accountsBalanceGet({
-          access_token: accessToken,
-        });
+        const balances = await withPlaidTracking("accountsBalanceGet", session.user.id, () => 
+          plaidClient.accountsBalanceGet({
+            access_token: accessToken,
+          })
+        );
 
         for (const account of balances.data.accounts) {
           // Upsert account in DB

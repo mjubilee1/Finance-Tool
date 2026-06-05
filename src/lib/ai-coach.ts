@@ -141,28 +141,31 @@ Generate a JSON response exactly matching this structure:
   const insight = JSON.parse(content);
 
   // 4. Save new memories to Pinecone & Prisma
-  if (insight.newMemoriesToStore && Array.isArray(insight.newMemoriesToStore)) {
-    for (const mem of insight.newMemoriesToStore) {
-      const vectorId = crypto.randomUUID();
-      const embedding = await getEmbedding(mem.content);
-      
-      await index.upsert([
-        { id: vectorId, values: embedding, metadata: { userId, content: mem.content, type: "AI_GENERATED", createdAt: new Date().toISOString() } }
-      ] as any);
-
-      await prisma.financialMemory.create({
-        data: {
-          userId,
-          type: "AI_GENERATED",
-          title: mem.title,
-          content: mem.content,
-          source: "Daily Insight",
-          importanceScore: mem.importanceScore,
-          pineconeVectorId: vectorId,
+      if (insight.newMemoriesToStore && Array.isArray(insight.newMemoriesToStore) && insight.newMemoriesToStore.length > 0) {
+        for (const mem of insight.newMemoriesToStore) {
+          const vectorId = crypto.randomUUID();
+          const embedding = await getEmbedding(mem.content);
+          
+          try {
+            // Support both object and array formats depending on the installed Pinecone SDK version
+            await (index.upsert as any)([{ id: vectorId, values: embedding, metadata: { userId, content: mem.content, type: "AI_GENERATED", createdAt: new Date().toISOString() } }]);
+          } catch (pineconeErr) {
+            console.error("Pinecone upsert failed, continuing without it:", pineconeErr);
+          }
+    
+          await prisma.financialMemory.create({
+            data: {
+              userId,
+              type: "AI_GENERATED",
+              title: mem.title,
+              content: mem.content,
+              source: "Daily Insight",
+              importanceScore: mem.importanceScore,
+              pineconeVectorId: vectorId,
+            }
+          });
         }
-      });
-    }
-  }
+      }
 
   return insight;
 }

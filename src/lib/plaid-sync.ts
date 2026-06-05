@@ -2,6 +2,7 @@ import { plaidClient } from "@/lib/plaid";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { applyRuleBasedCategory } from "@/lib/categorization";
+import { withPlaidTracking } from "./plaid-tracker";
 
 export async function syncTransactionsForItem(itemId: string) {
   const item = await prisma.plaidItem.findUnique({
@@ -22,10 +23,12 @@ export async function syncTransactionsForItem(itemId: string) {
     let hasMore = true;
 
     while (hasMore) {
-      const response = await plaidClient.transactionsSync({
-        access_token: accessToken,
-        cursor,
-      });
+      const response = await withPlaidTracking("transactionsSync", item.userId, () => 
+        plaidClient.transactionsSync({
+          access_token: accessToken,
+          cursor,
+        })
+      );
 
       const data = response.data;
 

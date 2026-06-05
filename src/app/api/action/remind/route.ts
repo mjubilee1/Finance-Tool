@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
     await resend.emails.send({
       from: "Coach <onboarding@resend.dev>", 
-      to: session.user.email,
+      to: "mjubil96@gmail.com", // Resend free tier requires sending to verified email
       subject: `Cancel ${merchant} to save $${yearlySavings} this year`,
       html: emailHtml,
     });

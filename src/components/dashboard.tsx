@@ -1,18 +1,21 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { formatCurrency } from "@/lib/format";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ConnectBankButton } from "./connect-bank-button";
 import { Projections } from "./projections";
-import { useSession, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
-import { Search, ChevronLeft, ChevronRight, ArrowDownUp, ChevronDown, ChevronUp } from "lucide-react";
+import { ChatInterface } from "./chat-interface";
 
 function fetchDashboard() {
   return fetch("/api/dashboard").then((res) => res.json());
 }
+
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections';
 
 export function Dashboard() {
   const router = useRouter();
@@ -25,11 +28,13 @@ export function Dashboard() {
     enabled: status === "authenticated",
   });
 
+  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"date" | "amount_desc" | "amount_asc">("amount_desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [isAccountsExpanded, setIsAccountsExpanded] = useState(true);
   const [actionStatuses, setActionStatuses] = useState<Record<string, 'idle' | 'loading' | 'sent'>>({});
   const itemsPerPage = 10;
 
@@ -92,27 +97,13 @@ export function Dashboard() {
     currentPage * itemsPerPage
   );
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1);
-  };
-
-  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSortOrder(e.target.value as any);
-    setCurrentPage(1);
-  };
-
   const handleBankLinked = async () => {
-    // 1. Fetch account balances to populate the database
     await fetch("/api/plaid/accounts");
-    // 2. Trigger a transaction sync
     await fetch("/api/plaid/sync", { method: "POST" });
-    // 3. Refresh dashboard data
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
-  // Early returns must happen AFTER all hooks (useState, useMemo, etc) are called
-  if (status === "loading") return <div className="p-8 text-center">Loading...</div>;
+  if (status === "loading") return <div className="p-8 text-center flex-1 h-screen flex items-center justify-center">Loading...</div>;
 
   if (status === "unauthenticated") {
     return (
@@ -131,280 +122,357 @@ export function Dashboard() {
     );
   }
 
-  if (isLoading) return <div className="p-8 text-center">Loading your financial data...</div>;
+  const NavItem = ({ tab, icon: Icon, label }: { tab: TabType, icon: any, label: string }) => (
+    <button
+      onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
+      className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all ${
+        activeTab === tab 
+          ? 'bg-zinc-200 text-zinc-900 font-semibold shadow-sm' 
+          : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+      }`}
+    >
+      <Icon size={20} className={activeTab === tab ? 'text-zinc-900' : 'text-zinc-500'} />
+      {label}
+    </button>
+  );
 
   return (
-    <div className="mx-auto max-w-4xl p-4 pb-24 space-y-8">
-      <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Hello, {session?.user?.name || "User"}</h1>
-          <p className="text-zinc-500">Your daily financial intelligence.</p>
-        </div>
-        <button onClick={() => signOut()} className="text-sm text-zinc-500 underline">Sign out</button>
-      </header>
-
-      {/* Connection Area */}
-      {accounts.length === 0 ? (
-        <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl">
-          <h2 className="font-semibold text-emerald-900 mb-2">Link your accounts to start</h2>
-          <ConnectBankButton onLinked={handleBankLinked} />
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mb-2">
-            <button 
-              onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <h2 className="font-semibold">Your Accounts</h2>
-              {isAccountsExpanded ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
-            </button>
-            <ConnectBankButton onLinked={handleBankLinked} className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200 border-none min-h-0 py-2 px-4 text-xs w-auto" />
-          </div>
-          
-          {isAccountsExpanded && (
-            <>
-              {selectedAccountId && (
-                <button 
-                  onClick={() => { setSelectedAccountId(null); setCurrentPage(1); }}
-                  className="text-xs text-emerald-600 font-medium hover:underline mb-2 block"
-                >
-                  Clear filter (Show all transactions)
-                </button>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {accounts.map((acc: any) => (
-                  <div 
-                    key={acc.id} 
-                    onClick={() => { 
-                      setSelectedAccountId(prev => prev === acc.plaidAccountId ? null : acc.plaidAccountId);
-                      setCurrentPage(1);
-                    }}
-                    className={`p-5 rounded-2xl border bg-white shadow-sm flex flex-col justify-between transition-all hover:border-emerald-200 hover:shadow-md cursor-pointer ${
-                      selectedAccountId === acc.plaidAccountId 
-                        ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/30' 
-                        : 'border-zinc-200'
-                    }`}
-                  >
-                    <div>
-                      <p className="font-semibold text-zinc-900 truncate" title={acc.name}>{acc.name}</p>
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider mt-0.5">
-                        {acc.subtype} {acc.mask ? `•••• ${acc.mask}` : ''}
-                      </p>
-                    </div>
-                    <p className="text-2xl font-bold mt-4 text-zinc-900">
-                      {formatCurrency(acc.currentBalance ?? 0)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+    <div className="flex h-screen bg-zinc-50 overflow-hidden">
+      
+      {/* Mobile Menu Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/20 z-40 md:hidden" 
+          onClick={() => setIsSidebarOpen(false)} 
+        />
       )}
 
-      {/* Actionable Insights Panel */}
-      {aiInsight && (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Safe to Spend Widget */}
-          <div className="bg-emerald-900 text-white p-6 rounded-3xl shadow-xl flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-start mb-2">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <span className="bg-emerald-400 w-2 h-2 rounded-full animate-pulse"></span>
-                  Safe to Spend Today
-                </h2>
-              </div>
-              <p className="text-zinc-300 text-sm mb-4">
-                Based on your current balance, upcoming recurring bills, and daily average spend, here is your worry-free limit for today.
-              </p>
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50/80 backdrop-blur-xl border-r border-zinc-200 transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 px-2">
+            <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center">
+              <BrainCircuit className="text-white" size={18} />
             </div>
-            
-            <div className="bg-black/20 p-6 rounded-2xl border border-white/10 text-center">
-              <p className="text-5xl font-bold text-emerald-400 mb-2">
-                {formatCurrency(
-                  Math.max(0, 
-                    (accounts.reduce((sum: number, acc: any) => sum + (acc.currentBalance || 0), 0) * 0.4) / 14
-                  )
-                )}
-              </p>
-              <p className="text-sm text-emerald-200/70 uppercase tracking-wider font-semibold">Remaining Daily Allowance</p>
-            </div>
+            <span className="font-bold text-lg tracking-tight text-zinc-900">Coach AI</span>
+          </div>
+          <button className="md:hidden p-2 text-zinc-500 hover:bg-zinc-100 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <NavItem tab="chat" icon={BrainCircuit} label="AI Chat" />
+          <NavItem tab="overview" icon={LayoutDashboard} label="Overview" />
+          <NavItem tab="projections" icon={TrendingUp} label="Projections" />
+          <NavItem tab="accounts" icon={Wallet} label="Accounts" />
+          <NavItem tab="transactions" icon={Receipt} label="Transactions" />
+        </nav>
+
+        <div className="p-4 border-t border-zinc-200">
+          <div className="bg-white border border-zinc-200 p-3 rounded-xl mb-4 text-center text-sm shadow-sm">
+             {accounts.length > 0 ? (
+               <>
+                 <p className="font-medium text-zinc-900 mb-2">{accounts.length} Accounts Linked</p>
+                 <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200 border-none py-1.5 px-3 text-xs shadow-none" />
+               </>
+             ) : (
+               <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
+             )}
           </div>
 
-          {/* AI Coach Panel */}
-          <div className="bg-zinc-900 text-white p-6 rounded-3xl shadow-xl">
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                AI Financial Coach
-              </h2>
-              <div className="text-right">
-                <p className="text-xs text-zinc-400 uppercase tracking-wider">Health Score</p>
-                <p className="text-2xl font-bold text-emerald-400">{aiInsight.financialHealthScore}/100</p>
-              </div>
-            </div>
-            
-            <p className="text-sm sm:text-base mb-6 leading-relaxed text-zinc-200">
-              {aiInsight.dailySummary}
-            </p>
+          <div className="flex items-center justify-between px-2">
+            <span className="text-sm font-medium text-zinc-700 truncate pr-2">
+              {session?.user?.name || "User"}
+            </span>
+            <button onClick={() => signOut()} className="text-xs text-zinc-500 hover:text-zinc-900 hover:underline">
+              Sign out
+            </button>
+          </div>
+        </div>
+      </aside>
 
-            {aiInsight.recommendedActions?.[0] && (
-              <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-xl">
-                <p className="text-xs uppercase text-emerald-300 font-semibold mb-1">Recommended Action</p>
-                <p className="text-sm font-medium">{aiInsight.recommendedActions[0].title}</p>
-                <p className="text-xs text-zinc-300 mt-1">{aiInsight.recommendedActions[0].reason}</p>
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-full min-w-0 bg-white">
+        {/* Mobile Header */}
+        <header className="md:hidden flex items-center justify-between p-4 border-b border-zinc-100 bg-white/80 backdrop-blur-md sticky top-0 z-30">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-zinc-600 hover:bg-zinc-100 rounded-lg">
+              <Menu size={24} />
+            </button>
+            <span className="font-semibold text-lg capitalize">{activeTab}</span>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="max-w-4xl mx-auto w-full h-full flex flex-col">
+            
+            {/* View: CHAT */}
+            {activeTab === 'chat' && (
+              <div className="flex-1 flex flex-col">
+                <div className="mb-6 hidden md:block">
+                  <h1 className="text-2xl font-bold text-zinc-900">Chat with AI Coach</h1>
+                  <p className="text-zinc-500 mt-1">Ask questions about your finances, get advice, and analyze your spending.</p>
+                </div>
+                <div className="flex-1 h-full min-h-[500px]">
+                  <ChatInterface />
+                </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Subscription Review Panel */}
-      {aiInsight?.recurringTransactionsToReview?.length > 0 && (
-        <div className="bg-white border border-rose-200 p-6 rounded-3xl shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-rose-100 p-2 rounded-lg">
-              <span className="text-xl">✂️</span>
-            </div>
-            <div>
-              <h2 className="font-semibold text-rose-900 text-lg">Subscriptions to Review</h2>
-              <p className="text-sm text-zinc-500">The AI flagged these recurring charges. Canceling them could save you money.</p>
-            </div>
-          </div>
-          
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {aiInsight.recurringTransactionsToReview.map((sub: any, i: number) => (
-              <div key={i} className="border border-rose-100 bg-rose-50/50 hover:bg-rose-50 p-5 rounded-2xl flex flex-col justify-between transition-colors">
-                <div>
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="font-bold text-rose-950 truncate pr-2">{sub.merchant}</p>
-                    <p className="font-bold text-rose-700">{formatCurrency(sub.averageAmount)}</p>
+            {/* View: OVERVIEW */}
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                <h1 className="text-2xl font-bold text-zinc-900 hidden md:block mb-6">Financial Overview</h1>
+                
+                {aiInsight ? (
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="bg-emerald-900 text-white p-6 rounded-3xl shadow-xl flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between items-start mb-2">
+                          <h2 className="text-lg font-semibold flex items-center gap-2">
+                            <span className="bg-emerald-400 w-2 h-2 rounded-full animate-pulse"></span>
+                            Safe to Spend Today
+                          </h2>
+                        </div>
+                        <p className="text-zinc-300 text-sm mb-4">
+                          Based on your current balance, upcoming recurring bills, and daily average spend.
+                        </p>
+                      </div>
+                      
+                      <div className="bg-black/20 p-6 rounded-2xl border border-white/10 text-center">
+                        <p className="text-5xl font-bold text-emerald-400 mb-2">
+                          {formatCurrency(
+                            Math.max(0, 
+                              (accounts.reduce((sum: number, acc: any) => sum + (acc.currentBalance || 0), 0) * 0.4) / 14
+                            )
+                          )}
+                        </p>
+                        <p className="text-sm text-emerald-200/70 uppercase tracking-wider font-semibold">Remaining Daily Allowance</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900 text-white p-6 rounded-3xl shadow-xl">
+                      <div className="flex justify-between items-start mb-4">
+                        <h2 className="text-lg font-semibold flex items-center gap-2">
+                          AI Financial Coach
+                        </h2>
+                        <div className="text-right">
+                          <p className="text-xs text-zinc-400 uppercase tracking-wider">Health Score</p>
+                          <p className="text-2xl font-bold text-emerald-400">{aiInsight.financialHealthScore}/100</p>
+                        </div>
+                      </div>
+                      
+                      <p className="text-sm sm:text-base mb-6 leading-relaxed text-zinc-200">
+                        {aiInsight.dailySummary}
+                      </p>
+
+                      {aiInsight.recommendedActions?.[0] && (
+                        <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-xl">
+                          <p className="text-xs uppercase text-emerald-300 font-semibold mb-1">Recommended Action</p>
+                          <p className="text-sm font-medium">{aiInsight.recommendedActions[0].title}</p>
+                          <p className="text-xs text-zinc-300 mt-1">{aiInsight.recommendedActions[0].reason}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs uppercase tracking-wider text-rose-500/80 font-semibold mb-3">{sub.frequency}</p>
-                  <p className="text-sm text-rose-900/80 leading-relaxed">{sub.recommendation}</p>
-                </div>
-                <button 
-                  onClick={() => handleTakeAction(sub)}
-                  disabled={actionStatuses[sub.merchant] === 'loading' || actionStatuses[sub.merchant] === 'sent'}
-                  className={`mt-4 w-full border text-sm font-semibold py-2 rounded-xl transition-colors ${
-                    actionStatuses[sub.merchant] === 'sent'
-                      ? 'bg-emerald-100 border-emerald-200 text-emerald-700'
-                      : 'bg-white border-rose-200 text-rose-700 hover:bg-rose-100'
-                  }`}
-                >
-                  {actionStatuses[sub.merchant] === 'loading' ? 'Sending...' : 
-                   actionStatuses[sub.merchant] === 'sent' ? 'Reminder Sent!' : 
-                   'Take Action'}
-                </button>
+                ) : (
+                  <div className="p-8 border border-dashed border-zinc-300 rounded-3xl text-center text-zinc-500">
+                    Your AI insights are generating. Check back soon.
+                  </div>
+                )}
+
+                {aiInsight?.recurringTransactionsToReview?.length > 0 && (
+                  <div className="bg-white border border-rose-200 p-6 rounded-3xl shadow-sm">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="bg-rose-100 p-2 rounded-lg">
+                        <span className="text-xl">✂️</span>
+                      </div>
+                      <div>
+                        <h2 className="font-semibold text-rose-900 text-lg">Subscriptions to Review</h2>
+                        <p className="text-sm text-zinc-500">The AI flagged these recurring charges.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {aiInsight.recurringTransactionsToReview.map((sub: any, i: number) => (
+                        <div key={i} className="border border-rose-100 bg-rose-50/50 p-5 rounded-2xl flex flex-col justify-between">
+                          <div>
+                            <div className="flex justify-between items-start mb-2">
+                              <p className="font-bold text-rose-950 truncate pr-2">{sub.merchant}</p>
+                              <p className="font-bold text-rose-700">{formatCurrency(sub.averageAmount)}</p>
+                            </div>
+                            <p className="text-xs uppercase tracking-wider text-rose-500/80 font-semibold mb-3">{sub.frequency}</p>
+                            <p className="text-sm text-rose-900/80 leading-relaxed">{sub.recommendation}</p>
+                          </div>
+                          <button 
+                            onClick={() => handleTakeAction(sub)}
+                            disabled={actionStatuses[sub.merchant] === 'loading' || actionStatuses[sub.merchant] === 'sent'}
+                            className={`mt-4 w-full border text-sm font-semibold py-2 rounded-xl transition-colors ${
+                              actionStatuses[sub.merchant] === 'sent'
+                                ? 'bg-emerald-100 border-emerald-200 text-emerald-700'
+                                : 'bg-white border-rose-200 text-rose-700 hover:bg-rose-100'
+                            }`}
+                          >
+                            {actionStatuses[sub.merchant] === 'loading' ? 'Sending...' : 
+                             actionStatuses[sub.merchant] === 'sent' ? 'Reminder Sent!' : 
+                             'Take Action'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {snapshots.length > 0 && (
+                  <div className="bg-white border border-zinc-200 p-6 rounded-3xl">
+                    <h2 className="font-semibold mb-6">Daily Spending (Last 30 Days)</h2>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={snapshots}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
+                          <XAxis dataKey="date" tick={{fontSize: 12}} tickMargin={10} stroke="#666" />
+                          <YAxis tick={{fontSize: 12}} tickFormatter={(val) => `$${val}`} stroke="#666" />
+                          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                          <Line type="monotone" dataKey="totalSpent" stroke="#10b981" strokeWidth={3} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* Charts */}
-      {snapshots.length > 0 && (
-        <div className="bg-white border border-zinc-200 p-6 rounded-3xl">
-          <h2 className="font-semibold mb-6">Daily Spending (Last 30 Days)</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={snapshots}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
-                <XAxis dataKey="date" tick={{fontSize: 12}} tickMargin={10} stroke="#666" />
-                <YAxis tick={{fontSize: 12}} tickFormatter={(val) => `$${val}`} stroke="#666" />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Line type="monotone" dataKey="totalSpent" stroke="#10b981" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+            {/* View: ACCOUNTS */}
+            {activeTab === 'accounts' && (
+              <div className="space-y-6">
+                <h1 className="text-2xl font-bold text-zinc-900 hidden md:block mb-6">Connected Accounts</h1>
+                
+                {accounts.length === 0 ? (
+                  <div className="p-8 text-center border-dashed border-2 border-zinc-200 rounded-3xl">
+                    <p className="text-zinc-500 mb-4">No accounts linked yet.</p>
+                    <ConnectBankButton onLinked={handleBankLinked} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {accounts.map((acc: any) => (
+                      <div key={acc.id} className="p-6 rounded-3xl border border-zinc-200 bg-white shadow-sm flex flex-col justify-between">
+                        <div>
+                          <p className="font-semibold text-lg text-zinc-900 truncate" title={acc.name}>{acc.name}</p>
+                          <p className="text-sm text-zinc-500 uppercase tracking-wider mt-1 font-medium">
+                            {acc.subtype} {acc.mask ? `•••• ${acc.mask}` : ''}
+                          </p>
+                        </div>
+                        <p className="text-3xl font-bold mt-6 text-zinc-900">
+                          {formatCurrency(acc.currentBalance ?? 0)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
-      {/* Projections */}
-      {accounts.length > 0 && (
-        <Projections />
-      )}
-
-      {/* Recent Transactions Feed */}
-      <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden">
-        <div className="p-6 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h2 className="font-semibold whitespace-nowrap">Recent Transactions</h2>
-          
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-              <input
-                type="text"
-                placeholder="Search transactions..."
-                value={searchQuery}
-                onChange={handleSearch}
-                className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            
-            <div className="relative w-full sm:w-auto flex items-center">
-              <ArrowDownUp className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-              <select
-                value={sortOrder}
-                onChange={handleSortChange}
-                className="w-full sm:w-auto appearance-none pl-9 pr-8 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-              >
-                <option value="amount_desc">Highest Amount</option>
-                <option value="amount_asc">Lowest Amount</option>
-                <option value="date">Most Recent</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        
-        <ul className="divide-y divide-zinc-100">
-          {paginatedTransactions.length > 0 ? (
-            paginatedTransactions.map((t: any) => (
-              <li key={t.id} className="p-4 flex justify-between items-center hover:bg-zinc-50 transition-colors">
-                <div>
-                  <p className="font-medium">{t.name}</p>
-                  <p className="text-xs text-zinc-500 mt-1 flex items-center flex-wrap gap-2">
-                    <span>{t.date}</span>
-                    <span>•</span>
-                    <span>{t.categoryPrimary || "Uncategorized"}</span>
-                    {t.isTenantPaymentCandidate && <span className="text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">Possible Rent</span>}
-                  </p>
+            {/* View: TRANSACTIONS */}
+            {activeTab === 'transactions' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 hidden md:flex mb-6">
+                  <h1 className="text-2xl font-bold text-zinc-900">Transactions</h1>
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                      <input
+                        type="text"
+                        placeholder="Search..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="relative">
+                      <ArrowDownUp className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                      <select
+                        value={sortOrder}
+                        onChange={(e) => {
+                          setSortOrder(e.target.value as any);
+                          setCurrentPage(1);
+                        }}
+                        className="appearance-none pl-9 pr-8 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="amount_desc">Highest</option>
+                        <option value="amount_asc">Lowest</option>
+                        <option value="date">Recent</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <p className={`font-semibold text-lg ${t.amount > 0 ? "text-zinc-900" : "text-emerald-600"}`}>
-                  {formatCurrency(Math.abs(t.amount))}
-                </p>
-              </li>
-            ))
-          ) : (
-            <li className="p-8 text-center text-zinc-500">No transactions found.</li>
-          )}
-        </ul>
-        
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="p-4 border-t border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-            <p className="text-sm text-zinc-500">
-              Page <span className="font-medium text-zinc-900">{currentPage}</span> of <span className="font-medium text-zinc-900">{totalPages}</span>
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
+
+                <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden">
+                  <ul className="divide-y divide-zinc-100">
+                    {paginatedTransactions.length > 0 ? (
+                      paginatedTransactions.map((t: any) => (
+                        <li key={t.id} className="p-4 flex justify-between items-center hover:bg-zinc-50 transition-colors">
+                          <div>
+                            <p className="font-medium text-zinc-900">{t.name}</p>
+                            <p className="text-xs text-zinc-500 mt-1 flex items-center flex-wrap gap-2 font-medium">
+                              <span>{t.date}</span>
+                              <span>•</span>
+                              <span className="uppercase tracking-wider">{t.categoryPrimary || "Uncategorized"}</span>
+                              {t.isTenantPaymentCandidate && <span className="text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded uppercase tracking-wider">Rent</span>}
+                            </p>
+                          </div>
+                          <p className={`font-semibold text-lg ${t.amount > 0 ? "text-zinc-900" : "text-emerald-600"}`}>
+                            {formatCurrency(Math.abs(t.amount))}
+                          </p>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="p-12 text-center text-zinc-500">No transactions found.</li>
+                    )}
+                  </ul>
+                  {totalPages > 1 && (
+                    <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between">
+                      <p className="text-sm text-zinc-500">
+                        Page <span className="font-medium text-zinc-900">{currentPage}</span> of <span className="font-medium text-zinc-900">{totalPages}</span>
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="px-4 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                          disabled={currentPage === totalPages}
+                          className="px-4 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* View: PROJECTIONS */}
+            {activeTab === 'projections' && (
+              <div className="space-y-6">
+                <h1 className="text-2xl font-bold text-zinc-900 hidden md:block mb-6">Financial Projections</h1>
+                <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm">
+                  {accounts.length > 0 ? <Projections /> : <p className="text-zinc-500 text-center p-8">Link an account to see projections.</p>}
+                </div>
+              </div>
+            )}
+
           </div>
-        )}
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

@@ -1,0 +1,9 @@
+---
+description: Enforce using the latest GPT-5 model for OpenAI operations
+alwaysApply: true
+---
+
+# OpenAI Model Versioning
+
+- **Always use GPT-5**: Whenever integrating with or calling OpenAI's chat completion API, always specify `model: "gpt-5"` (or the latest available GPT-5 equivalent) instead of older models like `gpt-4` or `gpt-4o`.
+- **Reason**: To ensure the AI Coach and other generation features utilize the most advanced reasoning, context windows, and financial logic available.
