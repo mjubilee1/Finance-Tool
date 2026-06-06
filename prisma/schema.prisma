@@ -203,6 +203,7 @@ model FinancialGoal {
   currentAmount Float
   targetDate    String?   // YYYY-MM-DD
   category      String?
+  priority      Int       @default(3) // 1=High, 2=Medium, 3=Low
   status        String    @default("active") // "active", "completed", "abandoned"
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

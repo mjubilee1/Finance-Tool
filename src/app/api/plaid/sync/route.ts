@@ -19,6 +19,7 @@ export async function POST() {
     let modifiedCount = 0;
     let removedCount = 0;
     let skippedCount = 0;
+    let failedCount = 0;
 
     for (const item of items) {
       try {
@@ -30,17 +31,28 @@ export async function POST() {
         modifiedCount += result.modified;
         removedCount += result.removed;
       } catch (err) {
+        failedCount++;
         console.error(`Failed to sync transactions for item ${item.id}`, err);
       }
     }
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       added: addedCount,
       modified: modifiedCount,
       removed: removedCount,
       skipped: skippedCount,
-    });
+      failed: failedCount,
+    };
+
+    if (failedCount > 0 && addedCount === 0 && modifiedCount === 0 && removedCount === 0) {
+      return NextResponse.json(
+        { ...payload, success: false, error: "Failed to sync transactions for linked accounts." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("Failed to sync transactions:", error);
     return NextResponse.json(

@@ -8,7 +8,7 @@ const envSchema = z.object({
   PLAID_PROD_SECRET: z.string().min(1).optional(),
   PLAID_DAILY_BALANCE_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
-    z.coerce.number().int().min(0).default(3),
+    z.coerce.number().int().min(0).default(20),
   ),
   PLAID_DAILY_SYNC_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),

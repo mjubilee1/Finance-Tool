@@ -64,7 +64,7 @@ export async function generateDailyInsight(userId: string) {
     take: 100,
   });
 
-  const [recurringPatterns, memoryRecords] = await Promise.all([
+  const [recurringPatterns, memoryRecords, accounts, goals] = await Promise.all([
     prisma.recurringPattern.findMany({
       where: { userId },
       take: 20,
@@ -73,6 +73,12 @@ export async function generateDailyInsight(userId: string) {
       where: { userId },
       orderBy: { importanceScore: "desc" },
       take: 5,
+    }),
+    prisma.financialAccount.findMany({
+      where: { userId },
+    }),
+    prisma.financialGoal.findMany({
+      where: { userId, status: "active" },
     }),
   ]);
 
@@ -83,10 +89,17 @@ export async function generateDailyInsight(userId: string) {
   // 3. Build Prompt
   const prompt = `
 You are a senior financial coach. You are direct, practical, and encouraging.
-Analyze the user's data and provide JSON.
+Analyze the user's data and provide JSON. 
+Crucially, look at their Current Accounts (debt vs positive income) and their Financial Goals. Look for opportunities to optimize their daily transaction costs to help them hit their goals faster.
 
 MEMORIES:
 ${memories}
+
+CURRENT ACCOUNTS (Note which are debt vs assets):
+${JSON.stringify(accounts.map((a: any) => ({ name: a.name, type: a.type, balance: a.currentBalance })))}
+
+FINANCIAL GOALS:
+${JSON.stringify(goals.map((g: any) => ({ name: g.name, target: g.targetAmount, current: g.currentAmount, targetDate: g.targetDate })))}
 
 RECENT TRANSACTIONS (last 30 days):
 ${JSON.stringify(recentTransactions.slice(0, 30).map((transaction: { name: string; amount: number; categoryPrimary: string | null; date: string }) => ({ name: transaction.name, amount: transaction.amount, category: transaction.categoryPrimary, date: transaction.date })))}
@@ -96,7 +109,7 @@ ${JSON.stringify(recurringPatterns.map((pattern: { merchantName: string | null; 
 
 Generate a JSON response exactly matching this structure:
 {
-  "dailySummary": "...",
+  "dailySummary": "...", // Include insights balancing their cashflow, debt, and progress towards goals
   "financialHealthScore": 72,
   "scoreReasoning": "...",
   "spendingTrend": {

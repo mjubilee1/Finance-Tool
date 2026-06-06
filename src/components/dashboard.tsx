@@ -10,12 +10,14 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { ConnectBankButton } from "./connect-bank-button";
 import { Projections } from "./projections";
 import { ChatInterface } from "./chat-interface";
+import { GoalsView } from "./goals-view";
+import { Target } from "lucide-react";
 
 function fetchDashboard() {
   return fetch("/api/dashboard").then((res) => res.json());
 }
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections' | 'goals';
 
 export function Dashboard() {
   const router = useRouter();
@@ -63,7 +65,7 @@ export function Dashboard() {
     }
   };
 
-  const { transactions = [], snapshots = [], aiInsight, accounts = [], plaidUsage } = data || {};
+  const { transactions = [], snapshots = [], aiInsight = null, accounts = [], goals = [], plaidUsage } = data || {};
 
   const filteredAndSortedTransactions = useMemo(() => {
     let result = [...transactions];
@@ -182,6 +184,7 @@ export function Dashboard() {
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {renderNavItem("chat", BrainCircuit, "AI Chat")}
           {renderNavItem("overview", LayoutDashboard, "Overview")}
+          {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
           {renderNavItem("transactions", Receipt, "Transactions")}
@@ -237,7 +240,7 @@ export function Dashboard() {
           
           {plaidUsage && (
             <div className="text-xs font-medium px-3 py-1.5 rounded-full border bg-zinc-50 text-zinc-600 border-zinc-200 shadow-sm ml-auto">
-              Plaid API calls today: <span className="text-zinc-900">{plaidUsage.totalCalls}</span>
+              Balance refreshes today: <span className="text-zinc-900">{plaidUsage.balanceRefreshesToday}</span> / {plaidUsage.dailyBalanceCallLimit}
             </div>
           )}
         </header>
@@ -282,7 +285,9 @@ export function Dashboard() {
                         <p className="text-5xl font-bold text-emerald-400 mb-2">
                           {formatCurrency(
                             Math.max(0, 
-                              (accounts.reduce((sum: number, acc: any) => sum + (acc.currentBalance || 0), 0) * 0.4) / 14
+                              (accounts
+                                .filter((acc: any) => acc.type === 'depository')
+                                .reduce((sum: number, acc: any) => sum + (acc.availableBalance ?? acc.currentBalance ?? 0), 0) * 0.4) / 14
                             )
                           )}
                         </p>
@@ -393,7 +398,11 @@ export function Dashboard() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {accounts.map((acc: any) => (
+                    {accounts.map((acc: any) => {
+                      const isDebt = acc.type === 'credit' || acc.type === 'loan';
+                      const isAsset = acc.type === 'depository' || acc.type === 'investment';
+                      
+                      return (
                       <div 
                         key={acc.id} 
                         onClick={() => {
@@ -401,19 +410,32 @@ export function Dashboard() {
                           setActiveTab('transactions');
                           setCurrentPage(1);
                         }}
-                        className="p-6 rounded-3xl border border-zinc-200 bg-white shadow-sm flex flex-col justify-between cursor-pointer hover:border-emerald-500 hover:shadow-md transition-all"
+                        className={`p-6 rounded-3xl border shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md transition-all ${
+                          isDebt ? 'bg-rose-50/30 border-rose-200 hover:border-rose-400' : 
+                          isAsset ? 'bg-emerald-50/30 border-emerald-200 hover:border-emerald-400' : 
+                          'bg-white border-zinc-200 hover:border-zinc-400'
+                        }`}
                       >
                         <div>
-                          <p className="font-semibold text-lg text-zinc-900 truncate" title={acc.name}>{acc.name}</p>
+                          <div className="flex justify-between items-start">
+                            <p className="font-semibold text-lg text-zinc-900 truncate pr-2" title={acc.name}>{acc.name}</p>
+                            <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded ${
+                              isDebt ? 'bg-rose-100 text-rose-700' : 
+                              isAsset ? 'bg-emerald-100 text-emerald-700' : 
+                              'bg-zinc-100 text-zinc-600'
+                            }`}>
+                              {isDebt ? 'Debt' : isAsset ? 'Asset' : 'Other'}
+                            </span>
+                          </div>
                           <p className="text-sm text-zinc-500 uppercase tracking-wider mt-1 font-medium">
                             {acc.subtype} {acc.mask ? `•••• ${acc.mask}` : ''}
                           </p>
                         </div>
-                        <p className="text-3xl font-bold mt-6 text-zinc-900">
+                        <p className={`text-3xl font-bold mt-6 ${isDebt ? 'text-rose-700' : isAsset ? 'text-emerald-700' : 'text-zinc-900'}`}>
                           {formatCurrency(acc.currentBalance ?? 0)}
                         </p>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 )}
               </div>
@@ -533,6 +555,11 @@ export function Dashboard() {
                   {accounts.length > 0 ? <Projections /> : <p className="text-zinc-500 text-center p-8">Link an account to see projections.</p>}
                 </div>
               </div>
+            )}
+
+            {/* View: GOALS */}
+            {activeTab === 'goals' && (
+              <GoalsView goals={goals} />
             )}
 
           </div>

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getCurrentPlaidUsage } from "@/lib/plaid-tracker";
+import { getPlaidConfig } from "@/lib/env";
+import { getDailyPlaidEndpointCalls } from "@/lib/plaid-tracker";
 
 export async function GET() {
   try {
@@ -29,21 +30,38 @@ export async function GET() {
 
     // We can extract the latest AI insight from the latest snapshot
     const latestSnapshot = snapshots[0];
-    const aiInsight = latestSnapshot?.summary ? JSON.parse(latestSnapshot.summary) : null;
+    let aiInsight = null;
+    try {
+      if (latestSnapshot?.summary) {
+        aiInsight = JSON.parse(latestSnapshot.summary);
+      }
+    } catch (e) {
+      console.error("Failed to parse AI insight:", e);
+    }
 
     // Accounts
     const accounts = await prisma.financialAccount.findMany({
       where: { userId },
     });
 
-    const plaidUsage = await getCurrentPlaidUsage();
+    const goals = await prisma.financialGoal.findMany({
+      where: { userId, status: "active" },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const { dailyBalanceCallLimit } = getPlaidConfig();
+    const balanceRefreshesToday = await getDailyPlaidEndpointCalls("accountsBalanceGet", userId);
 
     return NextResponse.json({
       transactions,
       snapshots: snapshots.reverse(), // chronologically for charts
       aiInsight,
       accounts,
-      plaidUsage,
+      goals,
+      plaidUsage: {
+        balanceRefreshesToday,
+        dailyBalanceCallLimit,
+      },
     });
   } catch (error) {
     console.error("Failed to fetch dashboard data:", error);
