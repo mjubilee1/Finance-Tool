@@ -4,15 +4,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { formatCurrency } from "@/lib/format";
-import { ChevronDown, ChevronUp } from "lucide-react";
 
 function fetchProjections(excludeDebt: boolean) {
   return fetch(`/api/projections?excludeDebt=${excludeDebt}`).then((res) => res.json());
 }
 
 export function Projections() {
-  const [excludeDebt, setExcludeDebt] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [includeDebt, setIncludeDebt] = useState(false);
+  const excludeDebt = !includeDebt;
 
   const { data, isLoading } = useQuery({
     queryKey: ["projections", excludeDebt],
@@ -42,23 +41,21 @@ export function Projections() {
           <p className="text-sm text-zinc-500">Based on {Math.round(metrics.daysAnalyzed)} days of history</p>
         </div>
         
-        {isExpanded && (
-          <label className="flex items-center space-x-3 bg-zinc-50 p-2.5 rounded-xl border border-zinc-200 cursor-pointer hover:bg-zinc-100 transition-colors">
-            <div className="relative">
-              <input 
-                type="checkbox" 
-                className="sr-only" 
-                checked={excludeDebt}
-                onChange={(e) => setExcludeDebt(e.target.checked)}
-              />
-              <div className={`block w-10 h-6 rounded-full transition-colors ${excludeDebt ? 'bg-emerald-500' : 'bg-zinc-300'}`}></div>
-              <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${excludeDebt ? 'translate-x-4' : ''}`}></div>
-            </div>
-            <span className="text-sm font-medium text-zinc-700">
-              Exclude Debt Accounts
-            </span>
-          </label>
-        )}
+        <label className="flex items-center space-x-3 bg-zinc-50 p-2.5 rounded-xl border border-zinc-200 cursor-pointer hover:bg-zinc-100 transition-colors">
+          <div className="relative">
+            <input 
+              type="checkbox" 
+              className="sr-only" 
+              checked={includeDebt}
+              onChange={(e) => setIncludeDebt(e.target.checked)}
+            />
+            <div className={`block w-10 h-6 rounded-full transition-colors ${includeDebt ? 'bg-emerald-500' : 'bg-zinc-300'}`}></div>
+            <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${includeDebt ? 'translate-x-4' : ''}`}></div>
+          </div>
+          <span className="text-sm font-medium text-zinc-700">
+            Include Debt Accounts
+          </span>
+        </label>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -106,7 +103,7 @@ export function Projections() {
                 tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} 
               />
               <Tooltip 
-                formatter={(value: any) => [formatCurrency(value as number), "Projected Balance"]}
+                formatter={(value) => [formatCurrency(Number(value ?? 0)), "Projected Balance"]}
                 labelFormatter={(label) => new Date(label).toLocaleDateString()}
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />

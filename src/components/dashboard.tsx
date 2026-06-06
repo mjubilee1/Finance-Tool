@@ -36,6 +36,7 @@ export function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [actionStatuses, setActionStatuses] = useState<Record<string, 'idle' | 'loading' | 'sent'>>({});
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const itemsPerPage = 10;
 
   const handleTakeAction = async (sub: any) => {
@@ -99,8 +100,24 @@ export function Dashboard() {
 
   const handleBankLinked = async () => {
     await fetch("/api/plaid/accounts");
-    await fetch("/api/plaid/sync", { method: "POST" });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
+  const handleSyncTransactions = async () => {
+    setSyncStatus('loading');
+
+    try {
+      const response = await fetch("/api/plaid/sync", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to sync transactions.");
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setSyncStatus('success');
+    } catch (err) {
+      console.error(err);
+      setSyncStatus('error');
+    }
   };
 
   if (status === "loading") return <div className="p-8 text-center flex-1 h-screen flex items-center justify-center">Loading...</div>;
@@ -176,6 +193,20 @@ export function Dashboard() {
                <>
                  <p className="font-medium text-zinc-900 mb-2">{accounts.length} Accounts Linked</p>
                  <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200 border-none py-1.5 px-3 text-xs shadow-none" />
+                 <button
+                   type="button"
+                   onClick={handleSyncTransactions}
+                   disabled={syncStatus === 'loading'}
+                   className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                 >
+                   {syncStatus === 'loading' ? 'Syncing...' : 'Sync transactions'}
+                 </button>
+                 {syncStatus === 'success' ? (
+                   <p className="mt-2 text-xs text-emerald-700">Transactions synced.</p>
+                 ) : null}
+                 {syncStatus === 'error' ? (
+                   <p className="mt-2 text-xs text-red-600">Sync failed. Try again later.</p>
+                 ) : null}
                </>
              ) : (
                <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
@@ -363,7 +394,15 @@ export function Dashboard() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {accounts.map((acc: any) => (
-                      <div key={acc.id} className="p-6 rounded-3xl border border-zinc-200 bg-white shadow-sm flex flex-col justify-between">
+                      <div 
+                        key={acc.id} 
+                        onClick={() => {
+                          setSelectedAccountId(acc.plaidAccountId);
+                          setActiveTab('transactions');
+                          setCurrentPage(1);
+                        }}
+                        className="p-6 rounded-3xl border border-zinc-200 bg-white shadow-sm flex flex-col justify-between cursor-pointer hover:border-emerald-500 hover:shadow-md transition-all"
+                      >
                         <div>
                           <p className="font-semibold text-lg text-zinc-900 truncate" title={acc.name}>{acc.name}</p>
                           <p className="text-sm text-zinc-500 uppercase tracking-wider mt-1 font-medium">
@@ -383,10 +422,29 @@ export function Dashboard() {
             {/* View: TRANSACTIONS */}
             {activeTab === 'transactions' && (
               <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 hidden md:flex mb-6">
-                  <h1 className="text-2xl font-bold text-zinc-900">Transactions</h1>
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <h1 className="text-2xl font-bold text-zinc-900 hidden md:block">Transactions</h1>
+                  <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:flex-none min-w-[140px]">
+                      <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                      <select
+                        value={selectedAccountId || ""}
+                        onChange={(e) => {
+                          setSelectedAccountId(e.target.value || null);
+                          setCurrentPage(1);
+                        }}
+                        className="appearance-none pl-9 pr-8 py-2 w-full bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        <option value="">All Accounts</option>
+                        {accounts.map((acc: any) => (
+                          <option key={acc.id} value={acc.plaidAccountId}>
+                            {acc.name} {acc.mask ? `(••${acc.mask})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="relative flex-1 md:flex-none">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                       <input
                         type="text"
@@ -396,10 +454,10 @@ export function Dashboard() {
                           setSearchQuery(e.target.value);
                           setCurrentPage(1);
                         }}
-                        className="pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="pl-9 pr-4 py-2 w-full bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
-                    <div className="relative">
+                    <div className="relative flex-1 md:flex-none">
                       <ArrowDownUp className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                       <select
                         value={sortOrder}
@@ -407,7 +465,7 @@ export function Dashboard() {
                           setSortOrder(e.target.value as any);
                           setCurrentPage(1);
                         }}
-                        className="appearance-none pl-9 pr-8 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                        className="appearance-none pl-9 pr-8 py-2 w-full bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                       >
                         <option value="amount_desc">Highest</option>
                         <option value="amount_asc">Lowest</option>

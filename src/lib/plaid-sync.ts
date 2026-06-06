@@ -2,9 +2,49 @@ import { plaidClient } from "@/lib/plaid";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { applyRuleBasedCategory } from "@/lib/categorization";
-import { withPlaidTracking } from "./plaid-tracker";
+import { getPlaidConfig } from "@/lib/env";
+import { getLatestPlaidEndpointCall, isPlaidEndpointDailyLimitReached, withPlaidTracking } from "./plaid-tracker";
 
-export async function syncTransactionsForItem(itemId: string) {
+const TRANSACTIONS_SYNC_ENDPOINT = "transactionsSync";
+const { dailySyncCallLimit, syncCooldownMinutes } = getPlaidConfig();
+const inFlightSyncs = new Set<string>();
+
+export type TransactionSyncResult = {
+  added: number;
+  modified: number;
+  removed: number;
+  skipped?: boolean;
+  reason?: string;
+};
+
+export async function shouldSkipTransactionSync(userId: string, itemId: string) {
+  if (inFlightSyncs.has(itemId)) {
+    return "A sync is already running for this item.";
+  }
+
+  const isLimitReached = await isPlaidEndpointDailyLimitReached(
+    TRANSACTIONS_SYNC_ENDPOINT,
+    userId,
+    dailySyncCallLimit,
+  );
+
+  if (isLimitReached) {
+    return `Daily ${TRANSACTIONS_SYNC_ENDPOINT} cap of ${dailySyncCallLimit} reached.`;
+  }
+
+  if (syncCooldownMinutes > 0) {
+    const latestSync = await getLatestPlaidEndpointCall(TRANSACTIONS_SYNC_ENDPOINT, userId);
+    const cooldownMs = syncCooldownMinutes * 60 * 1000;
+
+    if (latestSync && Date.now() - latestSync.createdAt.getTime() < cooldownMs) {
+      return `Last transaction sync was less than ${syncCooldownMinutes} minutes ago.`;
+    }
+  }
+
+  return null;
+}
+
+export async function syncTransactionsForItem(itemId: string): Promise<TransactionSyncResult> {
   const item = await prisma.plaidItem.findUnique({
     where: { id: itemId },
   });
@@ -18,12 +58,37 @@ export async function syncTransactionsForItem(itemId: string) {
   let removedCount = 0;
 
   try {
+    const skipReason = await shouldSkipTransactionSync(item.userId, item.id);
+    if (skipReason) {
+      console.warn(`[PLAID TRACKER] Skipping transaction sync for item ${item.id}: ${skipReason}`);
+      return { added: 0, modified: 0, removed: 0, skipped: true, reason: skipReason };
+    }
+
+    inFlightSyncs.add(item.id);
+
     const accessToken = decrypt(item.encryptedAccessToken);
     let cursor = item.cursor || undefined;
     let hasMore = true;
 
     while (hasMore) {
-      const response = await withPlaidTracking("transactionsSync", item.userId, () => 
+      const isLimitReached = await isPlaidEndpointDailyLimitReached(
+        TRANSACTIONS_SYNC_ENDPOINT,
+        item.userId,
+        dailySyncCallLimit,
+      );
+
+      if (isLimitReached) {
+        console.warn(`[PLAID TRACKER] Daily ${TRANSACTIONS_SYNC_ENDPOINT} cap reached mid-sync for item ${item.id}.`);
+        return {
+          added: addedCount,
+          modified: modifiedCount,
+          removed: removedCount,
+          skipped: true,
+          reason: `Daily ${TRANSACTIONS_SYNC_ENDPOINT} cap reached.`,
+        };
+      }
+
+      const response = await withPlaidTracking(TRANSACTIONS_SYNC_ENDPOINT, item.userId, () => 
         plaidClient.transactionsSync({
           access_token: accessToken,
           cursor,
@@ -127,5 +192,7 @@ export async function syncTransactionsForItem(itemId: string) {
   } catch (err) {
     console.error(`Failed to sync transactions for item ${item.id}`, err);
     throw err;
+  } finally {
+    inFlightSyncs.delete(item.id);
   }
 }

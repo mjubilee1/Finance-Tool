@@ -18,10 +18,14 @@ export async function POST() {
     let addedCount = 0;
     let modifiedCount = 0;
     let removedCount = 0;
+    let skippedCount = 0;
 
     for (const item of items) {
       try {
         const result = await syncTransactionsForItem(item.id);
+        if (result.skipped) {
+          skippedCount++;
+        }
         addedCount += result.added;
         modifiedCount += result.modified;
         removedCount += result.removed;
@@ -35,6 +39,7 @@ export async function POST() {
       added: addedCount,
       modified: modifiedCount,
       removed: removedCount,
+      skipped: skippedCount,
     });
   } catch (error) {
     console.error("Failed to sync transactions:", error);

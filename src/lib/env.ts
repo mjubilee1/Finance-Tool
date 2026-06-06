@@ -10,6 +10,31 @@ const envSchema = z.object({
     (value) => (value === undefined || value === "" ? undefined : value),
     z.coerce.number().int().min(0).default(3),
   ),
+  PLAID_DAILY_SYNC_CALL_LIMIT: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(0).default(20),
+  ),
+  PLAID_SYNC_COOLDOWN_MINUTES: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(0).default(5),
+  ),
+  AI_CHAT_DAILY_LIMIT: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(0).default(25),
+  ),
+  AI_DAILY_MEMORY_LIMIT: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(0).default(2),
+  ),
+  AI_MEMORY_MIN_IMPORTANCE: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().min(0).max(10).default(8),
+  ),
+  ENABLE_PINECONE_MEMORY: z.preprocess(
+    (value) => value === "true" || value === true,
+    z.boolean().default(false),
+  ),
+  CRON_SECRET: z.string().min(1).optional(),
 });
 
 function resolveSecret(parsed: z.infer<typeof envSchema>): string {
@@ -35,5 +60,18 @@ export function getPlaidConfig() {
     secret: resolveSecret(parsed),
     env: parsed.PLAID_ENV,
     dailyBalanceCallLimit: parsed.PLAID_DAILY_BALANCE_CALL_LIMIT,
+    dailySyncCallLimit: parsed.PLAID_DAILY_SYNC_CALL_LIMIT,
+    syncCooldownMinutes: parsed.PLAID_SYNC_COOLDOWN_MINUTES,
+  };
+}
+
+export function getCostControlConfig() {
+  const parsed = envSchema.parse(process.env);
+  return {
+    aiChatDailyLimit: parsed.AI_CHAT_DAILY_LIMIT,
+    aiDailyMemoryLimit: parsed.AI_DAILY_MEMORY_LIMIT,
+    aiMemoryMinImportance: parsed.AI_MEMORY_MIN_IMPORTANCE,
+    enablePineconeMemory: parsed.ENABLE_PINECONE_MEMORY,
+    cronSecret: parsed.CRON_SECRET,
   };
 }

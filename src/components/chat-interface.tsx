@@ -28,11 +28,18 @@ export function ChatInterface() {
         }),
       });
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to process chat");
+      }
       
       setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error answering your question.' }]);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: err instanceof Error ? err.message : 'Sorry, I encountered an error answering your question.',
+      }]);
     } finally {
       setIsLoading(false);
     }

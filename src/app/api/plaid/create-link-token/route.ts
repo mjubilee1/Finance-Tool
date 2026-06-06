@@ -11,10 +11,6 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const webhookUrl = process.env.APP_BASE_URL 
-      ? `${process.env.APP_BASE_URL}/api/plaid/webhook`
-      : undefined;
-
     const response = await withPlaidTracking("linkTokenCreate", session.user.id, () => 
       plaidClient.linkTokenCreate({
         user: { client_user_id: session.user.id },
@@ -22,7 +18,6 @@ export async function POST() {
         products: plaidProducts,
         country_codes: plaidCountryCodes,
         language: "en",
-        webhook: webhookUrl,
         redirect_uri: process.env.PLAID_REDIRECT_URI || undefined,
       })
     );

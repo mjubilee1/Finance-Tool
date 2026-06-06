@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import type { AccountSummary } from "@/lib/finance";
 import { getPlaidConfig } from "@/lib/env";
-import { isPlaidEndpointDailyLimitReached, withPlaidTracking } from "@/lib/plaid-tracker";
+import { getDailyPlaidEndpointCalls, isPlaidEndpointDailyLimitReached, withPlaidTracking } from "@/lib/plaid-tracker";
 
 const BALANCE_ENDPOINT = "accountsBalanceGet";
 
@@ -51,10 +51,20 @@ export async function GET() {
     });
 
     if (items.length === 0) {
-      return NextResponse.json({ accounts: [] satisfies AccountSummary[] });
+      return NextResponse.json({
+        accounts: [] satisfies AccountSummary[],
+        balanceRefresh: {
+          usedCachedBalances: false,
+          balanceCallsToday: 0,
+          balanceCallLimit: dailyBalanceCallLimit,
+          balanceCallsRemaining: dailyBalanceCallLimit,
+        },
+      });
     }
 
     const accounts: AccountSummary[] = [];
+    let usedCachedBalances = false;
+    let refreshedItems = 0;
 
     for (const item of items) {
       try {
@@ -65,6 +75,7 @@ export async function GET() {
         );
 
         if (isBalanceCapReached) {
+          usedCachedBalances = true;
           console.warn(
             `[PLAID TRACKER] Daily ${BALANCE_ENDPOINT} cap of ${dailyBalanceCallLimit} reached. Using cached balances for item ${item.id}.`,
           );
@@ -84,6 +95,7 @@ export async function GET() {
             access_token: accessToken,
           })
         );
+        refreshedItems++;
 
         for (const account of balances.data.accounts) {
           // Upsert account in DB
@@ -126,6 +138,7 @@ export async function GET() {
           });
         }
       } catch (err) {
+        usedCachedBalances = true;
         console.error(`Failed to fetch balances for item ${item.id}`, err);
         accounts.push(
           ...(await getCachedAccountsForItem(
@@ -137,7 +150,18 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ accounts });
+    const balanceCallsToday = await getDailyPlaidEndpointCalls(BALANCE_ENDPOINT, session.user.id);
+
+    return NextResponse.json({
+      accounts,
+      balanceRefresh: {
+        usedCachedBalances,
+        refreshedItems,
+        balanceCallsToday,
+        balanceCallLimit: dailyBalanceCallLimit,
+        balanceCallsRemaining: Math.max(0, dailyBalanceCallLimit - balanceCallsToday),
+      },
+    });
   } catch (error) {
     console.error("Failed to fetch accounts:", error);
     return NextResponse.json(

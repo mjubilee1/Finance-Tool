@@ -28,6 +28,18 @@ export async function getDailyPlaidEndpointCalls(endpoint: string, userId?: stri
   });
 }
 
+export async function getLatestPlaidEndpointCall(endpoint: string, userId?: string) {
+  return prisma.plaidApiLog.findFirst({
+    where: {
+      endpoint,
+      userId: userId ?? null,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
 export async function isPlaidEndpointDailyLimitReached(
   endpoint: string,
   userId: string | undefined,

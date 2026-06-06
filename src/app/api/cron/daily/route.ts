@@ -1,21 +1,45 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateDailyInsight } from "@/lib/ai-coach";
+import { getCostControlConfig } from "@/lib/env";
 
 export async function POST(req: Request) {
-  // Temporarily bypassing cron secret to let us generate the insight easily
-  // const authHeader = req.headers.get("authorization");
-  // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-  //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  // }
+  const { cronSecret } = getCostControlConfig();
+  if (!cronSecret) {
+    return NextResponse.json({ error: "CRON_SECRET is not configured." }, { status: 500 });
+  }
+
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const users = await prisma.user.findMany();
+    const today = new Date().toISOString().split('T')[0];
+    let generated = 0;
+    let skipped = 0;
     
     for (const user of users) {
       try {
-        // We could run sync Plaid here by calling the sync logic internally
-        // (Assuming we refactor sync to be a shared function)
+        const [existingSnapshot, transactionCount] = await Promise.all([
+          prisma.dailyFinancialSnapshot.findUnique({
+            where: {
+              userId_date: {
+                userId: user.id,
+                date: today,
+              },
+            },
+          }),
+          prisma.transaction.count({
+            where: { userId: user.id },
+          }),
+        ]);
+
+        if (existingSnapshot || transactionCount === 0) {
+          skipped++;
+          continue;
+        }
         
         // Generate AI Insight
         const insight = await generateDailyInsight(user.id);
@@ -24,7 +48,7 @@ export async function POST(req: Request) {
         await prisma.dailyFinancialSnapshot.create({
           data: {
             userId: user.id,
-            date: new Date().toISOString().split('T')[0],
+            date: today,
             totalSpent: 0, // Should be calculated
             totalIncome: 0,
             foodSpend: 0,
@@ -37,12 +61,13 @@ export async function POST(req: Request) {
             summary: JSON.stringify(insight), // Store the JSON response
           }
         });
+        generated++;
       } catch (err) {
         console.error(`Failed cron for user ${user.id}:`, err);
       }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, generated, skipped });
   } catch (error) {
     console.error("Cron failed:", error);
     return NextResponse.json({ error: "Failed to run cron." }, { status: 500 });

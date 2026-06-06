@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DateTime } from "luxon";
 
+function getMillis(date: DateTime<true> | DateTime<false>) {
+  return date.toMillis();
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -20,7 +24,7 @@ export async function GET(request: Request) {
       where: { userId },
     });
 
-    const accountIdsToInclude = accounts
+    const balanceAccountIdsToInclude = accounts
       .filter((acc) => {
         if (excludeDebt) {
           // Plaid account types: depository, credit, loan, investment, other
@@ -30,14 +34,19 @@ export async function GET(request: Request) {
       })
       .map((acc) => acc.plaidAccountId);
 
-    // Fetch transactions for the included accounts
+    const cashflowAccountIdsToInclude = accounts
+      .filter((acc) => acc.type !== "credit" && acc.type !== "loan")
+      .map((acc) => acc.plaidAccountId);
+
+    // Fetch transactions for non-debt accounts only. Loan/mortgage activity can
+    // appear as negative amounts in Plaid, but it is debt movement, not income.
     // We want up to 2 years of history
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
 
     const transactions = await prisma.transaction.findMany({
       where: {
         userId,
-        accountId: { in: accountIdsToInclude },
+        accountId: { in: cashflowAccountIdsToInclude },
         date: { gte: twoYearsAgo || undefined },
       },
       orderBy: { date: "asc" },
@@ -46,17 +55,17 @@ export async function GET(request: Request) {
     // Calculate metrics
     let totalSpend = 0;
     let totalIncome = 0;
-    let earliestDate = DateTime.now() as any;
-    let latestDate = DateTime.now().minus({ years: 10 }) as any;
+    let earliestMs = getMillis(DateTime.now());
+    let latestMs = getMillis(DateTime.now().minus({ years: 10 }));
 
     transactions.forEach((t) => {
       // Ignore transfers for spend/income calculation to avoid double counting
       // Plaid often categorizes transfers as "Transfer"
       if (t.categoryPrimary?.toLowerCase().includes("transfer")) return;
 
-      const tDate = DateTime.fromISO(t.date);
-      if (tDate < earliestDate) earliestDate = tDate;
-      if (tDate > latestDate) latestDate = tDate;
+      const transactionMs = getMillis(DateTime.fromISO(t.date));
+      earliestMs = Math.min(earliestMs, transactionMs);
+      latestMs = Math.max(latestMs, transactionMs);
 
       if (t.amount > 0) {
         totalSpend += t.amount;
@@ -65,7 +74,7 @@ export async function GET(request: Request) {
       }
     });
 
-    const daysDiff = latestDate.diff(earliestDate, "days").days;
+    const daysDiff = (latestMs - earliestMs) / (24 * 60 * 60 * 1000);
     const effectiveDays = Math.max(1, daysDiff); // Avoid division by zero
 
     const dailyAverageSpend = totalSpend / effectiveDays;
@@ -74,7 +83,7 @@ export async function GET(request: Request) {
 
     // Current total balance of included accounts
     const currentTotalBalance = accounts
-      .filter((acc) => accountIdsToInclude.includes(acc.plaidAccountId))
+      .filter((acc) => balanceAccountIdsToInclude.includes(acc.plaidAccountId))
       .reduce((sum, acc) => {
         // For depository accounts, currentBalance is positive.
         // For credit accounts, currentBalance is what you owe (so it's a liability).
@@ -87,7 +96,7 @@ export async function GET(request: Request) {
 
     // Generate 6-month projection data
     const projectionData = [];
-    let projectedBalance = currentTotalBalance;
+    const projectedBalance = currentTotalBalance;
     
     // Start from today
     const today = DateTime.now();

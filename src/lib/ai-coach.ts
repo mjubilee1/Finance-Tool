@@ -1,6 +1,13 @@
 import { openai, getEmbedding } from "./openai";
 import { getPineconeIndex } from "./pinecone";
 import { prisma } from "./prisma";
+import { getCostControlConfig } from "./env";
+
+type NewMemory = {
+  title: string;
+  content: string;
+  importanceScore: number;
+};
 
 export function calculateFinancialHealthScore(params: {
   current7DayAvg: number;
@@ -35,13 +42,18 @@ export function calculateFinancialHealthScore(params: {
 }
 
 export async function generateDailyInsight(userId: string) {
+  const {
+    aiDailyMemoryLimit,
+    aiMemoryMinImportance,
+    enablePineconeMemory,
+  } = getCostControlConfig();
+
   // 1. Fetch relevant user context
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
   const today = new Date();
   const past30Days = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const past7Days = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const recentTransactions = await prisma.transaction.findMany({
     where: {
@@ -52,23 +64,21 @@ export async function generateDailyInsight(userId: string) {
     take: 100,
   });
 
-  const recurringPatterns = await prisma.recurringPattern.findMany({
-    where: { userId },
-  });
+  const [recurringPatterns, memoryRecords] = await Promise.all([
+    prisma.recurringPattern.findMany({
+      where: { userId },
+      take: 20,
+    }),
+    prisma.financialMemory.findMany({
+      where: { userId },
+      orderBy: { importanceScore: "desc" },
+      take: 5,
+    }),
+  ]);
 
-  // 2. Fetch Pinecone Memories
-  const index = getPineconeIndex();
-  // We just get general memories for the user by doing a basic embedding search or just filtering by userId if supported
-  // To keep it simple, we embed a general query
-  const queryEmbedding = await getEmbedding("financial goals and daily spending habits");
-  const memoryResults = await index.query({
-    vector: queryEmbedding,
-    filter: { userId },
-    topK: 5,
-    includeMetadata: true,
-  });
-
-  const memories = memoryResults.matches.map((m) => m.metadata?.content || "").join("\n");
+  const memories = memoryRecords
+    .map((memory: { content: string }) => memory.content)
+    .join("\n");
 
   // 3. Build Prompt
   const prompt = `
@@ -79,10 +89,10 @@ MEMORIES:
 ${memories}
 
 RECENT TRANSACTIONS (last 30 days):
-${JSON.stringify(recentTransactions.slice(0, 30).map(t => ({ name: t.name, amount: t.amount, category: t.categoryPrimary, date: t.date })))}
+${JSON.stringify(recentTransactions.slice(0, 30).map((transaction: { name: string; amount: number; categoryPrimary: string | null; date: string }) => ({ name: transaction.name, amount: transaction.amount, category: transaction.categoryPrimary, date: transaction.date })))}
 
 RECURRING PATTERNS:
-${JSON.stringify(recurringPatterns.map(r => ({ merchant: r.merchantName, amount: r.averageAmount, freq: r.frequency })))}
+${JSON.stringify(recurringPatterns.map((pattern: { merchantName: string | null; averageAmount: number; frequency: string }) => ({ merchant: pattern.merchantName, amount: pattern.averageAmount, freq: pattern.frequency })))}
 
 Generate a JSON response exactly matching this structure:
 {
@@ -132,40 +142,56 @@ Generate a JSON response exactly matching this structure:
 `;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-5",
     messages: [{ role: "system", content: prompt }],
     response_format: { type: "json_object" },
+    max_completion_tokens: 1200,
   });
 
   const content = response.choices[0].message.content || "{}";
   const insight = JSON.parse(content);
 
-  // 4. Save new memories to Pinecone & Prisma
-      if (insight.newMemoriesToStore && Array.isArray(insight.newMemoriesToStore) && insight.newMemoriesToStore.length > 0) {
-        for (const mem of insight.newMemoriesToStore) {
-          const vectorId = crypto.randomUUID();
-          const embedding = await getEmbedding(mem.content);
-          
-          try {
-            // Support both object and array formats depending on the installed Pinecone SDK version
-            await (index.upsert as any)([{ id: vectorId, values: embedding, metadata: { userId, content: mem.content, type: "AI_GENERATED", createdAt: new Date().toISOString() } }]);
-          } catch (pineconeErr) {
-            console.error("Pinecone upsert failed, continuing without it:", pineconeErr);
-          }
-    
-          await prisma.financialMemory.create({
-            data: {
-              userId,
-              type: "AI_GENERATED",
-              title: mem.title,
-              content: mem.content,
-              source: "Daily Insight",
-              importanceScore: mem.importanceScore,
-              pineconeVectorId: vectorId,
-            }
+  // 4. Save only high-value new memories. Pinecone writes are opt-in because
+  // Prisma reads are enough while each user has a small memory set.
+  const memoriesToStore = Array.isArray(insight.newMemoriesToStore)
+    ? (insight.newMemoriesToStore
+        .filter((mem: NewMemory) => (mem.importanceScore ?? 0) >= aiMemoryMinImportance)
+        .slice(0, aiDailyMemoryLimit) as NewMemory[])
+    : [];
+
+  if (memoriesToStore.length > 0) {
+    const index = enablePineconeMemory ? getPineconeIndex() : null;
+
+    for (const mem of memoriesToStore) {
+      let vectorId: string | null = null;
+
+      if (index) {
+        vectorId = crypto.randomUUID();
+        const embedding = await getEmbedding(mem.content);
+
+        try {
+          await index.upsert({
+            records: [{ id: vectorId, values: embedding, metadata: { userId, content: mem.content, type: "AI_GENERATED", createdAt: new Date().toISOString() } }],
           });
+        } catch (pineconeErr) {
+          console.error("Pinecone upsert failed, continuing without it:", pineconeErr);
+          vectorId = null;
         }
       }
+
+      await prisma.financialMemory.create({
+        data: {
+          userId,
+          type: "AI_GENERATED",
+          title: mem.title,
+          content: mem.content,
+          source: "Daily Insight",
+          importanceScore: mem.importanceScore,
+          pineconeVectorId: vectorId,
+        }
+      });
+    }
+  }
 
   return insight;
 }
