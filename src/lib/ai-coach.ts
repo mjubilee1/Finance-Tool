@@ -1,13 +1,141 @@
-import { openai, getEmbedding } from "./openai";
-import { getPineconeIndex } from "./pinecone";
+import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getCostControlConfig } from "./env";
+import { CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_CONTRACT } from "./cfo-agent";
+import { calculateDailyBriefMetrics } from "./daily-brief";
+import { storeFinancialMemories } from "./financial-memory";
 
 type NewMemory = {
   title: string;
   content: string;
   importanceScore: number;
 };
+
+type PromptAccount = {
+  name: string;
+  type: string;
+  subtype: string | null;
+  currentBalance: number | null;
+  availableBalance: number | null;
+};
+
+type PromptGoal = {
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  targetDate: string | null;
+};
+
+type CfoAccount = {
+  name: string;
+  type: string;
+  subtype: string | null;
+  currentBalance: number | null;
+  availableBalance: number | null;
+};
+
+type CfoTransaction = {
+  name: string;
+  merchantName: string | null;
+  amount: number;
+  categoryPrimary: string | null;
+  customCategory: string | null;
+  isTenantPaymentCandidate: boolean;
+  isFoodCandidate: boolean;
+  isTransportationCandidate: boolean;
+  isUtilityCandidate: boolean;
+  date: string;
+};
+
+type CfoRecurringPattern = {
+  merchantName: string | null;
+  averageAmount: number;
+  frequency: string;
+  direction: string;
+  category: string | null;
+  lastSeen: string;
+};
+
+function buildFallbackCfoInsight(params: {
+  accounts: CfoAccount[];
+  recentTransactions: CfoTransaction[];
+  recurringPatterns: CfoRecurringPattern[];
+}) {
+  const checkingBalance = params.accounts
+    .filter((account) => account.type === "depository")
+    .reduce((sum, account) => sum + (account.availableBalance ?? account.currentBalance ?? 0), 0);
+  const totalCreditDebt = params.accounts
+    .filter((account) => account.type === "credit")
+    .reduce((sum, account) => sum + Math.max(0, account.currentBalance ?? 0), 0);
+  const recentIncome = params.recentTransactions
+    .filter((transaction) => transaction.amount < 0)
+    .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+  const recentSpend = params.recentTransactions
+    .filter((transaction) => transaction.amount > 0)
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const foodSpend = params.recentTransactions
+    .filter((transaction) => transaction.isFoodCandidate)
+    .reduce((sum, transaction) => sum + Math.max(0, transaction.amount), 0);
+  const tenantRentSeen = params.recentTransactions.some((transaction) => transaction.isTenantPaymentCandidate);
+  const recurringBills = params.recurringPatterns
+    .filter((pattern) => pattern.direction === "expense")
+    .slice(0, 5)
+    .map((pattern) => `${pattern.merchantName ?? "Recurring bill"} ${pattern.frequency} ${Math.abs(pattern.averageAmount).toFixed(2)}`);
+
+  const buffer = 1000;
+  const safeSpendToday = Math.max(0, Math.min(40, Math.floor((checkingBalance - buffer) / 14)));
+  const status = checkingBalance < 1500 || !tenantRentSeen ? "conservative mode" : "stable";
+  const debtMove = checkingBalance <= buffer + 500
+    ? "Hold cash today. Do not make an extra debt payment until mortgage, minimum payments, and the emergency buffer are clearly protected."
+    : "Hold extra debt payments until APRs, minimum payments, credit limits, and due dates are entered. Then use avalanche and target the highest APR card first.";
+
+  return {
+    cfoBrief: {
+      status,
+      cashSafety: `Checking shows about ${checkingBalance.toFixed(2)} available. Protect mortgage, minimums, and at least a ${buffer.toFixed(0)} cash buffer before extra debt payments.`,
+      upcomingBills: recurringBills.length > 0
+        ? recurringBills
+        : ["No due-date data is stored yet. Add due dates for mortgage, cards, utilities, IRS, insurance, and subscriptions."],
+      incomeExpected: tenantRentSeen
+        ? ["Tenant rent pattern detected recently."]
+        : ["No tenant rent, paycheck, Lyft income, or refund pattern detected in the current transaction set."],
+      safeSpendToday,
+      safeSpendTodayReason: `This keeps checking above the protected cash buffer while the app is missing bill due dates and debt minimums.`,
+      debtMove,
+      spendingWarning: foodSpend > 0
+        ? `Food/convenience spending appears in the recent transactions. Keep food tight today and avoid using credit cards for food.`
+        : `Recent leakage is more visible in interest charges, travel/transportation, and house-related spending than food data so far.`,
+      todaysMove: safeSpendToday > 0
+        ? `Keep spending under ${safeSpendToday.toFixed(0)} today and hold cash until upcoming bill dates and card minimums are confirmed.`
+        : "Hold cash today. Do not make extra debt payments until the buffer and upcoming bills are covered.",
+    },
+    dailySummary: `CFO mode is conservative because checking is limited relative to mortgage, credit card debt, and missing bill due-date/minimum-payment data.`,
+    financialHealthScore: checkingBalance > buffer ? 70 : 55,
+    scoreReasoning: "Fallback score based on checking buffer, visible credit debt, and incomplete upcoming bill/debt-detail data.",
+    spendingTrend: {
+      dailyAverageLast7Days: recentSpend / 7,
+      dailyAveragePrevious7Days: 0,
+      difference: recentSpend / 7,
+      status: "stable",
+    },
+    wins: recentIncome > 0 ? [`Recent payments/income total about ${recentIncome.toFixed(2)}.`] : [],
+    warnings: [
+      `Visible credit card balances total about ${totalCreditDebt.toFixed(2)}.`,
+      "APR, minimum payment, credit limit, due date, and statement date data is incomplete.",
+    ],
+    recommendedActions: [
+      {
+        title: "Hold cash and confirm bill/debt details",
+        estimatedSavings: 0,
+        difficulty: "easy",
+        reason: "The CFO rules require mortgage, minimum payments, upcoming bills, and the cash buffer to be protected before extra debt payments.",
+      },
+    ],
+    recurringTransactionsToReview: [],
+    possibleTenantPayments: [],
+    newMemoriesToStore: [],
+  };
+}
 
 export function calculateFinancialHealthScore(params: {
   current7DayAvg: number;
@@ -45,7 +173,6 @@ export async function generateDailyInsight(userId: string) {
   const {
     aiDailyMemoryLimit,
     aiMemoryMinImportance,
-    enablePineconeMemory,
   } = getCostControlConfig();
 
   // 1. Fetch relevant user context
@@ -54,11 +181,13 @@ export async function generateDailyInsight(userId: string) {
 
   const today = new Date();
   const past30Days = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const todayDate = today.toISOString().slice(0, 10);
+  const past30DaysDate = past30Days.toISOString().slice(0, 10);
 
   const recentTransactions = await prisma.transaction.findMany({
     where: {
       userId,
-      createdAt: { gte: past30Days },
+      date: { gte: past30DaysDate },
     },
     orderBy: { date: "desc" },
     take: 100,
@@ -82,33 +211,112 @@ export async function generateDailyInsight(userId: string) {
     }),
   ]);
 
+  const dailyMetrics = calculateDailyBriefMetrics({
+    date: todayDate,
+    transactions: recentTransactions,
+    accounts,
+  });
+
   const memories = memoryRecords
     .map((memory: { content: string }) => memory.content)
     .join("\n");
 
   // 3. Build Prompt
   const prompt = `
-You are a senior financial coach. You are direct, practical, and encouraging.
-Analyze the user's data and provide JSON. 
-Crucially, look at their Current Accounts (debt vs positive income) and their Financial Goals. Look for opportunities to optimize their daily transaction costs to help them hit their goals faster.
+${CFO_AGENT_INSTRUCTIONS}
+
+Analyze the user's data and provide JSON. This is the daily CFO brief, so lead with concrete next actions and only use numbers supported by the supplied data.
+Crucially, look at Current Accounts, Financial Goals, recent income, recurring obligations, debt accounts, and spending patterns. Look for opportunities to optimize daily transaction costs while protecting mortgage, minimum payments, upcoming bills, and cash buffer first.
 
 MEMORIES:
 ${memories}
 
-CURRENT ACCOUNTS (Note which are debt vs assets):
-${JSON.stringify(accounts.map((a: any) => ({ name: a.name, type: a.type, balance: a.currentBalance })))}
+CURRENT ACCOUNTS (Note which are debt vs assets. Credit limit/APR/minimum/due-date fields are not currently stored unless present in memory):
+${JSON.stringify((accounts as PromptAccount[]).map((a) => ({
+    name: a.name,
+    type: a.type,
+    subtype: a.subtype,
+    balance: a.currentBalance,
+    availableBalance: a.availableBalance,
+  })))}
 
 FINANCIAL GOALS:
-${JSON.stringify(goals.map((g: any) => ({ name: g.name, target: g.targetAmount, current: g.currentAmount, targetDate: g.targetDate })))}
+${JSON.stringify((goals as PromptGoal[]).map((g) => ({ name: g.name, target: g.targetAmount, current: g.currentAmount, targetDate: g.targetDate })))}
+
+SYSTEM-CALCULATED DAILY LIMIT:
+${JSON.stringify({
+    date: dailyMetrics.date,
+    safeSpendToday: dailyMetrics.safeSpendToday,
+    safeSpendTodayReason: dailyMetrics.safeSpendTodayReason,
+    cashAvailable: dailyMetrics.cashAvailable,
+    spentToday: dailyMetrics.totalSpent,
+    incomeToday: dailyMetrics.totalIncome,
+    recentDailySpendAverage: dailyMetrics.recentDailySpendAverage,
+  })}
+Use this safeSpendToday value unless the supplied debt/bill context clearly requires a lower number. Never raise it above the system-calculated value.
 
 RECENT TRANSACTIONS (last 30 days):
-${JSON.stringify(recentTransactions.slice(0, 30).map((transaction: { name: string; amount: number; categoryPrimary: string | null; date: string }) => ({ name: transaction.name, amount: transaction.amount, category: transaction.categoryPrimary, date: transaction.date })))}
+${JSON.stringify(recentTransactions.slice(0, 60).map((transaction: {
+    name: string;
+    merchantName: string | null;
+    amount: number;
+    categoryPrimary: string | null;
+    categoryDetailed: string | null;
+    customCategory: string | null;
+    isTenantPaymentCandidate: boolean;
+    isFoodCandidate: boolean;
+    isTransportationCandidate: boolean;
+    isUtilityCandidate: boolean;
+    date: string;
+  }) => ({
+    name: transaction.name,
+    merchant: transaction.merchantName,
+    amount: transaction.amount,
+    category: transaction.customCategory ?? transaction.categoryPrimary,
+    detailedCategory: transaction.categoryDetailed,
+    date: transaction.date,
+    flags: {
+      possibleTenantRent: transaction.isTenantPaymentCandidate,
+      food: transaction.isFoodCandidate,
+      transportation: transaction.isTransportationCandidate,
+      utility: transaction.isUtilityCandidate,
+    },
+  })))}
 
 RECURRING PATTERNS:
-${JSON.stringify(recurringPatterns.map((pattern: { merchantName: string | null; averageAmount: number; frequency: string }) => ({ merchant: pattern.merchantName, amount: pattern.averageAmount, freq: pattern.frequency })))}
+${JSON.stringify(recurringPatterns.map((pattern: {
+    merchantName: string | null;
+    averageAmount: number;
+    frequency: string;
+    direction: string;
+    category: string | null;
+    lastSeen: string;
+    confidenceScore: number;
+  }) => ({
+    merchant: pattern.merchantName,
+    amount: pattern.averageAmount,
+    freq: pattern.frequency,
+    direction: pattern.direction,
+    category: pattern.category,
+    lastSeen: pattern.lastSeen,
+    confidence: pattern.confidenceScore,
+  })))}
+
+${CFO_BRIEF_JSON_CONTRACT}
 
 Generate a JSON response exactly matching this structure:
 {
+  "cfoBrief": {
+    "status": "stable",
+    "cashSafety": "...",
+    "upcomingBills": ["..."],
+    "incomeExpected": ["..."],
+    "safeSpendToday": 40,
+    "safeSpendTodayReason": "...",
+    "debtMove": "...",
+    "spendingWarning": "...",
+    "todaysMove": "..."
+  },
   "dailySummary": "...", // Include insights balancing their cashflow, debt, and progress towards goals
   "financialHealthScore": 72,
   "scoreReasoning": "...",
@@ -162,7 +370,22 @@ Generate a JSON response exactly matching this structure:
   });
 
   const content = response.choices[0].message.content || "{}";
-  const insight = JSON.parse(content);
+  const parsedInsight = JSON.parse(content);
+  const fallbackInsight = buildFallbackCfoInsight({
+    accounts: accounts as CfoAccount[],
+    recentTransactions: recentTransactions as CfoTransaction[],
+    recurringPatterns: recurringPatterns as CfoRecurringPattern[],
+  });
+  const insight = parsedInsight?.cfoBrief
+    ? {
+        ...fallbackInsight,
+        ...parsedInsight,
+        cfoBrief: {
+          ...fallbackInsight.cfoBrief,
+          ...parsedInsight.cfoBrief,
+        },
+      }
+    : fallbackInsight;
 
   // 4. Save only high-value new memories. Pinecone writes are opt-in because
   // Prisma reads are enough while each user has a small memory set.
@@ -173,37 +396,10 @@ Generate a JSON response exactly matching this structure:
     : [];
 
   if (memoriesToStore.length > 0) {
-    const index = enablePineconeMemory ? getPineconeIndex() : null;
-
-    for (const mem of memoriesToStore) {
-      let vectorId: string | null = null;
-
-      if (index) {
-        vectorId = crypto.randomUUID();
-        const embedding = await getEmbedding(mem.content);
-
-        try {
-          await index.upsert({
-            records: [{ id: vectorId, values: embedding, metadata: { userId, content: mem.content, type: "AI_GENERATED", createdAt: new Date().toISOString() } }],
-          });
-        } catch (pineconeErr) {
-          console.error("Pinecone upsert failed, continuing without it:", pineconeErr);
-          vectorId = null;
-        }
-      }
-
-      await prisma.financialMemory.create({
-        data: {
-          userId,
-          type: "AI_GENERATED",
-          title: mem.title,
-          content: mem.content,
-          source: "Daily Insight",
-          importanceScore: mem.importanceScore,
-          pineconeVectorId: vectorId,
-        }
-      });
-    }
+    await storeFinancialMemories(userId, memoriesToStore, {
+      source: "Daily Insight",
+      type: "AI_GENERATED",
+    });
   }
 
   return insight;

@@ -3,6 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DateTime } from "luxon";
+import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
+
+type CfoSummary = {
+  cfoBrief?: {
+    safeSpendToday?: number;
+    safeSpendTodayReason?: string;
+  };
+};
 
 function getMillis(date: DateTime<true> | DateTime<false>) {
   return date.toMillis();
@@ -43,14 +51,24 @@ export async function GET(request: Request) {
     // We want up to 2 years of history
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
 
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        userId,
-        accountId: { in: cashflowAccountIdsToInclude },
-        date: { gte: twoYearsAgo || undefined },
-      },
-      orderBy: { date: "asc" },
-    });
+    const [transactions, allTransactions, latestSnapshot] = await Promise.all([
+      prisma.transaction.findMany({
+        where: {
+          userId,
+          accountId: { in: cashflowAccountIdsToInclude },
+          date: { gte: twoYearsAgo || undefined },
+        },
+        orderBy: { date: "asc" },
+      }),
+      prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { date: "desc" },
+      }),
+      prisma.dailyFinancialSnapshot.findFirst({
+        where: { userId },
+        orderBy: { date: "desc" },
+      }),
+    ]);
 
     // Calculate metrics
     let totalSpend = 0;
@@ -94,6 +112,28 @@ export async function GET(request: Request) {
         return sum + (acc.currentBalance || 0);
       }, 0);
 
+    let latestInsight: CfoSummary | null = null;
+    try {
+      latestInsight = latestSnapshot?.summary
+        ? JSON.parse(latestSnapshot.summary) as CfoSummary
+        : null;
+    } catch {
+      latestInsight = null;
+    }
+
+    const todayKey = DateTime.local().toISODate() ?? DateTime.now().toISODate() ?? "";
+    const dailyBriefMetrics = calculateDailyBriefMetrics({
+      date: todayKey,
+      transactions: allTransactions,
+      accounts,
+    });
+    const safeDailySpend =
+      typeof latestInsight?.cfoBrief?.safeSpendToday === "number" && Number.isFinite(latestInsight.cfoBrief.safeSpendToday)
+        ? Math.max(0, latestInsight.cfoBrief.safeSpendToday)
+        : dailyBriefMetrics.safeSpendToday;
+    const safeSpendReason = latestInsight?.cfoBrief?.safeSpendTodayReason ?? dailyBriefMetrics.safeSpendTodayReason;
+    const safeSpendNetDailyAverage = dailyAverageIncome - safeDailySpend;
+
     // Generate 6-month projection data
     const projectionData = [];
     const projectedBalance = currentTotalBalance;
@@ -105,8 +145,11 @@ export async function GET(request: Request) {
       projectionData.push({
         date: projDate.toISODate(),
         projectedBalance: projectedBalance + (netDailyAverage * i),
+        safeSpendProjectedBalance: projectedBalance + (safeSpendNetDailyAverage * i),
       });
     }
+
+    const projectSafeSpendBalance = (days: number) => projectedBalance + (safeSpendNetDailyAverage * days);
 
     return NextResponse.json({
       metrics: {
@@ -117,6 +160,29 @@ export async function GET(request: Request) {
         netDailyAverage,
         daysAnalyzed: effectiveDays,
         currentTotalBalance,
+      },
+      safeSpendScenario: {
+        safeDailySpend,
+        safeSpendReason,
+        dailyIncomeAssumption: dailyAverageIncome,
+        plannedNetDailyAverage: safeSpendNetDailyAverage,
+        monthlySpendAtSafeRate: safeDailySpend * 30,
+        sixMonthSpendAtSafeRate: safeDailySpend * 180,
+        balanceIn30Days: projectSafeSpendBalance(30),
+        balanceIn90Days: projectSafeSpendBalance(90),
+        balanceIn180Days: projectSafeSpendBalance(180),
+        tenDollarsPerDayMonthlyImpact: 10 * 30,
+        tenDollarsPerDaySixMonthImpact: 10 * 180,
+        raiseFactors: [
+          "More confirmed income hits checking, especially paycheck, tenant rent, Lyft profit, or refunds.",
+          "Upcoming bills and card minimums are covered with cash left above the buffer.",
+          "Food, convenience, travel, and house-repair spending stays below the current daily cap.",
+        ],
+        hurtFactors: [
+          "Mortgage, utilities, taxes, insurance, or card minimums come due before new income clears.",
+          "Tenant rent is late or expected income does not post.",
+          "Large discretionary, travel, house-repair, interest, or credit-card spending hits.",
+        ],
       },
       projectionData,
     });

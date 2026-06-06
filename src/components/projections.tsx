@@ -9,6 +9,22 @@ function fetchProjections(excludeDebt: boolean) {
   return fetch(`/api/projections?excludeDebt=${excludeDebt}`).then((res) => res.json());
 }
 
+type SafeSpendScenario = {
+  safeDailySpend: number;
+  safeSpendReason: string;
+  dailyIncomeAssumption: number;
+  plannedNetDailyAverage: number;
+  monthlySpendAtSafeRate: number;
+  sixMonthSpendAtSafeRate: number;
+  balanceIn30Days: number;
+  balanceIn90Days: number;
+  balanceIn180Days: number;
+  tenDollarsPerDayMonthlyImpact: number;
+  tenDollarsPerDaySixMonthImpact: number;
+  raiseFactors: string[];
+  hurtFactors: string[];
+};
+
 export function Projections() {
   const [includeDebt, setIncludeDebt] = useState(false);
   const excludeDebt = !includeDebt;
@@ -32,7 +48,21 @@ export function Projections() {
     return null;
   }
 
-  const { metrics, projectionData } = data;
+  const { metrics, projectionData, safeSpendScenario } = data as {
+    metrics: {
+      daysAnalyzed: number;
+      dailyAverageSpend: number;
+      dailyAverageIncome: number;
+      netDailyAverage: number;
+      currentTotalBalance: number;
+    };
+    projectionData: Array<{
+      date: string;
+      projectedBalance: number;
+      safeSpendProjectedBalance: number;
+    }>;
+    safeSpendScenario?: SafeSpendScenario;
+  };
 
   return (
     <div className="space-y-8">
@@ -79,8 +109,50 @@ export function Projections() {
         </div>
       </div>
 
+      {safeSpendScenario ? (
+        <div className="bg-emerald-950 text-white p-6 rounded-3xl shadow-xl">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-emerald-300 font-semibold mb-2">Micro to Macro Plan</p>
+              <h3 className="text-xl font-bold">
+                If you hold spending to {formatCurrency(safeSpendScenario.safeDailySpend)}/day
+              </h3>
+              <p className="mt-2 text-sm text-emerald-50/80 max-w-2xl">
+                That is {formatCurrency(safeSpendScenario.monthlySpendAtSafeRate)} per month and {formatCurrency(safeSpendScenario.sixMonthSpendAtSafeRate)} over six months before new debt payments. Every extra $10/day costs about {formatCurrency(safeSpendScenario.tenDollarsPerDayMonthlyImpact)} per month and {formatCurrency(safeSpendScenario.tenDollarsPerDaySixMonthImpact)} over six months.
+              </p>
+            </div>
+            <div className={`rounded-2xl px-4 py-3 text-right ${safeSpendScenario.plannedNetDailyAverage >= 0 ? "bg-emerald-400/15" : "bg-amber-400/15"}`}>
+              <p className="text-xs uppercase tracking-wider text-emerald-100/70">Planned Net Daily</p>
+              <p className="text-2xl font-bold text-emerald-300">{formatCurrency(safeSpendScenario.plannedNetDailyAverage)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 mt-6">
+            <div className="rounded-2xl bg-white/10 p-4 border border-white/10">
+              <p className="text-xs uppercase tracking-wider text-emerald-100/70 mb-1">30 Days</p>
+              <p className="text-xl font-bold">{formatCurrency(safeSpendScenario.balanceIn30Days)}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-4 border border-white/10">
+              <p className="text-xs uppercase tracking-wider text-emerald-100/70 mb-1">90 Days</p>
+              <p className="text-xl font-bold">{formatCurrency(safeSpendScenario.balanceIn90Days)}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-4 border border-white/10">
+              <p className="text-xs uppercase tracking-wider text-emerald-100/70 mb-1">6 Months</p>
+              <p className="text-xl font-bold">{formatCurrency(safeSpendScenario.balanceIn180Days)}</p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs text-emerald-50/70">
+            Assumes daily income continues at {formatCurrency(safeSpendScenario.dailyIncomeAssumption)} and daily spend stays at the CFO safe-spend number.
+          </p>
+        </div>
+      ) : null}
+
       <div className="space-y-4">
-        <h3 className="font-semibold text-zinc-900">6-Month Projection</h3>
+        <div>
+          <h3 className="font-semibold text-zinc-900">6-Month Projection</h3>
+          <p className="text-sm text-zinc-500">Compare your historical trend against the CFO safe-spend plan.</p>
+        </div>
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={projectionData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
@@ -103,7 +175,10 @@ export function Projections() {
                 tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} 
               />
               <Tooltip 
-                formatter={(value) => [formatCurrency(Number(value ?? 0)), "Projected Balance"]}
+                formatter={(value, name) => [
+                  formatCurrency(Number(value ?? 0)),
+                  name === "safeSpendProjectedBalance" ? "Safe-spend plan" : "Historical trend",
+                ]}
                 labelFormatter={(label) => new Date(label).toLocaleDateString()}
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />
@@ -116,11 +191,20 @@ export function Projections() {
                 dot={{ r: 3, fill: "#10b981", strokeWidth: 0 }} 
                 activeDot={{ r: 6, fill: "#10b981", strokeWidth: 0 }}
               />
+              <Line 
+                type="monotone" 
+                dataKey="safeSpendProjectedBalance" 
+                stroke="#2563eb" 
+                strokeWidth={3} 
+                strokeDasharray="6 4"
+                dot={{ r: 3, fill: "#2563eb", strokeWidth: 0 }} 
+                activeDot={{ r: 6, fill: "#2563eb", strokeWidth: 0 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
         <p className="text-xs text-zinc-500 text-center">
-          * Projection assumes your historical daily average net flow continues.
+          * Historical trend uses past net daily flow. Safe-spend plan holds variable spending to the CFO daily number.
         </p>
       </div>
     </div>

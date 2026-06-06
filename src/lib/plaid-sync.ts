@@ -17,7 +17,15 @@ export type TransactionSyncResult = {
   reason?: string;
 };
 
-export async function shouldSkipTransactionSync(userId: string, itemId: string) {
+type TransactionSyncOptions = {
+  batchStartedAt?: Date;
+};
+
+export async function shouldSkipTransactionSync(
+  userId: string,
+  itemId: string,
+  options: TransactionSyncOptions = {},
+) {
   if (inFlightSyncs.has(itemId)) {
     return "A sync is already running for this item.";
   }
@@ -35,8 +43,11 @@ export async function shouldSkipTransactionSync(userId: string, itemId: string) 
   if (syncCooldownMinutes > 0) {
     const latestSync = await getLatestPlaidEndpointCall(TRANSACTIONS_SYNC_ENDPOINT, userId);
     const cooldownMs = syncCooldownMinutes * 60 * 1000;
+    const latestSyncIsFromCurrentBatch = options.batchStartedAt
+      ? latestSync && latestSync.createdAt >= options.batchStartedAt
+      : false;
 
-    if (latestSync && Date.now() - latestSync.createdAt.getTime() < cooldownMs) {
+    if (latestSync && !latestSyncIsFromCurrentBatch && Date.now() - latestSync.createdAt.getTime() < cooldownMs) {
       return `Last transaction sync was less than ${syncCooldownMinutes} minutes ago.`;
     }
   }
@@ -44,7 +55,10 @@ export async function shouldSkipTransactionSync(userId: string, itemId: string) 
   return null;
 }
 
-export async function syncTransactionsForItem(itemId: string): Promise<TransactionSyncResult> {
+export async function syncTransactionsForItem(
+  itemId: string,
+  options: TransactionSyncOptions = {},
+): Promise<TransactionSyncResult> {
   const item = await prisma.plaidItem.findUnique({
     where: { id: itemId },
   });
@@ -58,7 +72,7 @@ export async function syncTransactionsForItem(itemId: string): Promise<Transacti
   let removedCount = 0;
 
   try {
-    const skipReason = await shouldSkipTransactionSync(item.userId, item.id);
+    const skipReason = await shouldSkipTransactionSync(item.userId, item.id, options);
     if (skipReason) {
       console.warn(`[PLAID TRACKER] Skipping transaction sync for item ${item.id}: ${skipReason}`);
       return { added: 0, modified: 0, removed: 0, skipped: true, reason: skipReason };

@@ -12,7 +12,7 @@ const envSchema = z.object({
   ),
   PLAID_DAILY_SYNC_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
-    z.coerce.number().int().min(0).default(20),
+    z.coerce.number().int().min(0).default(50),
   ),
   PLAID_SYNC_COOLDOWN_MINUTES: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
@@ -25,6 +25,10 @@ const envSchema = z.object({
   AI_DAILY_MEMORY_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
     z.coerce.number().int().min(0).default(2),
+  ),
+  AI_BRIEF_REFRESH_HOURS: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(1).default(4),
   ),
   AI_MEMORY_MIN_IMPORTANCE: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
@@ -70,6 +74,7 @@ export function getCostControlConfig() {
   return {
     aiChatDailyLimit: parsed.AI_CHAT_DAILY_LIMIT,
     aiDailyMemoryLimit: parsed.AI_DAILY_MEMORY_LIMIT,
+    aiBriefRefreshHours: parsed.AI_BRIEF_REFRESH_HOURS,
     aiMemoryMinImportance: parsed.AI_MEMORY_MIN_IMPORTANCE,
     enablePineconeMemory: parsed.ENABLE_PINECONE_MEMORY,
     cronSecret: parsed.CRON_SECRET,

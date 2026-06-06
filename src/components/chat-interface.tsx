@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Send, User, BrainCircuit } from "lucide-react";
 
 export function ChatInterface() {
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<{role: 'user'|'assistant', content: string}[]>([
-    { role: 'assistant', content: 'Hi there! I am your AI Financial Coach. Ask me anything about your spending, accounts, or financial health.' }
+    { role: 'assistant', content: 'Hi there. I am your personal CFO agent. Ask me for today\'s CFO brief, safe spend number, debt move, or spending leaks. You can also teach me durable facts like bill due dates, payment habits, or bills you already paid, and I will use them to update your Overview.' }
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -33,7 +35,18 @@ export function ChatInterface() {
         throw new Error(data.error ?? "Failed to process chat");
       }
       
-      setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+      let assistantMessage = data.message as string;
+
+      if (Array.isArray(data.memoriesSaved) && data.memoriesSaved.length > 0) {
+        assistantMessage += `\n\nSaved for your financial overview: ${data.memoriesSaved.join(", ")}.`;
+      }
+
+      if (data.briefRefreshed) {
+        assistantMessage += "\n\nI refreshed your CFO brief. Check Overview for the updated daily spend limit.";
+        await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', content: assistantMessage }]);
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, {
@@ -82,7 +95,7 @@ export function ChatInterface() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a financial question..."
+            placeholder="Ask for today's CFO brief or teach me a bill habit..."
             className="w-full pl-4 pr-12 py-3 bg-white border border-zinc-300 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
           />
           <button 

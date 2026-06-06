@@ -4,6 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import { getCostControlConfig } from "@/lib/env";
+import { CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
+import { storeFinancialMemories } from "@/lib/financial-memory";
+import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { DateTime } from "luxon";
 import type { ChatCompletion } from "openai/resources/chat/completions";
 
@@ -29,14 +32,48 @@ type ProjectionTransaction = {
   categoryPrimary: string | null;
 };
 
-function getAssistantText(response: ChatCompletion) {
+type ChatMemory = {
+  title: string;
+  content: string;
+  importanceScore: number;
+};
+
+type ChatResponsePayload = {
+  message: string;
+  memoriesToStore: ChatMemory[];
+  shouldRefreshBrief: boolean;
+};
+
+function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
   const content = response.choices[0]?.message.content;
 
-  if (typeof content === "string") {
-    return content.trim();
+  if (typeof content !== "string" || !content.trim()) {
+    return { message: "", memoriesToStore: [], shouldRefreshBrief: false };
   }
 
-  return "";
+  try {
+    const parsed = JSON.parse(content) as Partial<ChatResponsePayload>;
+    const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
+    const memoriesToStore = Array.isArray(parsed.memoriesToStore)
+      ? parsed.memoriesToStore.filter((memory): memory is ChatMemory =>
+          typeof memory?.title === "string" &&
+          typeof memory?.content === "string" &&
+          typeof memory?.importanceScore === "number",
+        )
+      : [];
+
+    return {
+      message,
+      memoriesToStore,
+      shouldRefreshBrief: parsed.shouldRefreshBrief === true,
+    };
+  } catch {
+    return {
+      message: content.trim(),
+      memoriesToStore: [],
+      shouldRefreshBrief: false,
+    };
+  }
 }
 
 function buildProjectionSummary(
@@ -155,7 +192,7 @@ export async function POST(req: Request) {
       .slice(-6);
 
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
-    const [accounts, goals, recentTransactions, projectionTransactions] = await Promise.all([
+    const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns] = await Promise.all([
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
@@ -174,7 +211,20 @@ export async function POST(req: Request) {
         },
         orderBy: { date: "asc" },
       }),
+      prisma.financialMemory.findMany({
+        where: { userId: session.user.id },
+        orderBy: { importanceScore: "desc" },
+        take: 8,
+      }),
+      prisma.recurringPattern.findMany({
+        where: { userId: session.user.id },
+        take: 25,
+      }),
     ]);
+
+    const memories = memoryRecords
+      .map((memory) => memory.content)
+      .join("\n");
 
     const projectionContext = {
       debtExcluded: buildProjectionSummary(accounts, projectionTransactions, true),
@@ -184,25 +234,91 @@ export async function POST(req: Request) {
     };
 
     const systemPrompt = `
-You are a brilliant, concise, and helpful financial AI coach for the user ${session.user.name || ""}.
-You have access to their live financial data. Answer their questions directly. Keep it brief and friendly.
+${CFO_AGENT_INSTRUCTIONS}
+
+You are the user's personal financial CFO for ${session.user.name || "the user"}.
+You have access to their live financial data. Answer questions directly, briefly, and actionably.
+When the user asks for a daily brief, use this exact format:
+CFO Brief
+Status: stable, tight, conservative mode, or attack mode.
+Cash safety: tell whether bills are covered.
+Upcoming bills: list important items in the next 14 days.
+Income expected: paycheck, tenant rent, Lyft income, or refunds.
+Safe spend today: give one number.
+Debt move: hold cash or pay extra, and which debt to target.
+Spending warning: where money is leaking.
+Today's move: one clear action.
+
 When the user asks where a projection number came from, explain the exact formula and cite the relevant totals/sources from PROJECTION CONTEXT.
-Crucially, look at their Current Accounts (debt vs positive income) and their Financial Goals. 
+When the user teaches you durable financial facts, store them in memoriesToStore so future CFO briefs and projections can use them.
+Examples to remember: bill due dates, payment habits, bills already paid this month, income timing, debt APRs, minimum payments, credit limits, mortgage details, tenant rent timing, and cash-buffer preferences.
+Use short stable titles like "Credit card payment habit" or "Chase card due date".
+Set shouldRefreshBrief to true when new or updated memories would materially change safe spend, upcoming bills, debt move, or cash safety.
+Crucially, look at Current Accounts, Financial Goals, memories, recurring obligations, recent income, and recent spending patterns. 
 - Treat listed active goals as important context for optimization advice.
 - If multiple goals compete, weigh target date, remaining amount, and goal category before recommending tradeoffs.
 - Proactively look for opportunities to optimize their daily transaction costs to help them hit their specific, high-priority goals faster.
+- Do not recommend extra debt payments unless mortgage, upcoming bills, minimum payments, and emergency buffer appear covered.
+- If debt APR, credit limit, minimum payment, due date, or statement date is missing, say it is missing instead of inventing it.
+
+MEMORIES:
+${memories}
 
 CURRENT ACCOUNTS:
-${JSON.stringify(accounts.map(a => ({ name: a.name, balance: a.currentBalance, type: a.type })))}
+${JSON.stringify(accounts.map(a => ({
+    name: a.name,
+    balance: a.currentBalance,
+    availableBalance: a.availableBalance,
+    type: a.type,
+    subtype: a.subtype,
+  })))}
 
 FINANCIAL GOALS:
 ${JSON.stringify(goals.map(g => ({ name: g.name, target: g.targetAmount, current: g.currentAmount, targetDate: g.targetDate, type: g.category, status: g.status })))}
 
 RECENT TRANSACTIONS:
-${JSON.stringify(recentTransactions.map(t => ({ name: t.name, amount: t.amount, date: t.date })))}
+${JSON.stringify(recentTransactions.map(t => ({
+    name: t.name,
+    merchant: t.merchantName,
+    amount: t.amount,
+    date: t.date,
+    category: t.customCategory ?? t.categoryPrimary,
+    detailedCategory: t.categoryDetailed,
+    flags: {
+      possibleTenantRent: t.isTenantPaymentCandidate,
+      food: t.isFoodCandidate,
+      transportation: t.isTransportationCandidate,
+      utility: t.isUtilityCandidate,
+    },
+  })))}
+
+RECURRING PATTERNS:
+${JSON.stringify(recurringPatterns.map(pattern => ({
+    merchant: pattern.merchantName,
+    amount: pattern.averageAmount,
+    frequency: pattern.frequency,
+    direction: pattern.direction,
+    category: pattern.category,
+    lastSeen: pattern.lastSeen,
+    confidence: pattern.confidenceScore,
+  })))}
 
 PROJECTION CONTEXT:
 ${JSON.stringify(projectionContext)}
+
+Return JSON only with this exact shape:
+{
+  "message": "Your conversational reply to the user.",
+  "memoriesToStore": [
+    {
+      "title": "Short stable title",
+      "content": "Durable fact in plain English that future briefs should trust.",
+      "importanceScore": 9
+    }
+  ],
+  "shouldRefreshBrief": true
+}
+If the user is only asking a question and not teaching durable facts, return an empty memoriesToStore array and shouldRefreshBrief false.
 `;
 
     const response = await openai.chat.completions.create({
@@ -211,18 +327,40 @@ ${JSON.stringify(projectionContext)}
         { role: "system", content: systemPrompt },
         ...recentMessages
       ],
+      response_format: { type: "json_object" },
       max_completion_tokens: 3000,
       reasoning_effort: "minimal",
       verbosity: "low",
     }) as ChatCompletion;
 
-    const message = getAssistantText(response);
-    if (!message) {
+    const chatResponse = parseChatResponse(response);
+    if (!chatResponse.message) {
       throw new Error(`OpenAI returned an empty chat response. Finish reason: ${response.choices[0]?.finish_reason ?? "unknown"}`);
     }
 
-    return NextResponse.json({ 
-      message,
+    const savedMemoryTitles = chatResponse.memoriesToStore.length > 0
+      ? await storeFinancialMemories(session.user.id, chatResponse.memoriesToStore, {
+          source: "CFO Chat",
+          type: "USER_INPUT",
+          minImportance: 7,
+          limit: 3,
+        })
+      : [];
+
+    let briefRefreshed = false;
+    if (savedMemoryTitles.length > 0 && chatResponse.shouldRefreshBrief) {
+      try {
+        await ensureFreshDailySnapshot(session.user.id, { force: true });
+        briefRefreshed = true;
+      } catch (refreshError) {
+        console.error("Failed to refresh CFO brief after chat memory update:", refreshError);
+      }
+    }
+
+    return NextResponse.json({
+      message: chatResponse.message,
+      memoriesSaved: savedMemoryTitles,
+      briefRefreshed,
     });
   } catch (error) {
     console.error("Chat error:", error);

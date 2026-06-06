@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getPlaidConfig } from "@/lib/env";
 import { getDailyPlaidEndpointCalls } from "@/lib/plaid-tracker";
+import { ensureFreshDailySnapshot, type BriefRefreshResult } from "@/lib/daily-snapshot";
 
 export async function GET() {
   try {
@@ -13,6 +14,13 @@ export async function GET() {
     }
 
     const userId = session.user.id;
+    let briefRefresh: BriefRefreshResult | null = null;
+
+    try {
+      briefRefresh = await ensureFreshDailySnapshot(userId);
+    } catch (error) {
+      console.error("Failed to refresh CFO brief:", error);
+    }
 
     // Fetch transactions
     const transactions = await prisma.transaction.findMany({
@@ -58,6 +66,7 @@ export async function GET() {
       aiInsight,
       accounts,
       goals,
+      briefRefresh,
       plaidUsage: {
         balanceRefreshesToday,
         dailyBalanceCallLimit,

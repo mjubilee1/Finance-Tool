@@ -2,7 +2,7 @@
 
 import { formatCurrency } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X } from "lucide-react";
+import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -13,18 +13,92 @@ import { ChatInterface } from "./chat-interface";
 import { GoalsView } from "./goals-view";
 import { Target } from "lucide-react";
 
-function fetchDashboard() {
-  return fetch("/api/dashboard").then((res) => res.json());
-}
-
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections' | 'goals';
+
+type DashboardAccount = {
+  id: string;
+  plaidAccountId: string;
+  name: string;
+  type: string;
+  subtype?: string | null;
+  mask?: string | null;
+  currentBalance?: number | null;
+  availableBalance?: number | null;
+};
+
+type DashboardTransaction = {
+  id: string;
+  accountId: string;
+  date: string;
+  name: string;
+  merchantName?: string | null;
+  amount: number;
+  categoryPrimary?: string | null;
+  isTenantPaymentCandidate?: boolean;
+};
+
+type RecommendedAction = {
+  title: string;
+  reason: string;
+};
+
+type RecurringReview = {
+  merchant: string;
+  averageAmount: number;
+  frequency: string;
+  recommendation: string;
+};
+
+type CfoBrief = {
+  status?: string;
+  cashSafety?: string;
+  upcomingBills?: string[];
+  incomeExpected?: string[];
+  safeSpendToday?: number;
+  safeSpendTodayReason?: string;
+  debtMove?: string;
+  spendingWarning?: string;
+  todaysMove?: string;
+};
+
+type DashboardInsight = {
+  cfoBrief?: CfoBrief;
+  dailySummary?: string;
+  financialHealthScore?: number;
+  recommendedActions?: RecommendedAction[];
+  recurringTransactionsToReview?: RecurringReview[];
+};
+
+type DashboardData = {
+  transactions: DashboardTransaction[];
+  snapshots: Array<Record<string, unknown>>;
+  aiInsight: DashboardInsight | null;
+  accounts: DashboardAccount[];
+  goals: unknown[];
+  briefRefresh: BriefRefresh | null;
+  plaidUsage?: {
+    balanceRefreshesToday: number;
+    dailyBalanceCallLimit: number;
+  };
+};
+
+type BriefRefresh = {
+  status: "created" | "updated" | "fresh" | "no_transactions";
+  refreshHours: number;
+  lastUpdatedAt: string | null;
+  nextRefreshAt: string | null;
+};
+
+function fetchDashboard() {
+  return fetch("/api/dashboard").then((res) => res.json() as Promise<DashboardData>);
+}
 
 export function Dashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session, status } = useSession();
   
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ["dashboard"],
     queryFn: fetchDashboard,
     enabled: status === "authenticated",
@@ -41,7 +115,7 @@ export function Dashboard() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const itemsPerPage = 10;
 
-  const handleTakeAction = async (sub: any) => {
+  const handleTakeAction = async (sub: RecurringReview) => {
     setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'loading' }));
     try {
       const res = await fetch("/api/action/remind", {
@@ -59,13 +133,55 @@ export function Dashboard() {
         setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'idle' }));
         alert("Failed to send reminder.");
       }
-    } catch (e) {
+    } catch {
       setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'idle' }));
       alert("Failed to send reminder.");
     }
   };
 
-  const { transactions = [], snapshots = [], aiInsight = null, accounts = [], goals = [], plaidUsage } = data || {};
+  const { transactions = [], snapshots = [], aiInsight = null, accounts = [], goals = [], plaidUsage, briefRefresh } = data || {};
+  const cfoBrief = aiInsight?.cfoBrief;
+  const primaryRecommendedAction = aiInsight?.recommendedActions?.[0];
+  const recurringReviews = aiInsight?.recurringTransactionsToReview ?? [];
+  const briefRefreshInfo = briefRefresh;
+  const briefUpdatedLabel = briefRefreshInfo?.lastUpdatedAt
+    ? new Date(briefRefreshInfo.lastUpdatedAt).toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const nextBriefLabel = briefRefreshInfo?.nextRefreshAt
+    ? new Date(briefRefreshInfo.nextRefreshAt).toLocaleString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const fallbackSafeSpendToday = Math.max(0,
+    (accounts
+      .filter((acc) => acc.type === 'depository')
+      .reduce((sum, acc) => sum + (acc.availableBalance ?? acc.currentBalance ?? 0), 0) * 0.4) / 14
+  );
+  const safeSpendToday = typeof cfoBrief?.safeSpendToday === 'number'
+    ? cfoBrief.safeSpendToday
+    : fallbackSafeSpendToday;
+  const availableCheckingCash = accounts
+    .filter((account) => account.type === 'depository')
+    .reduce((sum, account) => sum + (account.availableBalance ?? account.currentBalance ?? 0), 0);
+  const protectedCashBuffer = Math.max(500, availableCheckingCash * 0.25);
+  const monthlySafeSpend = safeSpendToday * 30;
+  const sixMonthSafeSpend = safeSpendToday * 180;
+  const safeSpendRaiseFactors = [
+    "Paycheck, tenant rent, Lyft profit, or refunds clear in checking.",
+    "Mortgage, utilities, IRS, insurance, subscriptions, and card minimums are covered.",
+    "Food, convenience, travel, house repairs, and fun spending stay under the daily cap.",
+  ];
+  const safeSpendHurtFactors = [
+    "Rent is late, expected income misses, or checking drops near the cash buffer.",
+    "A mortgage, utility, insurance, tax, subscription, or card minimum is coming due.",
+    "Large food, travel, house-repair, interest, or credit-card spending hits.",
+  ];
 
   const filteredAndSortedTransactions = useMemo(() => {
     let result = [...transactions];
@@ -127,9 +243,9 @@ export function Dashboard() {
   if (status === "unauthenticated") {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        <h1 className="text-2xl font-bold mb-4">Daily Financial Coach</h1>
+        <h1 className="text-2xl font-bold mb-4">Personal CFO Agent</h1>
         <p className="text-zinc-600 mb-8 text-center max-w-sm">
-          Connect your banks, get daily AI insights, and track your financial health over time.
+          Connect your banks, get a daily CFO brief, and turn your transactions into clear next actions.
         </p>
         <button 
           onClick={() => router.push("/login")}
@@ -141,7 +257,7 @@ export function Dashboard() {
     );
   }
 
-  const renderNavItem = (tab: TabType, Icon: any, label: string) => (
+  const renderNavItem = (tab: TabType, Icon: LucideIcon, label: string) => (
     <button
       key={tab}
       onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
@@ -174,7 +290,7 @@ export function Dashboard() {
             <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center">
               <BrainCircuit className="text-white" size={18} />
             </div>
-            <span className="font-bold text-lg tracking-tight text-zinc-900">Coach AI</span>
+            <span className="font-bold text-lg tracking-tight text-zinc-900">CFO Agent</span>
           </div>
           <button className="md:hidden p-2 text-zinc-500 hover:bg-zinc-100 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
             <X size={20} />
@@ -182,7 +298,7 @@ export function Dashboard() {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {renderNavItem("chat", BrainCircuit, "AI Chat")}
+          {renderNavItem("chat", BrainCircuit, "CFO Chat")}
           {renderNavItem("overview", LayoutDashboard, "Overview")}
           {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
@@ -252,8 +368,8 @@ export function Dashboard() {
             {activeTab === 'chat' && (
               <div className="flex-1 flex flex-col">
                 <div className="mb-6 hidden md:block">
-                  <h1 className="text-2xl font-bold text-zinc-900">Chat with AI Coach</h1>
-                  <p className="text-zinc-500 mt-1">Ask questions about your finances, get advice, and analyze your spending.</p>
+                  <h1 className="text-2xl font-bold text-zinc-900">Chat with Your CFO Agent</h1>
+                  <p className="text-zinc-500 mt-1">Ask what to do today, whether to hold cash, or which debt to attack next.</p>
                 </div>
                 <div className="flex-1 h-full min-h-[500px]">
                   <ChatInterface />
@@ -267,65 +383,141 @@ export function Dashboard() {
                 <h1 className="text-2xl font-bold text-zinc-900 hidden md:block mb-6">Financial Overview</h1>
                 
                 {aiInsight ? (
+                  <>
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="bg-emerald-900 text-white p-6 rounded-3xl shadow-xl flex flex-col justify-between">
                       <div>
                         <div className="flex justify-between items-start mb-2">
                           <h2 className="text-lg font-semibold flex items-center gap-2">
                             <span className="bg-emerald-400 w-2 h-2 rounded-full animate-pulse"></span>
-                            Safe to Spend Today
+                            Safe Spend Today
                           </h2>
+                          {briefRefreshInfo?.refreshHours ? (
+                            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+                              {briefRefreshInfo.refreshHours}h brief
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-zinc-300 text-sm mb-4">
-                          Based on your current balance, upcoming recurring bills, and daily average spend.
+                          Based on the CFO brief, current cash, upcoming obligations, and spending patterns.
                         </p>
                       </div>
                       
                       <div className="bg-black/20 p-6 rounded-2xl border border-white/10 text-center">
                         <p className="text-5xl font-bold text-emerald-400 mb-2">
-                          {formatCurrency(
-                            Math.max(0, 
-                              (accounts
-                                .filter((acc: any) => acc.type === 'depository')
-                                .reduce((sum: number, acc: any) => sum + (acc.availableBalance ?? acc.currentBalance ?? 0), 0) * 0.4) / 14
-                            )
-                          )}
+                          {formatCurrency(safeSpendToday)}
                         </p>
                         <p className="text-sm text-emerald-200/70 uppercase tracking-wider font-semibold">Remaining Daily Allowance</p>
+                        {cfoBrief?.safeSpendTodayReason ? (
+                          <p className="mt-3 text-xs text-emerald-100/80 leading-relaxed">{cfoBrief.safeSpendTodayReason}</p>
+                        ) : null}
+                        {briefUpdatedLabel ? (
+                          <p className="mt-3 text-xs text-emerald-100/60">
+                            Last brief: {briefUpdatedLabel}{nextBriefLabel ? ` · Next refresh around ${nextBriefLabel}` : ""}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 
                     <div className="bg-zinc-900 text-white p-6 rounded-3xl shadow-xl">
                       <div className="flex justify-between items-start mb-4">
                         <h2 className="text-lg font-semibold flex items-center gap-2">
-                          AI Financial Coach
+                          CFO Brief
                         </h2>
                         <div className="text-right">
-                          <p className="text-xs text-zinc-400 uppercase tracking-wider">Health Score</p>
-                          <p className="text-2xl font-bold text-emerald-400">{aiInsight.financialHealthScore}/100</p>
+                          <p className="text-xs text-zinc-400 uppercase tracking-wider">Status</p>
+                          <p className="text-lg font-bold text-emerald-400">{cfoBrief?.status ?? `${aiInsight.financialHealthScore}/100`}</p>
                         </div>
                       </div>
                       
                       <p className="text-sm sm:text-base mb-6 leading-relaxed text-zinc-200">
-                        {aiInsight.dailySummary}
+                        {cfoBrief?.cashSafety ?? aiInsight.dailySummary}
                       </p>
 
-                      {aiInsight.recommendedActions?.[0] && (
-                        <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-xl">
-                          <p className="text-xs uppercase text-emerald-300 font-semibold mb-1">Recommended Action</p>
-                          <p className="text-sm font-medium">{aiInsight.recommendedActions[0].title}</p>
-                          <p className="text-xs text-zinc-300 mt-1">{aiInsight.recommendedActions[0].reason}</p>
+                      {(cfoBrief?.todaysMove || primaryRecommendedAction) && (
+                        <div className="bg-emerald-500/20 border border-emerald-500/30 p-4 rounded-xl mb-4">
+                          <p className="text-xs uppercase text-emerald-300 font-semibold mb-1">Today&apos;s Move</p>
+                          <p className="text-sm font-medium">{cfoBrief?.todaysMove ?? primaryRecommendedAction?.title}</p>
+                          <p className="text-xs text-zinc-300 mt-1">{cfoBrief?.debtMove ?? primaryRecommendedAction?.reason}</p>
                         </div>
                       )}
+
+                      {cfoBrief ? (
+                        <div className="grid gap-3 text-sm">
+                          <div className="rounded-xl bg-white/5 p-3 border border-white/10">
+                            <p className="text-xs uppercase text-zinc-400 font-semibold mb-1">Upcoming Bills</p>
+                            <p className="text-zinc-200">{cfoBrief.upcomingBills?.join(", ") || "No major bills identified in the next 14 days."}</p>
+                          </div>
+                          <div className="rounded-xl bg-white/5 p-3 border border-white/10">
+                            <p className="text-xs uppercase text-zinc-400 font-semibold mb-1">Income Expected</p>
+                            <p className="text-zinc-200">{cfoBrief.incomeExpected?.join(", ") || "No expected income identified yet."}</p>
+                          </div>
+                          <div className="rounded-xl bg-white/5 p-3 border border-white/10">
+                            <p className="text-xs uppercase text-zinc-400 font-semibold mb-1">Spending Warning</p>
+                            <p className="text-zinc-200">{cfoBrief.spendingWarning}</p>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
+
+                  <div className="bg-white border border-emerald-100 p-6 rounded-3xl shadow-sm">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold mb-2">Why This Daily Number</p>
+                        <h2 className="text-lg font-semibold text-zinc-900">
+                          {formatCurrency(safeSpendToday)}/day keeps the micro decisions connected to the macro plan.
+                        </h2>
+                        <p className="text-sm text-zinc-600 mt-2 max-w-2xl">
+                          {cfoBrief?.safeSpendTodayReason ?? "The app starts with available checking cash, protects a buffer, and keeps daily spending below the level that would crowd out bills and debt minimums."}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-right">
+                        <div className="rounded-2xl bg-emerald-50 p-3">
+                          <p className="text-xs uppercase text-emerald-700 font-semibold">Monthly Pace</p>
+                          <p className="text-lg font-bold text-emerald-900">{formatCurrency(monthlySafeSpend)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-zinc-50 p-3">
+                          <p className="text-xs uppercase text-zinc-500 font-semibold">Cash Buffer</p>
+                          <p className="text-lg font-bold text-zinc-900">{formatCurrency(protectedCashBuffer)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3 mt-5">
+                      <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
+                        <p className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">6-Month Spend</p>
+                        <p className="text-2xl font-bold text-zinc-900">{formatCurrency(sixMonthSafeSpend)}</p>
+                        <p className="text-xs text-zinc-500 mt-1">That is what {formatCurrency(safeSpendToday)}/day becomes over 180 days.</p>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                        <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold mb-2">What Raises It</p>
+                        <ul className="space-y-2 text-sm text-emerald-950">
+                          {safeSpendRaiseFactors.map((factor) => (
+                            <li key={factor}>{factor}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                        <p className="text-xs uppercase tracking-wider text-amber-700 font-semibold mb-2">What Lowers It</p>
+                        <ul className="space-y-2 text-sm text-amber-950">
+                          {safeSpendHurtFactors.map((factor) => (
+                            <li key={factor}>{factor}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  </>
                 ) : (
                   <div className="p-8 border border-dashed border-zinc-300 rounded-3xl text-center text-zinc-500">
-                    Your AI insights are generating. Check back soon.
+                    {transactions.length > 0
+                      ? "Your first CFO brief is generating. Refresh the Overview in a moment to see your daily spend limit."
+                      : "Link a bank account and sync transactions to generate your CFO brief and daily spend limit."}
                   </div>
                 )}
 
-                {aiInsight?.recurringTransactionsToReview?.length > 0 && (
+                {recurringReviews.length > 0 && (
                   <div className="bg-white border border-rose-200 p-6 rounded-3xl shadow-sm">
                     <div className="flex items-center gap-3 mb-6">
                       <div className="bg-rose-100 p-2 rounded-lg">
@@ -338,7 +530,7 @@ export function Dashboard() {
                     </div>
                     
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {aiInsight.recurringTransactionsToReview.map((sub: any, i: number) => (
+                      {recurringReviews.map((sub, i) => (
                         <div key={i} className="border border-rose-100 bg-rose-50/50 p-5 rounded-2xl flex flex-col justify-between">
                           <div>
                             <div className="flex justify-between items-start mb-2">
@@ -398,7 +590,7 @@ export function Dashboard() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {accounts.map((acc: any) => {
+                    {accounts.map((acc) => {
                       const isDebt = acc.type === 'credit' || acc.type === 'loan';
                       const isAsset = acc.type === 'depository' || acc.type === 'investment';
                       
@@ -458,7 +650,7 @@ export function Dashboard() {
                         className="appearance-none pl-9 pr-8 py-2 w-full bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                       >
                         <option value="">All Accounts</option>
-                        {accounts.map((acc: any) => (
+                        {accounts.map((acc) => (
                           <option key={acc.id} value={acc.plaidAccountId}>
                             {acc.name} {acc.mask ? `(••${acc.mask})` : ''}
                           </option>
@@ -484,7 +676,7 @@ export function Dashboard() {
                       <select
                         value={sortOrder}
                         onChange={(e) => {
-                          setSortOrder(e.target.value as any);
+                          setSortOrder(e.target.value as typeof sortOrder);
                           setCurrentPage(1);
                         }}
                         className="appearance-none pl-9 pr-8 py-2 w-full bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
@@ -500,7 +692,7 @@ export function Dashboard() {
                 <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden">
                   <ul className="divide-y divide-zinc-100">
                     {paginatedTransactions.length > 0 ? (
-                      paginatedTransactions.map((t: any) => (
+                      paginatedTransactions.map((t) => (
                         <li key={t.id} className="p-4 flex justify-between items-center hover:bg-zinc-50 transition-colors">
                           <div>
                             <p className="font-medium text-zinc-900">{t.name}</p>

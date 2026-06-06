@@ -20,10 +20,11 @@ export async function POST() {
     let removedCount = 0;
     let skippedCount = 0;
     let failedCount = 0;
+    const batchStartedAt = new Date();
 
     for (const item of items) {
       try {
-        const result = await syncTransactionsForItem(item.id);
+        const result = await syncTransactionsForItem(item.id, { batchStartedAt });
         if (result.skipped) {
           skippedCount++;
         }
