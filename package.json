@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "e2e:yc-login": "playwright test e2e/yc-login.spec.ts",
+    "e2e:yc-login:headed": "PLAYWRIGHT_HEADED=true playwright test e2e/yc-login.spec.ts",
+    "e2e:yc-login:ui": "playwright test e2e/yc-login.spec.ts --ui",
+    "e2e:report": "playwright show-report",
     "reset:plaid": "npx tsx scripts/reset-plaid.ts",
     "reset:plaid:me": "npx tsx scripts/reset-plaid.ts mjubil96@gmail.com"
   },
@@ -34,6 +38,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/luxon": "^3.7.1",

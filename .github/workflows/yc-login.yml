@@ -1,0 +1,81 @@
+# Manual Playwright login for Y Combinator / Bookface.
+#
+# Required repository secrets:
+#   YC_EMAIL    - YC account email or username
+#   YC_PASSWORD   - YC account password
+#
+# Trigger: Actions -> YC Login (Playwright) -> Run workflow
+
+name: YC Login (Playwright)
+
+on:
+  workflow_dispatch:
+    inputs:
+      save_session_artifact:
+        description: Upload Playwright auth session as a workflow artifact
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  yc-login:
+    name: Log into YC and open Bookface
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run YC login test
+        env:
+          YC_EMAIL: ${{ secrets.YC_EMAIL }}
+          YC_PASSWORD: ${{ secrets.YC_PASSWORD }}
+          YC_SAVE_SESSION: ${{ inputs.save_session_artifact }}
+        run: npm run e2e:yc-login
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+
+      - name: Upload saved YC session
+        if: ${{ inputs.save_session_artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: yc-session
+          path: e2e/.auth/yc-session.json
+          if-no-files-found: warn
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## YC Login (Playwright)"
+            echo ""
+            echo "- Workflow: manual (\`workflow_dispatch\`)"
+            echo "- Secrets used: \`YC_EMAIL\`, \`YC_PASSWORD\`"
+            echo "- Save session artifact: \`${{ inputs.save_session_artifact }}\`"
+            echo ""
+            echo "If the job failed, download the \`playwright-report\` artifact for screenshots and traces."
+          } >> "$GITHUB_STEP_SUMMARY"
