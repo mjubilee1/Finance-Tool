@@ -4,6 +4,7 @@ import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link"
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { storePlaidLinkToken } from "./plaid-oauth-handler";
 
 type ConnectBankButtonProps = {
   onLinked?: () => void;
@@ -30,8 +31,10 @@ export function ConnectBankButton({ onLinked, className }: ConnectBankButtonProp
       if (!response.ok) {
         throw new Error(data.error ?? "Could not start Plaid Link.");
       }
-      setLinkToken(data.link_token);
-      return data.link_token as string;
+      const token = data.link_token as string;
+      setLinkToken(token);
+      storePlaidLinkToken(token);
+      return token;
     } finally {
       setLoading(false);
     }
@@ -104,7 +107,7 @@ export function ConnectBankButton({ onLinked, className }: ConnectBankButtonProp
         onClick={handleOpen}
         disabled={disabled}
         className={cn(
-          "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60",
+          "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60 shadow-sm shadow-teal-600/20",
           className,
         )}
       >

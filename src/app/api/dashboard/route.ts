@@ -5,6 +5,14 @@ import { prisma } from "@/lib/prisma";
 import { getPlaidConfig } from "@/lib/env";
 import { getDailyPlaidEndpointCalls } from "@/lib/plaid-tracker";
 import { ensureFreshDailySnapshot, type BriefRefreshResult } from "@/lib/daily-snapshot";
+import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
+import { calculateTodayCashFlow, calculateWeeklyCashFlow, calculateNetDailyAverage } from "@/lib/cash-flow";
+import {
+  filterTransactionsByFocus,
+  getFocusAccounts,
+  sumDepositoryCash,
+} from "@/lib/account-focus";
+import { DateTime } from "luxon";
 
 export async function GET() {
   try {
@@ -22,12 +30,19 @@ export async function GET() {
       console.error("Failed to refresh CFO brief:", error);
     }
 
-    // Fetch transactions
-    const transactions = await prisma.transaction.findMany({
-      where: { userId },
-      orderBy: { date: "desc" },
-      take: 50,
-    });
+    const twoWeeksAgo = DateTime.local().minus({ days: 14 }).toISODate();
+
+    const [transactions, recentTransactions] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { date: "desc" },
+        take: 50,
+      }),
+      prisma.transaction.findMany({
+        where: { userId, date: { gte: twoWeeksAgo ?? undefined } },
+        orderBy: { date: "desc" },
+      }),
+    ]);
 
     // Fetch daily snapshots for charts
     const snapshots = await prisma.dailyFinancialSnapshot.findMany({
@@ -47,10 +62,22 @@ export async function GET() {
       console.error("Failed to parse AI insight:", e);
     }
 
-    // Accounts
-    const accounts = await prisma.financialAccount.findMany({
-      where: { userId },
-    });
+    // Accounts with institution names for grouping
+    const [rawAccounts, plaidItems] = await Promise.all([
+      prisma.financialAccount.findMany({ where: { userId } }),
+      prisma.plaidItem.findMany({ where: { userId } }),
+    ]);
+    const institutionByItemId = new Map(
+      plaidItems.map((item) => [item.plaidItemId, item.institutionName]),
+    );
+    const accounts = rawAccounts.map((account) => ({
+      ...account,
+      institutionName: institutionByItemId.get(account.plaidItemId) ?? null,
+    }));
+
+    const focusAccounts = getFocusAccounts(accounts);
+    const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
+    const focusTransactionsAll = filterTransactionsByFocus(transactions, accounts);
 
     const goals = await prisma.financialGoal.findMany({
       where: { userId, status: "active" },
@@ -60,13 +87,48 @@ export async function GET() {
     const { dailyBalanceCallLimit } = getPlaidConfig();
     const balanceRefreshesToday = await getDailyPlaidEndpointCalls("accountsBalanceGet", userId);
 
+    const todayKey = DateTime.local().toISODate() ?? "";
+    const briefMetrics = calculateDailyBriefMetrics({
+      date: todayKey,
+      transactions: focusTransactions,
+      accounts: focusAccounts,
+    });
+
+    let safeSpendForWeek = briefMetrics.safeSpendToday;
+    const aiSafeSpend = aiInsight?.cfoBrief?.safeSpendToday;
+    if (typeof aiSafeSpend === "number" && Number.isFinite(aiSafeSpend)) {
+      safeSpendForWeek = Math.max(0, aiSafeSpend);
+    }
+
+    const todayCashFlow = calculateTodayCashFlow({
+      totalSpent: briefMetrics.totalSpent,
+      totalIncome: briefMetrics.totalIncome,
+      safeSpendToday: safeSpendForWeek,
+    });
+
+    const weeklyCashFlow = calculateWeeklyCashFlow({
+      transactions: focusTransactions,
+      dailyAllowance: todayCashFlow.dailyAllowance,
+      referenceDate: todayKey,
+    });
+
     return NextResponse.json({
-      transactions,
+      transactions: focusTransactionsAll.length > 0 || !accounts.some((a) => a.isPrimary)
+        ? focusTransactionsAll
+        : transactions,
       snapshots: snapshots.reverse(), // chronologically for charts
       aiInsight,
       accounts,
       goals,
       briefRefresh,
+      cashFlow: {
+        today: todayCashFlow,
+        weekly: weeklyCashFlow,
+        netDailyAverage: calculateNetDailyAverage(focusTransactions),
+        safeDailySpend: safeSpendForWeek,
+        primaryCash: sumDepositoryCash(accounts),
+        usingPrimaryAccounts: accounts.some((account) => account.isPrimary),
+      },
       plaidUsage: {
         balanceRefreshesToday,
         dailyBalanceCallLimit,

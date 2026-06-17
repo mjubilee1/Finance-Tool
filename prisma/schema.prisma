@@ -104,6 +104,7 @@ model FinancialAccount {
   currentBalance   Float?
   availableBalance Float?
   isoCurrencyCode  String?
+  isPrimary        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

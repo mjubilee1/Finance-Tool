@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { generateDailyInsight } from "./ai-coach";
 import { applyCalculatedSafeSpend, calculateDailyBriefMetrics } from "./daily-brief";
+import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { getCostControlConfig } from "./env";
 import { prisma } from "./prisma";
 
@@ -77,7 +78,13 @@ export async function ensureFreshDailySnapshot(
       where: { userId },
     }),
   ]);
-  const metrics = calculateDailyBriefMetrics({ date: today, transactions, accounts });
+  const focusAccounts = getFocusAccounts(accounts);
+  const focusTransactions = filterTransactionsByFocus(transactions, accounts);
+  const metrics = calculateDailyBriefMetrics({
+    date: today,
+    transactions: focusTransactions,
+    accounts: focusAccounts,
+  });
   const insightWithSafeSpend = applyCalculatedSafeSpend(insight, metrics);
 
   const snapshotData = {

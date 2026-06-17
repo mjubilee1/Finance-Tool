@@ -59,17 +59,19 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-[500px] bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col h-[500px] app-card overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
         {messages.map((m, i) => (
           <div key={i} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-              m.role === 'user' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-900 text-white'
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+              m.role === 'user' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-teal-600'
             }`}>
               {m.role === 'user' ? <User size={16} /> : <BrainCircuit size={16} />}
             </div>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-              m.role === 'user' ? 'bg-emerald-500 text-white' : 'bg-zinc-100 text-zinc-800'
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+              m.role === 'user'
+                ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/15'
+                : 'bg-slate-50 text-slate-800 ring-1 ring-slate-200/60'
             }`}>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
             </div>
@@ -77,33 +79,33 @@ export function ChatInterface() {
         ))}
         {isLoading && (
           <div className="flex gap-3 flex-row">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-zinc-900 text-white">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 text-teal-600">
               <BrainCircuit size={16} />
             </div>
-            <div className="bg-zinc-100 text-zinc-800 rounded-2xl px-4 py-2 flex items-center gap-1">
-              <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" />
-              <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-              <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+            <div className="bg-slate-50 ring-1 ring-slate-200/60 text-slate-800 rounded-2xl px-4 py-3 flex items-center gap-1">
+              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
+              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
             </div>
           </div>
         )}
       </div>
       
-      <form onSubmit={handleSubmit} className="p-4 border-t border-zinc-100 bg-zinc-50">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-slate-100 bg-slate-50/50">
         <div className="relative">
-          <input 
+          <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask for today's CFO brief or teach me a bill habit..."
-            className="w-full pl-4 pr-12 py-3 bg-white border border-zinc-300 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+            className="w-full pl-4 pr-12 py-3 app-input rounded-full text-sm"
           />
-          <button 
+          <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center disabled:opacity-50 transition-opacity"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 bg-teal-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-teal-700 transition-colors"
           >
-            <Send size={14} className="ml-[-2px]" />
+            <Send size={14} className="ml-[-1px]" />
           </button>
         </div>
       </form>

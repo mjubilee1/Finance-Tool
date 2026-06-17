@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { getCostControlConfig } from "./env";
 import { CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_CONTRACT } from "./cfo-agent";
 import { calculateDailyBriefMetrics } from "./daily-brief";
+import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { storeFinancialMemories } from "./financial-memory";
 
 type NewMemory = {
@@ -17,6 +18,7 @@ type PromptAccount = {
   subtype: string | null;
   currentBalance: number | null;
   availableBalance: number | null;
+  isPrimary?: boolean;
 };
 
 type PromptGoal = {
@@ -211,10 +213,13 @@ export async function generateDailyInsight(userId: string) {
     }),
   ]);
 
+  const focusAccounts = getFocusAccounts(accounts);
+  const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
+
   const dailyMetrics = calculateDailyBriefMetrics({
     date: todayDate,
-    transactions: recentTransactions,
-    accounts,
+    transactions: focusTransactions,
+    accounts: focusAccounts,
   });
 
   const memories = memoryRecords
@@ -231,11 +236,20 @@ Crucially, look at Current Accounts, Financial Goals, recent income, recurring o
 MEMORIES:
 ${memories}
 
-CURRENT ACCOUNTS (Note which are debt vs assets. Credit limit/APR/minimum/due-date fields are not currently stored unless present in memory):
+CURRENT ACCOUNTS (Primary accounts drive cash-flow math when starred. Note debt vs assets.):
 ${JSON.stringify((accounts as PromptAccount[]).map((a) => ({
     name: a.name,
     type: a.type,
     subtype: a.subtype,
+    balance: a.currentBalance,
+    availableBalance: a.availableBalance,
+    isPrimary: a.isPrimary ?? false,
+  })))}
+
+PRIMARY CASH-FLOW ACCOUNTS IN USE:
+${JSON.stringify(focusAccounts.map((a) => ({
+    name: a.name,
+    type: a.type,
     balance: a.currentBalance,
     availableBalance: a.availableBalance,
   })))}
@@ -255,8 +269,8 @@ ${JSON.stringify({
   })}
 Use this safeSpendToday value unless the supplied debt/bill context clearly requires a lower number. Never raise it above the system-calculated value.
 
-RECENT TRANSACTIONS (last 30 days):
-${JSON.stringify(recentTransactions.slice(0, 60).map((transaction: {
+RECENT TRANSACTIONS (last 30 days, primary accounts when set):
+${JSON.stringify(focusTransactions.slice(0, 60).map((transaction: {
     name: string;
     merchantName: string | null;
     amount: number;

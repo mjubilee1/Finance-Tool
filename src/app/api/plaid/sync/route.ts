@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { syncTransactionsForItem } from "@/lib/plaid-sync";
+import { isTokenDecryptError, tokenDecryptErrorMessage } from "@/lib/encryption";
 
 export async function POST() {
   try {
@@ -20,7 +21,15 @@ export async function POST() {
     let removedCount = 0;
     let skippedCount = 0;
     let failedCount = 0;
+    let tokenDecryptFailures = 0;
     const batchStartedAt = new Date();
+
+    if (items.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "No linked banks found. Connect a bank account first.", code: "NO_ITEMS" },
+        { status: 400 },
+      );
+    }
 
     for (const item of items) {
       try {
@@ -33,6 +42,9 @@ export async function POST() {
         removedCount += result.removed;
       } catch (err) {
         failedCount++;
+        if (isTokenDecryptError(err)) {
+          tokenDecryptFailures++;
+        }
         console.error(`Failed to sync transactions for item ${item.id}`, err);
       }
     }
@@ -47,10 +59,13 @@ export async function POST() {
     };
 
     if (failedCount > 0 && addedCount === 0 && modifiedCount === 0 && removedCount === 0) {
-      return NextResponse.json(
-        { ...payload, success: false, error: "Failed to sync transactions for linked accounts." },
-        { status: 500 },
-      );
+      const error =
+        tokenDecryptFailures > 0
+          ? tokenDecryptErrorMessage()
+          : "Failed to sync transactions for linked accounts.";
+      const code = tokenDecryptFailures > 0 ? "TOKEN_DECRYPT_FAILED" : "SYNC_FAILED";
+
+      return NextResponse.json({ ...payload, success: false, error, code }, { status: 500 });
     }
 
     return NextResponse.json(payload);

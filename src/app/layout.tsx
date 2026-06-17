@@ -28,7 +28,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#ffffff",
+  themeColor: "#f8fafc",
 };
 
 export default function RootLayout({
@@ -39,9 +39,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased bg-zinc-50`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-zinc-50 font-sans text-zinc-900">
+      <body className="min-h-full app-page font-sans text-slate-900">
         <AuthProvider>
           <QueryProvider>{children}</QueryProvider>
         </AuthProvider>

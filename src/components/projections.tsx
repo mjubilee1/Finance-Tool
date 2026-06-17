@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { formatCurrency } from "@/lib/format";
+import { DateTime } from "luxon";
 
 function fetchProjections(excludeDebt: boolean) {
   return fetch(`/api/projections?excludeDebt=${excludeDebt}`).then((res) => res.json());
@@ -27,6 +28,7 @@ type SafeSpendScenario = {
 
 export function Projections() {
   const [includeDebt, setIncludeDebt] = useState(false);
+  const [dailySpendOverride, setDailySpendOverride] = useState<number | null>(null);
   const excludeDebt = !includeDebt;
 
   const { data, isLoading } = useQuery({
@@ -34,133 +36,202 @@ export function Projections() {
     queryFn: () => fetchProjections(excludeDebt),
   });
 
+  const metrics = data?.metrics as {
+    daysAnalyzed: number;
+    dailyAverageSpend: number;
+    dailyAverageIncome: number;
+    netDailyAverage: number;
+    currentTotalBalance: number;
+  } | undefined;
+
+  const safeSpendScenario = data?.safeSpendScenario as SafeSpendScenario | undefined;
+  const baseSafeDaily = safeSpendScenario?.safeDailySpend ?? metrics?.dailyAverageSpend ?? 0;
+  const activeDailySpend = dailySpendOverride ?? baseSafeDaily;
+  const plannedNetDaily = (metrics?.dailyAverageIncome ?? 0) - activeDailySpend;
+
+  const whatIfScenario = useMemo(() => {
+    if (!metrics) {
+      return {
+        balanceIn30Days: 0,
+        balanceIn90Days: 0,
+        balanceIn180Days: 0,
+        monthlySpend: 0,
+        yearlyImpact: 0,
+        projectionData: [],
+      };
+    }
+
+    const balance = metrics.currentTotalBalance;
+    const project = (days: number) => balance + plannedNetDaily * days;
+    const chartData = [];
+    const today = DateTime.now();
+
+    for (let i = 0; i <= 180; i += 15) {
+      const projDate = today.plus({ days: i });
+      chartData.push({
+        date: projDate.toISODate(),
+        projectedBalance: balance + metrics.netDailyAverage * i,
+        whatIfBalance: balance + plannedNetDaily * i,
+      });
+    }
+
+    return {
+      balanceIn30Days: project(30),
+      balanceIn90Days: project(90),
+      balanceIn180Days: project(180),
+      monthlySpend: activeDailySpend * 30,
+      yearlyImpact: (baseSafeDaily - activeDailySpend) * 365,
+      projectionData: chartData,
+    };
+  }, [metrics, plannedNetDaily, activeDailySpend, baseSafeDaily]);
+
   if (isLoading) {
     return (
-      <div className="p-8 text-center bg-white border border-zinc-200 rounded-3xl animate-pulse">
-        <div className="h-6 w-48 bg-zinc-200 rounded mx-auto mb-4"></div>
-        <div className="h-4 w-32 bg-zinc-200 rounded mx-auto mb-8"></div>
-        <div className="h-64 bg-zinc-100 rounded-xl"></div>
+      <div className="p-8 text-center animate-pulse">
+        <div className="h-6 w-48 bg-slate-200 rounded-lg mx-auto mb-4" />
+        <div className="h-4 w-32 bg-slate-200 rounded-lg mx-auto mb-8" />
+        <div className="h-64 bg-slate-100 rounded-xl" />
       </div>
     );
   }
 
-  if (!data || data.error) {
+  if (!data || data.error || !metrics) {
     return null;
   }
 
-  const { metrics, projectionData, safeSpendScenario } = data as {
-    metrics: {
-      daysAnalyzed: number;
-      dailyAverageSpend: number;
-      dailyAverageIncome: number;
-      netDailyAverage: number;
-      currentTotalBalance: number;
-    };
-    projectionData: Array<{
-      date: string;
-      projectedBalance: number;
-      safeSpendProjectedBalance: number;
-    }>;
-    safeSpendScenario?: SafeSpendScenario;
-  };
+  const sliderMin = Math.max(0, Math.round(baseSafeDaily * 0.5));
+  const sliderMax = Math.round(baseSafeDaily * 1.5 + 20);
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-zinc-500">Based on {Math.round(metrics.daysAnalyzed)} days of history</p>
+          <p className="text-sm text-slate-500">Based on {Math.round(metrics.daysAnalyzed)} days of history</p>
         </div>
-        
-        <label className="flex items-center space-x-3 bg-zinc-50 p-2.5 rounded-xl border border-zinc-200 cursor-pointer hover:bg-zinc-100 transition-colors">
+
+        <label className="flex items-center space-x-3 bg-slate-50 p-2.5 rounded-xl ring-1 ring-slate-200/60 cursor-pointer hover:bg-slate-100/80 transition-colors">
           <div className="relative">
-            <input 
-              type="checkbox" 
-              className="sr-only" 
+            <input
+              type="checkbox"
+              className="sr-only"
               checked={includeDebt}
               onChange={(e) => setIncludeDebt(e.target.checked)}
             />
-            <div className={`block w-10 h-6 rounded-full transition-colors ${includeDebt ? 'bg-emerald-500' : 'bg-zinc-300'}`}></div>
-            <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${includeDebt ? 'translate-x-4' : ''}`}></div>
+            <div className={`block w-10 h-6 rounded-full transition-colors ${includeDebt ? "bg-teal-500" : "bg-slate-300"}`} />
+            <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${includeDebt ? "translate-x-4" : ""}`} />
           </div>
-          <span className="text-sm font-medium text-zinc-700">
-            Include Debt Accounts
-          </span>
+          <span className="text-sm font-medium text-slate-700">Include debt accounts</span>
         </label>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Daily Avg Spend</p>
-          <p className="text-xl font-bold text-zinc-900">{formatCurrency(metrics.dailyAverageSpend)}</p>
-        </div>
-        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Daily Avg Income</p>
-          <p className="text-xl font-bold text-emerald-600">{formatCurrency(metrics.dailyAverageIncome)}</p>
-        </div>
-        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Net Daily</p>
-          <p className={`text-xl font-bold ${metrics.netDailyAverage >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-            {formatCurrency(metrics.netDailyAverage)}
-          </p>
-        </div>
-        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Current Balance</p>
-          <p className="text-xl font-bold text-zinc-900">{formatCurrency(metrics.currentTotalBalance)}</p>
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Daily avg spend", value: metrics.dailyAverageSpend, className: "text-slate-900" },
+          { label: "Daily avg income", value: metrics.dailyAverageIncome, className: "text-teal-700" },
+          {
+            label: "Net daily",
+            value: metrics.netDailyAverage,
+            className: metrics.netDailyAverage >= 0 ? "text-teal-700" : "text-rose-600",
+          },
+          { label: "Current balance", value: metrics.currentTotalBalance, className: "text-slate-900" },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-xl bg-slate-50/80 p-4 ring-1 ring-slate-200/50">
+            <p className="app-label mb-1">{stat.label}</p>
+            <p className={`text-xl font-bold tabular-nums tracking-tight ${stat.className}`}>
+              {formatCurrency(stat.value)}
+            </p>
+          </div>
+        ))}
       </div>
 
       {safeSpendScenario ? (
-        <div className="bg-emerald-950 text-white p-6 rounded-3xl shadow-xl">
+        <div className="app-hero-gradient app-card-elevated p-6 space-y-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wider text-emerald-300 font-semibold mb-2">Micro to Macro Plan</p>
-              <h3 className="text-xl font-bold">
-                If you hold spending to {formatCurrency(safeSpendScenario.safeDailySpend)}/day
+              <p className="app-label text-teal-700 mb-2">What-if planner</p>
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+                If you spend {formatCurrency(activeDailySpend)}/day
               </h3>
-              <p className="mt-2 text-sm text-emerald-50/80 max-w-2xl">
-                That is {formatCurrency(safeSpendScenario.monthlySpendAtSafeRate)} per month and {formatCurrency(safeSpendScenario.sixMonthSpendAtSafeRate)} over six months before new debt payments. Every extra $10/day costs about {formatCurrency(safeSpendScenario.tenDollarsPerDayMonthlyImpact)} per month and {formatCurrency(safeSpendScenario.tenDollarsPerDaySixMonthImpact)} over six months.
+              <p className="mt-2 text-sm text-slate-600 max-w-2xl leading-relaxed">
+                CFO safe spend is {formatCurrency(baseSafeDaily)}/day. Drag the slider to see how daily choices change your month and year.
               </p>
             </div>
-            <div className={`rounded-2xl px-4 py-3 text-right ${safeSpendScenario.plannedNetDailyAverage >= 0 ? "bg-emerald-400/15" : "bg-amber-400/15"}`}>
-              <p className="text-xs uppercase tracking-wider text-emerald-100/70">Planned Net Daily</p>
-              <p className="text-2xl font-bold text-emerald-300">{formatCurrency(safeSpendScenario.plannedNetDailyAverage)}</p>
+            <div className={`rounded-xl px-4 py-3 text-right ring-1 ${plannedNetDaily >= 0 ? "bg-teal-50 ring-teal-200/60" : "bg-amber-50 ring-amber-200/60"}`}>
+              <p className="app-label mb-0.5">Planned net daily</p>
+              <p className={`text-2xl font-bold tabular-nums ${plannedNetDaily >= 0 ? "text-teal-700" : "text-amber-700"}`}>
+                {formatCurrency(plannedNetDaily)}
+              </p>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 mt-6">
-            <div className="rounded-2xl bg-white/10 p-4 border border-white/10">
-              <p className="text-xs uppercase tracking-wider text-emerald-100/70 mb-1">30 Days</p>
-              <p className="text-xl font-bold">{formatCurrency(safeSpendScenario.balanceIn30Days)}</p>
+          <div className="rounded-xl bg-white/90 p-4 ring-1 ring-slate-200/60">
+            <div className="flex justify-between text-sm text-slate-500 mb-2 tabular-nums">
+              <span>{formatCurrency(sliderMin)}/day</span>
+              <span className="font-semibold text-slate-900">{formatCurrency(activeDailySpend)}/day</span>
+              <span>{formatCurrency(sliderMax)}/day</span>
             </div>
-            <div className="rounded-2xl bg-white/10 p-4 border border-white/10">
-              <p className="text-xs uppercase tracking-wider text-emerald-100/70 mb-1">90 Days</p>
-              <p className="text-xl font-bold">{formatCurrency(safeSpendScenario.balanceIn90Days)}</p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 border border-white/10">
-              <p className="text-xs uppercase tracking-wider text-emerald-100/70 mb-1">6 Months</p>
-              <p className="text-xl font-bold">{formatCurrency(safeSpendScenario.balanceIn180Days)}</p>
-            </div>
+            <input
+              type="range"
+              min={sliderMin}
+              max={sliderMax}
+              step={1}
+              value={Math.round(activeDailySpend)}
+              onChange={(e) => setDailySpendOverride(Number(e.target.value))}
+              className="w-full"
+            />
+            {dailySpendOverride !== null && dailySpendOverride !== baseSafeDaily && (
+              <button
+                type="button"
+                onClick={() => setDailySpendOverride(null)}
+                className="mt-2 text-xs font-semibold text-teal-700 hover:text-teal-800"
+              >
+                Reset to CFO safe spend
+              </button>
+            )}
           </div>
 
-          <p className="mt-4 text-xs text-emerald-50/70">
-            Assumes daily income continues at {formatCurrency(safeSpendScenario.dailyIncomeAssumption)} and daily spend stays at the CFO safe-spend number.
+          <div className="grid gap-3 sm:grid-cols-4">
+            {[
+              { label: "30 days", value: whatIfScenario.balanceIn30Days },
+              { label: "90 days", value: whatIfScenario.balanceIn90Days },
+              { label: "6 months", value: whatIfScenario.balanceIn180Days },
+              {
+                label: "Yearly impact",
+                value: whatIfScenario.yearlyImpact,
+                signed: true,
+                positive: whatIfScenario.yearlyImpact >= 0,
+              },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl bg-white/80 p-4 ring-1 ring-slate-200/50">
+                <p className="app-label mb-1">{item.label}</p>
+                <p className={`text-xl font-bold tabular-nums ${item.signed ? (item.positive ? "text-teal-700" : "text-amber-700") : "text-slate-900"}`}>
+                  {item.signed && item.positive ? "+" : ""}
+                  {formatCurrency(item.value)}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Assumes daily income at {formatCurrency(safeSpendScenario.dailyIncomeAssumption)} and variable spend at{" "}
+            {formatCurrency(activeDailySpend)}/day ({formatCurrency(whatIfScenario.monthlySpend)}/month).
           </p>
         </div>
       ) : null}
 
       <div className="space-y-4">
         <div>
-          <h3 className="font-semibold text-zinc-900">6-Month Projection</h3>
-          <p className="text-sm text-zinc-500">Compare your historical trend against the CFO safe-spend plan.</p>
+          <h3 className="font-semibold text-slate-900">6-month projection</h3>
+          <p className="text-sm text-slate-500">Historical trend vs your spending plan.</p>
         </div>
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={projectionData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" />
-              <XAxis 
-                dataKey="date" 
-                tick={{fontSize: 12, fill: "#71717a"}} 
-                tickMargin={10} 
+            <LineChart data={whatIfScenario.projectionData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 12, fill: "#64748b" }}
+                tickMargin={10}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(val) => {
@@ -168,43 +239,49 @@ export function Projections() {
                   return `${d.getMonth() + 1}/${d.getDate()}`;
                 }}
               />
-              <YAxis 
-                tick={{fontSize: 12, fill: "#71717a"}} 
+              <YAxis
+                tick={{ fontSize: 12, fill: "#64748b" }}
                 axisLine={false}
                 tickLine={false}
-                tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} 
+                tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
               />
-              <Tooltip 
+              <Tooltip
                 formatter={(value, name) => [
                   formatCurrency(Number(value ?? 0)),
-                  name === "safeSpendProjectedBalance" ? "Safe-spend plan" : "Historical trend",
+                  name === "whatIfBalance" || name === "safeSpendProjectedBalance"
+                    ? "Your plan"
+                    : "Historical trend",
                 ]}
                 labelFormatter={(label) => new Date(label).toLocaleDateString()}
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                contentStyle={{
+                  borderRadius: 12,
+                  border: "1px solid #e2e8f0",
+                  boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+                }}
               />
-              <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="3 3" />
-              <Line 
-                type="monotone" 
-                dataKey="projectedBalance" 
-                stroke="#10b981" 
-                strokeWidth={3} 
-                dot={{ r: 3, fill: "#10b981", strokeWidth: 0 }} 
-                activeDot={{ r: 6, fill: "#10b981", strokeWidth: 0 }}
+              <ReferenceLine y={0} stroke="#f87171" strokeDasharray="3 3" />
+              <Line
+                type="monotone"
+                dataKey="projectedBalance"
+                stroke="#0d9488"
+                strokeWidth={2.5}
+                dot={{ r: 3, fill: "#0d9488", strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: "#0d9488", strokeWidth: 0 }}
               />
-              <Line 
-                type="monotone" 
-                dataKey="safeSpendProjectedBalance" 
-                stroke="#2563eb" 
-                strokeWidth={3} 
+              <Line
+                type="monotone"
+                dataKey="whatIfBalance"
+                stroke="#6366f1"
+                strokeWidth={2.5}
                 strokeDasharray="6 4"
-                dot={{ r: 3, fill: "#2563eb", strokeWidth: 0 }} 
-                activeDot={{ r: 6, fill: "#2563eb", strokeWidth: 0 }}
+                dot={{ r: 3, fill: "#6366f1", strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: "#6366f1", strokeWidth: 0 }}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <p className="text-xs text-zinc-500 text-center">
-          * Historical trend uses past net daily flow. Safe-spend plan holds variable spending to the CFO daily number.
+        <p className="text-xs text-slate-400 text-center">
+          Historical trend uses past net daily flow. Your plan holds variable spending to the slider value.
         </p>
       </div>
     </div>

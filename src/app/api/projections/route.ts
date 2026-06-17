@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DateTime } from "luxon";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
+import { filterTransactionsByFocus, getFocusAccounts, hasPrimarySelection } from "@/lib/account-focus";
 
 type CfoSummary = {
   cfoBrief?: {
@@ -32,17 +33,19 @@ export async function GET(request: Request) {
       where: { userId },
     });
 
-    const balanceAccountIdsToInclude = accounts
+    const focusAccounts = getFocusAccounts(accounts);
+    const accountsForScope = hasPrimarySelection(accounts) ? focusAccounts : accounts;
+
+    const balanceAccountIdsToInclude = accountsForScope
       .filter((acc) => {
         if (excludeDebt) {
-          // Plaid account types: depository, credit, loan, investment, other
           return acc.type !== "credit" && acc.type !== "loan";
         }
         return true;
       })
       .map((acc) => acc.plaidAccountId);
 
-    const cashflowAccountIdsToInclude = accounts
+    const cashflowAccountIdsToInclude = accountsForScope
       .filter((acc) => acc.type !== "credit" && acc.type !== "loan")
       .map((acc) => acc.plaidAccountId);
 
@@ -124,8 +127,8 @@ export async function GET(request: Request) {
     const todayKey = DateTime.local().toISODate() ?? DateTime.now().toISODate() ?? "";
     const dailyBriefMetrics = calculateDailyBriefMetrics({
       date: todayKey,
-      transactions: allTransactions,
-      accounts,
+      transactions: filterTransactionsByFocus(allTransactions, accounts),
+      accounts: focusAccounts,
     });
     const safeDailySpend =
       typeof latestInsight?.cfoBrief?.safeSpendToday === "number" && Number.isFinite(latestInsight.cfoBrief.safeSpendToday)

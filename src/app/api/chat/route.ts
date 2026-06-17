@@ -364,6 +364,26 @@ If the user is only asking a question and not teaching durable facts, return an 
     });
   } catch (error) {
     console.error("Chat error:", error);
+
+    const openAiError = error as {
+      status?: number;
+      code?: string;
+      error?: { code?: string; message?: string };
+    };
+
+    if (
+      openAiError.status === 429 ||
+      openAiError.code === "insufficient_quota" ||
+      openAiError.error?.code === "insufficient_quota"
+    ) {
+      return NextResponse.json(
+        {
+          error: "OpenAI quota exceeded. Add billing or credits at platform.openai.com, then try again.",
+        },
+        { status: 429 },
+      );
+    }
+
     return NextResponse.json({ error: "Failed to process chat" }, { status: 500 });
   }
 }

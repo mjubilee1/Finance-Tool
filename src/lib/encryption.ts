@@ -1,7 +1,24 @@
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.NEXTAUTH_SECRET || process.env.PLAID_SECRET || "default_fallback_key_for_dev_only"; // Must be 256 bits (32 characters)
+// Use a dedicated key when set. Falls back to NEXTAUTH_SECRET for older setups.
+const ENCRYPTION_KEY =
+  process.env.TOKEN_ENCRYPTION_KEY ||
+  process.env.NEXTAUTH_SECRET ||
+  process.env.PLAID_SECRET ||
+  "default_fallback_key_for_dev_only";
 const ALGORITHM = "aes-256-gcm";
+
+export function isTokenDecryptError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.message.includes("Unsupported state or unable to authenticate data") ||
+      error.message.includes("Invalid encrypted format"))
+  );
+}
+
+export function tokenDecryptErrorMessage() {
+  return "Could not read saved bank credentials. This usually means the bank was linked in a different environment (e.g. production) than the one you're using now, or NEXTAUTH_SECRET / TOKEN_ENCRYPTION_KEY differs between them. Use the same encryption key everywhere that shares one database, or reconnect banks from this environment.";
+}
 
 function getCipherKey(key: string) {
   return crypto.createHash("sha256").update(key).digest();
