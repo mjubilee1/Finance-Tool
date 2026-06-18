@@ -39,9 +39,11 @@ type DashboardTransaction = {
   id: string;
   accountId: string;
   date: string;
+  authorizedDate?: string | null;
   name: string;
   merchantName?: string | null;
   amount: number;
+  pending?: boolean;
   categoryPrimary?: string | null;
   isTenantPaymentCandidate?: boolean;
 };
@@ -652,6 +654,11 @@ export function Dashboard() {
                               <span>{t.date}</span>
                               <span>•</span>
                               <span>{t.categoryPrimary || "Uncategorized"}</span>
+                              {t.pending ? (
+                                <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ring-1 ring-amber-200/60">
+                                  Pending
+                                </span>
+                              ) : null}
                               {t.isTenantPaymentCandidate && (
                                 <span className="text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ring-1 ring-teal-200/60">
                                   Rent

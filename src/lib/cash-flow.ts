@@ -1,8 +1,10 @@
 import { DateTime } from "luxon";
 import type { DailyBriefMetrics } from "./daily-brief";
+import { getTransactionActivityDate, isTransactionOnDate } from "./daily-brief";
 
 type CashFlowTransaction = {
   date: string;
+  authorizedDate?: string | null;
   amount: number;
   pending?: boolean | null;
   categoryPrimary?: string | null;
@@ -117,7 +119,9 @@ export function calculateWeeklyCashFlow(params: {
     const isToday = day.hasSame(today, "day");
     const isFuture = day > today.startOf("day");
 
-    const dayTransactions = settled.filter((t) => t.date === dateKey);
+    const dayTransactions = isToday
+      ? transactions.filter((t) => !isTransfer(t) && isTransactionOnDate(t, dateKey))
+      : settled.filter((t) => getTransactionActivityDate(t) === dateKey);
     let spent = 0;
     let income = 0;
 

@@ -58,6 +58,21 @@ function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+/** Date used for daily/weekly cash flow — pending debit charges often only have authorizedDate. */
+export function getTransactionActivityDate(transaction: Pick<BriefTransaction, "date" | "authorizedDate" | "pending">) {
+  if (transaction.pending && transaction.authorizedDate) {
+    return transaction.authorizedDate;
+  }
+  return transaction.date;
+}
+
+export function isTransactionOnDate(
+  transaction: Pick<BriefTransaction, "date" | "authorizedDate" | "pending">,
+  date: string,
+) {
+  return getTransactionActivityDate(transaction) === date;
+}
+
 export function calculateDailyBriefMetrics(params: {
   date: string;
   transactions: BriefTransaction[];
@@ -69,13 +84,13 @@ export function calculateDailyBriefMetrics(params: {
     .toISOString()
     .slice(0, 10);
 
-  const settledTransactions = transactions.filter((transaction) => !transaction.pending);
-  const todaysTransactions = settledTransactions.filter((transaction) => transaction.date === date);
-  const recentExpenseTransactions = settledTransactions.filter(
+  const todaysTransactions = transactions.filter((transaction) => isTransactionOnDate(transaction, date));
+  const recentExpenseTransactions = transactions.filter(
     (transaction) =>
+      !transaction.pending &&
       transaction.amount > 0 &&
-      transaction.date >= fourteenDaysAgo &&
-      transaction.date < date,
+      getTransactionActivityDate(transaction) >= fourteenDaysAgo &&
+      getTransactionActivityDate(transaction) < date,
   );
 
   let totalSpent = 0;
@@ -84,6 +99,7 @@ export function calculateDailyBriefMetrics(params: {
   let transportationSpend = 0;
   let billsSpend = 0;
   let recurringSpend = 0;
+  let pendingSpendToday = 0;
 
   for (const transaction of todaysTransactions) {
     if (transaction.amount < 0) {
@@ -97,6 +113,9 @@ export function calculateDailyBriefMetrics(params: {
     const text = transactionText(transaction);
 
     totalSpent += amount;
+    if (transaction.pending) {
+      pendingSpendToday += amount;
+    }
 
     if (
       transaction.isFoodCandidate ||
@@ -148,10 +167,15 @@ export function calculateDailyBriefMetrics(params: {
 
   const reason =
     cashAvailable > 0
-      ? `Uses available checking cash, protects a ${roundCurrency(protectedBuffer).toLocaleString("en-US", {
-          style: "currency",
-          currency: "USD",
-        })} buffer, and subtracts today's settled spending.`
+      ? pendingSpendToday > 0
+        ? `Includes ${roundCurrency(pendingSpendToday).toLocaleString("en-US", {
+            style: "currency",
+            currency: "USD",
+          })} in pending debit/card charges that may still change when they post.`
+        : `Uses available checking cash, protects a ${roundCurrency(protectedBuffer).toLocaleString("en-US", {
+            style: "currency",
+            currency: "USD",
+          })} buffer, and subtracts today's spending.`
       : "No depository cash balance is available yet, so the safe daily spend is held at $0 until balances sync.";
 
   return {
