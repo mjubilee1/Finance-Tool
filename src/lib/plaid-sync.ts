@@ -19,6 +19,7 @@ export type TransactionSyncResult = {
 
 type TransactionSyncOptions = {
   batchStartedAt?: Date;
+  bypassCooldown?: boolean;
 };
 
 export async function shouldSkipTransactionSync(
@@ -37,10 +38,10 @@ export async function shouldSkipTransactionSync(
   );
 
   if (isLimitReached) {
-    return `Daily ${TRANSACTIONS_SYNC_ENDPOINT} cap of ${dailySyncCallLimit} reached.`;
+    return `Daily transaction sync limit of ${dailySyncCallLimit} reached. Resets at midnight.`;
   }
 
-  if (syncCooldownMinutes > 0) {
+  if (syncCooldownMinutes > 0 && !options.bypassCooldown) {
     const latestSync = await getLatestPlaidEndpointCall(TRANSACTIONS_SYNC_ENDPOINT, userId);
     const cooldownMs = syncCooldownMinutes * 60 * 1000;
     const latestSyncIsFromCurrentBatch = options.batchStartedAt
@@ -48,7 +49,7 @@ export async function shouldSkipTransactionSync(
       : false;
 
     if (latestSync && !latestSyncIsFromCurrentBatch && Date.now() - latestSync.createdAt.getTime() < cooldownMs) {
-      return `Last transaction sync was less than ${syncCooldownMinutes} minutes ago.`;
+      return `Transactions were synced recently. Wait ${syncCooldownMinutes} minutes between automatic syncs, or use Refresh to sync now.`;
     }
   }
 
@@ -98,7 +99,7 @@ export async function syncTransactionsForItem(
           modified: modifiedCount,
           removed: removedCount,
           skipped: true,
-          reason: `Daily ${TRANSACTIONS_SYNC_ENDPOINT} cap reached.`,
+          reason: `Daily transaction sync limit of ${dailySyncCallLimit} reached. Resets at midnight.`,
         };
       }
 

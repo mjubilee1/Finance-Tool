@@ -16,6 +16,7 @@ import { AccountsView } from "./accounts-view";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { calculateGoalPace } from "@/lib/cash-flow";
 import { sumDepositoryCash } from "@/lib/account-focus";
+import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { Target } from "lucide-react";
 
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections' | 'goals';
@@ -171,7 +172,7 @@ export function Dashboard() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [actionStatuses, setActionStatuses] = useState<Record<string, 'idle' | 'loading' | 'sent'>>({});
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<{ tone: SyncFeedbackTone; message: string } | null>(null);
   const itemsPerPage = 10;
 
   const handleTakeAction = async (sub: RecurringReview) => {
@@ -206,34 +207,25 @@ export function Dashboard() {
   const handleRefreshAll = async () => {
     setIsRefreshing(true);
     setSyncStatus('loading');
-    setSyncErrorMessage(null);
+    setSyncFeedback(null);
 
     try {
-      const syncResponse = await fetch("/api/plaid/sync", { method: "POST" });
-      const syncData = (await syncResponse.json().catch(() => ({}))) as {
-        error?: string;
-        skipped?: number;
-        added?: number;
-      };
-
-      if (!syncResponse.ok) {
-        throw new Error(syncData.error ?? "Failed to sync transactions.");
+      const syncData = await postPlaidSync(true);
+      const feedback = getSyncFeedback(syncData);
+      if (feedback) {
+        setSyncFeedback(feedback);
       }
-
-      if (syncData.skipped && (syncData.added ?? 0) === 0) {
-        setSyncErrorMessage(
-          "Sync skipped — you may have hit the cooldown or daily Plaid limit. Try again in a few minutes.",
-        );
-      } else {
-        setSyncStatus('success');
-      }
+      setSyncStatus('success');
 
       await fetch("/api/dashboard/refresh-brief", { method: "POST" }).catch(() => {});
       await handleRefreshData();
     } catch (err) {
       console.error(err);
       setSyncStatus('error');
-      setSyncErrorMessage(err instanceof Error ? err.message : "Failed to refresh data.");
+      setSyncFeedback({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Failed to refresh data.",
+      });
     } finally {
       setIsRefreshing(false);
     }
@@ -352,27 +344,15 @@ export function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
-  const handleSyncTransactions = async (options?: { silent?: boolean }) => {
+  const handleSyncTransactions = async (options?: { silent?: boolean; bypassCooldown?: boolean }) => {
     setSyncStatus('loading');
-    setSyncErrorMessage(null);
+    setSyncFeedback(null);
 
     try {
-      const response = await fetch("/api/plaid/sync", { method: "POST" });
-      const data = (await response.json()) as {
-        error?: string;
-        code?: string;
-        skipped?: number;
-        added?: number;
-      };
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Failed to sync transactions.");
-      }
-
-      if (data.skipped && (data.added ?? 0) === 0 && !options?.silent) {
-        setSyncErrorMessage(
-          "Sync skipped — you may have hit the cooldown or daily Plaid limit. Try again in a few minutes.",
-        );
+      const data = await postPlaidSync(options?.bypassCooldown ?? true);
+      const feedback = getSyncFeedback(data);
+      if (feedback && !options?.silent) {
+        setSyncFeedback(feedback);
       }
 
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -380,7 +360,12 @@ export function Dashboard() {
     } catch (err) {
       console.error(err);
       setSyncStatus('error');
-      setSyncErrorMessage(err instanceof Error ? err.message : "Failed to sync transactions.");
+      if (!options?.silent) {
+        setSyncFeedback({
+          tone: "error",
+          message: err instanceof Error ? err.message : "Failed to sync transactions.",
+        });
+      }
     }
   };
 
@@ -475,17 +460,16 @@ export function Dashboard() {
                  <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-slate-50 text-slate-800 hover:bg-slate-100 border-none py-1.5 px-3 text-xs shadow-none ring-1 ring-slate-200/60" />
                  <button
                    type="button"
-                   onClick={() => handleSyncTransactions()}
+                   onClick={() => handleSyncTransactions({ bypassCooldown: true })}
                    disabled={syncStatus === 'loading'}
                    className="mt-2 w-full rounded-lg app-btn-primary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                  >
                    {syncStatus === 'loading' ? 'Syncing...' : 'Sync transactions'}
                  </button>
-                 {syncStatus === 'success' && !syncErrorMessage ? (
-                   <p className="mt-2 text-xs text-teal-700">Transactions synced.</p>
-                 ) : null}
-                 {syncErrorMessage ? (
-                   <p className="mt-2 text-xs text-rose-600 leading-relaxed">{syncErrorMessage}</p>
+                 {syncFeedback ? (
+                   <p className={`mt-2 text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
+                     {syncFeedback.message}
+                   </p>
                  ) : null}
                </>
              ) : (

@@ -5,11 +5,23 @@ import { prisma } from "@/lib/prisma";
 import { syncTransactionsForItem } from "@/lib/plaid-sync";
 import { isTokenDecryptError, tokenDecryptErrorMessage } from "@/lib/encryption";
 
-export async function POST() {
+type SyncRequestBody = {
+  bypassCooldown?: boolean;
+};
+
+export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let bypassCooldown = false;
+    try {
+      const body = (await req.json()) as SyncRequestBody;
+      bypassCooldown = body.bypassCooldown === true;
+    } catch {
+      // Empty body is fine for legacy callers.
     }
 
     const items = await prisma.plaidItem.findMany({
@@ -22,6 +34,7 @@ export async function POST() {
     let skippedCount = 0;
     let failedCount = 0;
     let tokenDecryptFailures = 0;
+    const skipReasons: string[] = [];
     const batchStartedAt = new Date();
 
     if (items.length === 0) {
@@ -33,9 +46,12 @@ export async function POST() {
 
     for (const item of items) {
       try {
-        const result = await syncTransactionsForItem(item.id, { batchStartedAt });
+        const result = await syncTransactionsForItem(item.id, { batchStartedAt, bypassCooldown });
         if (result.skipped) {
           skippedCount++;
+          if (result.reason) {
+            skipReasons.push(result.reason);
+          }
         }
         addedCount += result.added;
         modifiedCount += result.modified;
@@ -56,6 +72,8 @@ export async function POST() {
       removed: removedCount,
       skipped: skippedCount,
       failed: failedCount,
+      skipReasons: [...new Set(skipReasons)],
+      syncedItems: items.length - skippedCount - failedCount,
     };
 
     if (failedCount > 0 && addedCount === 0 && modifiedCount === 0 && removedCount === 0) {
@@ -77,4 +95,3 @@ export async function POST() {
     );
   }
 }
-
