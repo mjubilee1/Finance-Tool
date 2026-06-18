@@ -65,6 +65,7 @@ type Props = {
     paceMessage: string;
     onTrack: boolean;
   } | null;
+  isBriefPending?: boolean;
 };
 
 export function OverviewHome({
@@ -85,6 +86,7 @@ export function OverviewHome({
   actionStatuses,
   onOpenChat,
   priorityGoal,
+  isBriefPending = false,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const cfoBrief = aiInsight.cfoBrief;
@@ -94,6 +96,12 @@ export function OverviewHome({
 
   return (
     <div className="space-y-5">
+      {isBriefPending ? (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200/70">
+          Cash flow is ready. Your full CFO brief is generating in the background — use Refresh if it does not appear soon.
+        </div>
+      ) : null}
+
       <div className="flex md:hidden items-center justify-between">
         <h1 className="text-xl font-bold text-slate-900 tracking-tight">Today</h1>
         <span

@@ -2,10 +2,10 @@
 
 import { formatCurrency } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, RefreshCw, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ConnectBankButton } from "./connect-bank-button";
 import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
@@ -13,6 +13,7 @@ import { ChatInterface } from "./chat-interface";
 import { GoalsView } from "./goals-view";
 import { OverviewHome } from "./overview/overview-home";
 import { AccountsView } from "./accounts-view";
+import { DashboardSkeleton } from "./dashboard-skeleton";
 import { calculateGoalPace } from "@/lib/cash-flow";
 import { sumDepositoryCash } from "@/lib/account-focus";
 import { Target } from "lucide-react";
@@ -139,7 +140,13 @@ type DashboardData = {
 };
 
 function fetchDashboard() {
-  return fetch("/api/dashboard").then((res) => res.json() as Promise<DashboardData>);
+  return fetch("/api/dashboard").then(async (res) => {
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? "Failed to load dashboard.");
+    }
+    return res.json() as Promise<DashboardData>;
+  });
 }
 
 export function Dashboard() {
@@ -147,7 +154,7 @@ export function Dashboard() {
   const queryClient = useQueryClient();
   const { data: session, status } = useSession();
   
-  const { data } = useQuery({
+  const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: fetchDashboard,
     enabled: status === "authenticated",
@@ -155,6 +162,8 @@ export function Dashboard() {
 
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const briefRefreshTriggered = useRef(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"date" | "amount_desc" | "amount_asc">("amount_desc");
@@ -189,7 +198,70 @@ export function Dashboard() {
     }
   };
 
+  const handleRefreshData = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await refetch();
+  };
+
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true);
+    setSyncStatus('loading');
+    setSyncErrorMessage(null);
+
+    try {
+      const syncResponse = await fetch("/api/plaid/sync", { method: "POST" });
+      const syncData = (await syncResponse.json().catch(() => ({}))) as {
+        error?: string;
+        skipped?: number;
+        added?: number;
+      };
+
+      if (!syncResponse.ok) {
+        throw new Error(syncData.error ?? "Failed to sync transactions.");
+      }
+
+      if (syncData.skipped && (syncData.added ?? 0) === 0) {
+        setSyncErrorMessage(
+          "Sync skipped — you may have hit the cooldown or daily Plaid limit. Try again in a few minutes.",
+        );
+      } else {
+        setSyncStatus('success');
+      }
+
+      await fetch("/api/dashboard/refresh-brief", { method: "POST" }).catch(() => {});
+      await handleRefreshData();
+    } catch (err) {
+      console.error(err);
+      setSyncStatus('error');
+      setSyncErrorMessage(err instanceof Error ? err.message : "Failed to refresh data.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!data || status !== "authenticated") return;
+    if (data.transactions.length > 0 && !data.aiInsight && !briefRefreshTriggered.current) {
+      briefRefreshTriggered.current = true;
+      fetch("/api/dashboard/refresh-brief", { method: "POST" })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["dashboard"] }))
+        .catch(() => {});
+    }
+  }, [data, status, queryClient]);
+
   const { transactions = [], snapshots = [], aiInsight = null, accounts = [], goals = [], plaidUsage, briefRefresh, cashFlow } = data || {};
+  const displayInsight: DashboardInsight = aiInsight ?? {
+    dailySummary:
+      transactions.length > 0
+        ? "Your cash flow is ready. Tap Refresh to generate your full CFO brief."
+        : "Link a bank account and sync transactions to get started.",
+    cfoBrief: cashFlow
+      ? {
+          safeSpendTodayReason: "Based on your linked account balances and recent spending.",
+          todaysMove: "Review today's spending and mark primary accounts in Accounts.",
+        }
+      : undefined,
+  };
   const cfoBrief = aiInsight?.cfoBrief;
   const recurringReviews = aiInsight?.recurringTransactionsToReview ?? [];
   const briefRefreshInfo = briefRefresh;
@@ -314,8 +386,11 @@ export function Dashboard() {
 
   if (status === "loading") {
     return (
-      <div className="p-8 text-center flex-1 h-screen flex items-center justify-center text-slate-500">
-        Loading...
+      <div className="flex h-screen app-page overflow-hidden">
+        <aside className="hidden md:flex w-64 bg-white border-r border-slate-200/80 flex-col" />
+        <main className="flex-1 p-4 md:p-8">
+          <DashboardSkeleton />
+        </main>
       </div>
     );
   }
@@ -440,10 +515,28 @@ export function Dashboard() {
           </div>
 
           {plaidUsage && activeTab === "accounts" && (
-            <div className="text-xs font-medium px-3 py-1.5 rounded-full bg-slate-50 text-slate-600 ring-1 ring-slate-200/60 ml-auto">
+            <div className="text-xs font-medium px-3 py-1.5 rounded-full bg-slate-50 text-slate-600 ring-1 ring-slate-200/60 ml-auto mr-2">
               Balance refreshes: {plaidUsage.balanceRefreshesToday}/{plaidUsage.dailyBalanceCallLimit}
             </div>
           )}
+
+          <div className="flex items-center gap-2 ml-auto">
+            {error ? (
+              <span className="hidden sm:inline text-xs text-rose-600 max-w-[12rem] truncate">
+                {error instanceof Error ? error.message : "Failed to load"}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleRefreshAll}
+              disabled={isRefreshing || isLoading || isFetching}
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 app-card hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              title="Sync transactions and refresh your CFO brief"
+            >
+              <RefreshCw size={16} className={isRefreshing || isFetching ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
@@ -464,9 +557,11 @@ export function Dashboard() {
 
             {/* View: OVERVIEW */}
             {activeTab === 'overview' && (
-              aiInsight && cashFlow ? (
+              isLoading && !data ? (
+                <DashboardSkeleton />
+              ) : cashFlow ? (
                 <OverviewHome
-                  aiInsight={aiInsight}
+                  aiInsight={displayInsight}
                   cashFlow={cashFlow}
                   safeSpendToday={safeSpendToday}
                   protectedCashBuffer={protectedCashBuffer}
@@ -483,12 +578,12 @@ export function Dashboard() {
                   actionStatuses={actionStatuses}
                   onOpenChat={() => setActiveTab('chat')}
                   priorityGoal={priorityGoal}
+                  isBriefPending={!aiInsight && transactions.length > 0}
                 />
               ) : (
-                <div className="app-card p-8 text-center text-slate-500 leading-relaxed">
-                  {transactions.length > 0
-                    ? "Your first CFO brief is generating. Refresh Overview in a moment."
-                    : "Link a bank account and sync transactions to see your daily cash flow."}
+                <div className="app-card p-8 text-center text-slate-500 leading-relaxed space-y-4">
+                  <p>Link a bank account and sync transactions to see your daily cash flow.</p>
+                  <ConnectBankButton onLinked={handleBankLinked} className="mx-auto" />
                 </div>
               )
             )}

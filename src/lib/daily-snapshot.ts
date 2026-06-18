@@ -20,6 +20,66 @@ type EnsureFreshOptions = {
   force?: boolean;
 };
 
+export async function getBriefRefreshStatus(userId: string): Promise<BriefRefreshResult> {
+  const { aiBriefRefreshHours } = getCostControlConfig();
+  const today = DateTime.local().toISODate();
+
+  if (!today) {
+    throw new Error("Failed to resolve today's date.");
+  }
+
+  const [existingSnapshot, transactionCount] = await Promise.all([
+    prisma.dailyFinancialSnapshot.findUnique({
+      where: {
+        userId_date: {
+          userId,
+          date: today,
+        },
+      },
+    }),
+    prisma.transaction.count({
+      where: { userId },
+    }),
+  ]);
+
+  if (transactionCount === 0) {
+    return {
+      status: "no_transactions",
+      refreshHours: aiBriefRefreshHours,
+      lastUpdatedAt: existingSnapshot?.updatedAt.toISOString() ?? null,
+      nextRefreshAt: existingSnapshot
+        ? nextRefreshAt(existingSnapshot.updatedAt, aiBriefRefreshHours).toISOString()
+        : null,
+    };
+  }
+
+  if (existingSnapshot) {
+    const nextAt = nextRefreshAt(existingSnapshot.updatedAt, aiBriefRefreshHours);
+    if (nextAt.getTime() > Date.now()) {
+      return {
+        status: "fresh",
+        refreshHours: aiBriefRefreshHours,
+        lastUpdatedAt: existingSnapshot.updatedAt.toISOString(),
+        nextRefreshAt: nextAt.toISOString(),
+      };
+    }
+
+    return {
+      status: "updated",
+      refreshHours: aiBriefRefreshHours,
+      lastUpdatedAt: existingSnapshot.updatedAt.toISOString(),
+      nextRefreshAt: nextAt.toISOString(),
+    };
+  }
+
+  return {
+    status: "created",
+    refreshHours: aiBriefRefreshHours,
+    lastUpdatedAt: null,
+    nextRefreshAt: null,
+  };
+}
+
 export async function ensureFreshDailySnapshot(
   userId: string,
   options?: EnsureFreshOptions,
