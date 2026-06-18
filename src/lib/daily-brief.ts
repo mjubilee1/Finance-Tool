@@ -59,7 +59,11 @@ function roundCurrency(value: number) {
 }
 
 /** Date used for daily/weekly cash flow — pending debit charges often only have authorizedDate. */
-export function getTransactionActivityDate(transaction: Pick<BriefTransaction, "date" | "authorizedDate" | "pending">) {
+export function getTransactionActivityDate(transaction: {
+  date: string;
+  authorizedDate?: string | null;
+  pending?: boolean | null;
+}) {
   if (transaction.pending && transaction.authorizedDate) {
     return transaction.authorizedDate;
   }
@@ -67,7 +71,11 @@ export function getTransactionActivityDate(transaction: Pick<BriefTransaction, "
 }
 
 export function isTransactionOnDate(
-  transaction: Pick<BriefTransaction, "date" | "authorizedDate" | "pending">,
+  transaction: {
+    date: string;
+    authorizedDate?: string | null;
+    pending?: boolean | null;
+  },
   date: string,
 ) {
   return getTransactionActivityDate(transaction) === date;

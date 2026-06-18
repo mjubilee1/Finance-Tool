@@ -42,6 +42,16 @@ type ChatResponsePayload = {
   message: string;
   memoriesToStore: ChatMemory[];
   shouldRefreshBrief: boolean;
+  spotlight?: {
+    transactionId?: string;
+    merchant: string;
+    amount?: number;
+    date?: string;
+    headline: string;
+    categoryGuess?: string;
+    savingsTip?: string;
+    severity?: "review" | "watch" | "ok";
+  } | null;
 };
 
 function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
@@ -66,6 +76,13 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       message,
       memoriesToStore,
       shouldRefreshBrief: parsed.shouldRefreshBrief === true,
+      spotlight:
+        parsed.spotlight &&
+        typeof parsed.spotlight === "object" &&
+        typeof parsed.spotlight.merchant === "string" &&
+        typeof parsed.spotlight.headline === "string"
+          ? parsed.spotlight
+          : null,
     };
   } catch {
     return {
@@ -278,6 +295,7 @@ ${JSON.stringify(goals.map(g => ({ name: g.name, target: g.targetAmount, current
 
 RECENT TRANSACTIONS:
 ${JSON.stringify(recentTransactions.map(t => ({
+    id: t.id,
     name: t.name,
     merchant: t.merchantName,
     amount: t.amount,
@@ -309,6 +327,16 @@ ${JSON.stringify(projectionContext)}
 Return JSON only with this exact shape:
 {
   "message": "Your conversational reply to the user.",
+  "spotlight": {
+    "transactionId": "optional id from RECENT TRANSACTIONS if known",
+    "merchant": "Merchant or charge label",
+    "amount": 29.99,
+    "date": "2026-06-17",
+    "headline": "One sentence explaining what this charge likely is.",
+    "categoryGuess": "Optional short category label",
+    "savingsTip": "Optional one-line savings action",
+    "severity": "review"
+  },
   "memoriesToStore": [
     {
       "title": "Short stable title",
@@ -318,6 +346,10 @@ Return JSON only with this exact shape:
   ],
   "shouldRefreshBrief": true
 }
+Use spotlight null when the user is not asking about a specific transaction.
+When the user asks about a specific transaction, merchant, or charge they do not recognize, explain what it likely is using RECENT TRANSACTIONS and RECURRING PATTERNS.
+If you can identify the charge, include a spotlight card with merchant, amount, date, a short headline, categoryGuess, savingsTip, and severity ("review", "watch", or "ok").
+If it still looks suspicious or wasteful, set severity to "review" and suggest a concrete savings action.
 If the user is only asking a question and not teaching durable facts, return an empty memoriesToStore array and shouldRefreshBrief false.
 `;
 
@@ -359,6 +391,7 @@ If the user is only asking a question and not teaching durable facts, return an 
 
     return NextResponse.json({
       message: chatResponse.message,
+      spotlight: chatResponse.spotlight ?? null,
       memoriesSaved: savedMemoryTitles,
       briefRefreshed,
     });

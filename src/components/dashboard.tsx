@@ -535,7 +535,7 @@ export function Dashboard() {
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight">CFO Chat</h1>
                   <p className="text-slate-500 mt-1">Ask what to do today, whether to hold cash, or which debt to attack next.</p>
                 </div>
-                <div className="flex-1 h-full min-h-[500px]">
+                <div className="flex-1 h-full min-h-[640px]">
                   <ChatInterface />
                 </div>
               </div>
