@@ -4,6 +4,7 @@ import { DateTime } from "luxon";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { filterTransactionsByFocus } from "@/lib/account-focus";
+import { getDismissedMerchantKeys } from "@/lib/charge-review";
 import { detectSpendingAlerts, estimateMonthlyLeak } from "@/lib/spending-alerts";
 
 export async function GET() {
@@ -14,7 +15,7 @@ export async function GET() {
     }
 
     const sixtyDaysAgo = DateTime.local().minus({ days: 60 }).toISODate();
-    const [transactions, accounts] = await Promise.all([
+    const [transactions, accounts, reviewMemories] = await Promise.all([
       prisma.transaction.findMany({
         where: {
           userId: session.user.id,
@@ -26,10 +27,18 @@ export async function GET() {
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
+      prisma.financialMemory.findMany({
+        where: { userId: session.user.id },
+        select: { title: true, type: true },
+      }),
     ]);
 
+    const dismissedMerchantKeys = getDismissedMerchantKeys(reviewMemories);
     const focusTransactions = filterTransactionsByFocus(transactions, accounts);
-    const alerts = detectSpendingAlerts(focusTransactions, { limit: 8 });
+    const alerts = detectSpendingAlerts(focusTransactions, {
+      limit: 8,
+      dismissedMerchantKeys,
+    });
 
     return NextResponse.json({
       alerts,

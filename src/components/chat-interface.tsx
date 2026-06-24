@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Send, User, BrainCircuit } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
+import type { ChargeReviewDisposition } from "@/lib/charge-review";
 import { SpendingRadar } from "./chat/spending-radar";
 import { TransactionSpotlightCard, type TransactionSpotlight } from "./chat/transaction-spotlight";
 
@@ -39,6 +40,7 @@ export function ChatInterface() {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
 
   const { data: radarData, isLoading: radarLoading } = useQuery({
     queryKey: ["spending-alerts"],
@@ -50,6 +52,55 @@ export function ChatInterface() {
     const prompt = `What is the ${label} transaction for ${alert.amount.toFixed(2)} on ${alert.date}? Is this something I should keep paying or cancel?`;
     setInput(prompt);
     inputRef.current?.focus();
+  };
+
+  const handleDismissAlert = async (
+    alert: SpendingAlert,
+    disposition: ChargeReviewDisposition,
+    note?: string,
+  ) => {
+    setDismissingId(alert.id);
+
+    try {
+      const response = await fetch("/api/spending-alerts/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionId: alert.id,
+          merchantLabel: alert.merchantName ?? alert.name,
+          amount: alert.amount,
+          date: alert.date,
+          disposition,
+          note,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to save review.");
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["spending-alerts"] });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Got it — I saved that "${alert.merchantName ?? alert.name}" is reviewed and won't keep flagging it in Spending radar.${note?.trim() ? ` Note saved: ${note.trim()}` : ""}`,
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: err instanceof Error ? err.message : "Couldn't save that review. Try again.",
+        },
+      ]);
+    } finally {
+      setDismissingId(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,7 +167,9 @@ export function ChatInterface() {
         alerts={radarData?.alerts ?? []}
         estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
         isLoading={radarLoading}
+        dismissingId={dismissingId}
         onAskAbout={handleAskAboutAlert}
+        onDismiss={handleDismissAlert}
       />
 
       <div className="flex flex-col h-[500px] app-card overflow-hidden">

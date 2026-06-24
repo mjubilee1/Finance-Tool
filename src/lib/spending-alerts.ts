@@ -2,7 +2,8 @@ export type SpendingAlertReason =
   | "uncategorized"
   | "cryptic_name"
   | "large_unknown"
-  | "recurring_unknown";
+  | "recurring_unknown"
+  | "unusually_high";
 
 export type SpendingAlert = {
   id: string;
@@ -16,6 +17,10 @@ export type SpendingAlert = {
   savingsHint: string;
   score: number;
 };
+
+export function normalizeMerchantKey(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 type AlertTransaction = {
   id: string;
@@ -57,6 +62,11 @@ const REASON_COPY: Record<
     label: "Repeats often",
     hint: "Shows up more than once — could be a subscription you forgot about.",
     score: 40,
+  },
+  unusually_high: {
+    label: "Higher than usual",
+    hint: "This charge is bigger than your typical spend — confirm it's expected.",
+    score: 38,
   },
 };
 
@@ -118,23 +128,50 @@ function countSimilarCharges(transactions: AlertTransaction[], target: AlertTran
 function pickPrimaryReason(
   transaction: AlertTransaction,
   repeatCount: number,
+  unusuallyHigh: boolean,
 ): SpendingAlertReason {
+  if (unusuallyHigh) return "unusually_high";
   if (repeatCount >= 2) return "recurring_unknown";
   if (isCrypticMerchant(displayName(transaction))) return "cryptic_name";
   if (transaction.amount >= 75 && !hasMeaningfulCategory(transaction)) return "large_unknown";
   return "uncategorized";
 }
 
+function isUnusuallyHigh(transactions: AlertTransaction[], target: AlertTransaction) {
+  const amounts = transactions
+    .filter((transaction) => transaction.amount > 0 && transaction.id !== target.id)
+    .map((transaction) => transaction.amount)
+    .sort((a, b) => a - b);
+
+  if (amounts.length < 5) return target.amount >= 150;
+
+  const median = amounts[Math.floor(amounts.length / 2)] ?? 0;
+  return target.amount >= Math.max(120, median * 2.5);
+}
+
+export function filterDismissedAlerts(
+  alerts: SpendingAlert[],
+  dismissedMerchantKeys: Set<string>,
+) {
+  return alerts.filter((alert) => !dismissedMerchantKeys.has(normalizeMerchantKey(displayName(alert))));
+}
+
 export function detectSpendingAlerts(
   transactions: AlertTransaction[],
-  options?: { limit?: number; minScore?: number },
+  options?: { limit?: number; minScore?: number; dismissedMerchantKeys?: Set<string> },
 ): SpendingAlert[] {
   const limit = options?.limit ?? 8;
   const minScore = options?.minScore ?? 30;
+  const dismissedMerchantKeys = options?.dismissedMerchantKeys ?? new Set<string>();
   const alerts: SpendingAlert[] = [];
 
   for (const transaction of transactions) {
     if (transaction.amount <= 0 || transaction.pending || isTransfer(transaction)) {
+      continue;
+    }
+
+    const merchantKey = normalizeMerchantKey(displayName(transaction));
+    if (dismissedMerchantKeys.has(merchantKey)) {
       continue;
     }
 
@@ -143,18 +180,20 @@ export function detectSpendingAlerts(
     const cryptic = isCrypticMerchant(displayName(transaction));
     const largeUnknown = transaction.amount >= 75 && uncategorized;
     const recurringUnknown = repeatCount >= 2 && (uncategorized || cryptic);
+    const unusuallyHigh = isUnusuallyHigh(transactions, transaction);
 
-    if (!uncategorized && !cryptic && !largeUnknown && !recurringUnknown) {
+    if (!uncategorized && !cryptic && !largeUnknown && !recurringUnknown && !unusuallyHigh) {
       continue;
     }
 
-    const reason = pickPrimaryReason(transaction, repeatCount);
+    const reason = pickPrimaryReason(transaction, repeatCount, unusuallyHigh);
     const copy = REASON_COPY[reason];
     let score = copy.score;
 
     if (cryptic) score += 15;
     if (largeUnknown) score += Math.min(20, Math.round(transaction.amount / 10));
     if (recurringUnknown) score += 10;
+    if (unusuallyHigh) score += 12;
     if (uncategorized) score += 5;
 
     if (score < minScore) continue;
