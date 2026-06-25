@@ -24,6 +24,7 @@ import {
   type BalanceRefreshMeta,
 } from "@/lib/plaid-balances";
 import { Target } from "lucide-react";
+import { AppVersion } from "./app-version";
 
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections' | 'goals';
 
@@ -461,6 +462,7 @@ export function Dashboard() {
           >
             Sign in
           </button>
+          <AppVersion className="mt-6" />
         </div>
       </div>
     );
@@ -549,6 +551,7 @@ export function Dashboard() {
               Sign out
             </button>
           </div>
+          <AppVersion className="mt-2 px-2 text-center" />
         </div>
       </aside>
 

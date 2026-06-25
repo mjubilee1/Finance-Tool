@@ -1,0 +1,26 @@
+---
+description: Personal finance app context — single user, email+code auth, Chase/Capital One accounts
+alwaysApply: true
+---
+
+# Personal Finance App
+
+Read [context.md](context.md) for full product context.
+
+## Product scope
+
+- Built for **one user's personal finances**, not a multi-user or public product
+- Optimize for long-term goals, weekly accountability, and micro→macro financial awareness
+- Celebrate good weeks; alert when off track; allow earned discretionary spending
+
+## Authentication
+
+- **Email + 6-digit code** (passcode), **not** email + password
+- Use passcode send/verify flows; do not add password fields or bcrypt login unless explicitly requested
+
+## Accounts
+
+- **Chase (primary)**: direct-deposit paychecks
+- **Capital One (secondary)**: Lyft driving income; goals/plans bucket
+
+Model income routing, goals, and coach advice with this split in mind.

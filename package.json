@@ -13,7 +13,9 @@
     "e2e:yc-login:ui": "playwright test e2e/yc-login.spec.ts --ui",
     "e2e:report": "playwright show-report",
     "reset:plaid": "npx tsx scripts/reset-plaid.ts",
-    "reset:plaid:me": "npx tsx scripts/reset-plaid.ts mjubil96@gmail.com"
+    "reset:plaid:me": "npx tsx scripts/reset-plaid.ts mjubil96@gmail.com",
+    "version:bump": "node scripts/bump-version.mjs --manual",
+    "prepare": "husky"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
@@ -48,6 +50,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
+    "husky": "^9.1.7",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5"

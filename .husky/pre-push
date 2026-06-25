@@ -1,0 +1,8 @@
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    node scripts/bump-version.mjs
+    exit $?
+  fi
+done
+
+exit 0

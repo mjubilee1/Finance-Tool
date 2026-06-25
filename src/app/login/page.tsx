@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { AppVersion } from "@/components/app-version";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -109,6 +110,8 @@ export default function LoginPage() {
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
           </button>
         </div>
+
+        <AppVersion className="mt-6 text-center" />
       </div>
     </div>
   );
