@@ -2,7 +2,7 @@
 
 import { formatCurrency } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, RefreshCw, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, RefreshCw, RotateCcw, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -215,6 +215,7 @@ export function Dashboard() {
 
   const handleRefreshData = async () => {
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await queryClient.invalidateQueries({ queryKey: ["spending-alerts"] });
     await refetch();
   };
 
@@ -238,6 +239,10 @@ export function Dashboard() {
     } finally {
       setIsRefreshingBalances(false);
     }
+  };
+
+  const handleReloadApp = () => {
+    window.location.reload();
   };
 
   const handleRefreshAll = async () => {
@@ -543,6 +548,15 @@ export function Dashboard() {
              )}
           </div>
 
+          <button
+            type="button"
+            onClick={handleReloadApp}
+            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200/60 transition-colors"
+          >
+            <RotateCcw size={16} />
+            Reload app
+          </button>
+
           <div className="flex items-center justify-between px-2">
             <span className="text-sm font-medium text-slate-700 truncate pr-2">
               {session?.user?.name || "User"}
@@ -579,13 +593,23 @@ export function Dashboard() {
             ) : null}
             <button
               type="button"
+              onClick={handleReloadApp}
+              className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white transition-colors sm:px-3"
+              title="Reload the app (useful on home-screen install)"
+              aria-label="Reload app"
+            >
+              <RotateCcw size={16} />
+              Reload
+            </button>
+            <button
+              type="button"
               onClick={handleRefreshAll}
               disabled={isRefreshing || isLoading || isFetching}
-              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 app-card hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors sm:px-3"
               title="Sync transactions and refresh your CFO brief"
             >
               <RefreshCw size={16} className={isRefreshing || isFetching ? "animate-spin" : ""} />
-              <span className="hidden sm:inline">Refresh</span>
+              Sync
             </button>
           </div>
         </header>
