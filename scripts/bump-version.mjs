@@ -23,7 +23,18 @@ function isReleaseCommit() {
 }
 
 function bumpVersion(semverType) {
-  execSync(`npm version ${semverType} -m "chore: release v%s"`, { stdio: "inherit" });
+  execSync(`npm version ${semverType} --no-git-tag-version`, { stdio: "inherit" });
+  const version = getCurrentVersion();
+  const message = `chore: release v${version}`;
+
+  execSync("git add package.json package-lock.json", { stdio: "inherit" });
+  execSync(`git commit package.json package-lock.json -m "${message}"`, { stdio: "inherit" });
+
+  try {
+    execSync(`git tag -a "v${version}" -m "${message}"`, { stdio: "inherit" });
+  } catch {
+    execSync(`git tag -f -a "v${version}" -m "${message}"`, { stdio: "inherit" });
+  }
 }
 
 function getBumpTypeFromEnv() {
@@ -78,6 +89,7 @@ async function resolveBumpType(currentVersion) {
 
 async function main() {
   const manual = process.argv.includes("--manual");
+  const noPrompt = process.argv.includes("--no-prompt");
 
   if (process.env.SKIP_VERSION_BUMP === "1") {
     console.log("Skipping version bump (SKIP_VERSION_BUMP=1).");
@@ -90,9 +102,19 @@ async function main() {
   }
 
   const currentVersion = getCurrentVersion();
-  const bumpType = manual
-    ? await promptForBumpType(currentVersion)
-    : await resolveBumpType(currentVersion);
+  let bumpType = null;
+
+  if (manual && noPrompt) {
+    bumpType = getBumpTypeFromEnv();
+    if (!bumpType) {
+      console.error("VERSION_BUMP must be patch, minor, major, or skip when using --no-prompt.");
+      process.exit(1);
+    }
+  } else if (manual) {
+    bumpType = await promptForBumpType(currentVersion);
+  } else {
+    bumpType = await resolveBumpType(currentVersion);
+  }
 
   if (!bumpType) {
     console.error("Invalid choice. Push aborted.");
