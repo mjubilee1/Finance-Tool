@@ -10,6 +10,7 @@ export type FocusAccount = {
   availableBalance?: number | null;
   subtype?: string | null;
   mask?: string | null;
+  updatedAt?: string | Date | null;
 };
 
 export function hasPrimarySelection(accounts: FocusAccount[]) {

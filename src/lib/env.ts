@@ -8,15 +8,15 @@ const envSchema = z.object({
   PLAID_PROD_SECRET: z.string().min(1).optional(),
   PLAID_DAILY_BALANCE_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
-    z.coerce.number().int().min(0).default(50),
+    z.coerce.number().int().min(0).default(0),
   ),
   PLAID_DAILY_SYNC_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
-    z.coerce.number().int().min(0).default(50),
+    z.coerce.number().int().min(0).default(0),
   ),
   PLAID_SYNC_COOLDOWN_MINUTES: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
-    z.coerce.number().int().min(0).default(5),
+    z.coerce.number().int().min(0).default(0),
   ),
   AI_CHAT_DAILY_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),

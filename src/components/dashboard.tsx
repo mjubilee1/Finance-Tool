@@ -17,6 +17,12 @@ import { DashboardSkeleton } from "./dashboard-skeleton";
 import { calculateGoalPace } from "@/lib/cash-flow";
 import { sumDepositoryCash } from "@/lib/account-focus";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
+import {
+  getOldestAccountUpdate,
+  isBalanceStale,
+  refreshPlaidBalances,
+  type BalanceRefreshMeta,
+} from "@/lib/plaid-balances";
 import { Target } from "lucide-react";
 
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections' | 'goals';
@@ -33,6 +39,7 @@ type DashboardAccount = {
   availableBalance?: number | null;
   isPrimary?: boolean;
   institutionName?: string | null;
+  updatedAt?: string;
 };
 
 type DashboardTransaction = {
@@ -166,7 +173,11 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
+  const [balanceMeta, setBalanceMeta] = useState<BalanceRefreshMeta | null>(null);
   const briefRefreshTriggered = useRef(false);
+  const balancesAutoRefreshed = useRef(false);
+  const lastAccountsBalanceRefresh = useRef(0);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"date" | "amount_desc" | "amount_asc">("amount_desc");
@@ -206,16 +217,41 @@ export function Dashboard() {
     await refetch();
   };
 
+  const handleRefreshBalances = async (options?: { silent?: boolean }) => {
+    setIsRefreshingBalances(true);
+    try {
+      const meta = await refreshPlaidBalances();
+      setBalanceMeta(meta);
+      lastAccountsBalanceRefresh.current = Date.now();
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await refetch();
+
+      if (!options?.silent && meta.usedCachedBalances && meta.balanceCallLimit > 0) {
+        setSyncFeedback({
+          tone: "warning",
+          message: `Balance refresh limit reached (${meta.balanceCallsToday}/${meta.balanceCallLimit} today). Showing last saved balances — try again after midnight UTC.`,
+        });
+      }
+
+      return meta;
+    } finally {
+      setIsRefreshingBalances(false);
+    }
+  };
+
   const handleRefreshAll = async () => {
     setIsRefreshing(true);
     setSyncStatus('loading');
     setSyncFeedback(null);
 
     try {
+      await handleRefreshBalances({ silent: true });
       const syncData = await postPlaidSync(true);
       const feedback = getSyncFeedback(syncData);
       if (feedback) {
         setSyncFeedback(feedback);
+      } else {
+        setSyncFeedback({ tone: "success", message: "Balances and transactions refreshed." });
       }
       setSyncStatus('success');
 
@@ -242,6 +278,30 @@ export function Dashboard() {
         .catch(() => {});
     }
   }, [data, status, queryClient]);
+
+  useEffect(() => {
+    if (!data?.accounts.length || status !== "authenticated") return;
+
+    const oldestUpdate = getOldestAccountUpdate(data.accounts);
+    const stale = isBalanceStale(oldestUpdate, 30);
+
+    if (stale && !balancesAutoRefreshed.current) {
+      balancesAutoRefreshed.current = true;
+      handleRefreshBalances({ silent: true }).catch(() => {});
+    }
+  }, [data?.accounts, status]);
+
+  useEffect(() => {
+    if (activeTab !== "accounts" || !data?.accounts.length) return;
+
+    const stale =
+      Date.now() - lastAccountsBalanceRefresh.current > 15 * 60 * 1000 ||
+      isBalanceStale(getOldestAccountUpdate(data.accounts), 15);
+
+    if (stale) {
+      handleRefreshBalances({ silent: true }).catch(() => {});
+    }
+  }, [activeTab, data?.accounts]);
 
   const { transactions = [], snapshots = [], aiInsight = null, accounts = [], goals = [], plaidUsage, briefRefresh, cashFlow } = data || {};
   const displayInsight: DashboardInsight = aiInsight ?? {
@@ -341,9 +401,8 @@ export function Dashboard() {
   );
 
   const handleBankLinked = async () => {
-    await fetch("/api/plaid/accounts");
+    await handleRefreshBalances({ silent: true });
     await handleSyncTransactions({ silent: true });
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
   const handleSyncTransactions = async (options?: { silent?: boolean; bypassCooldown?: boolean }) => {
@@ -351,6 +410,9 @@ export function Dashboard() {
     setSyncFeedback(null);
 
     try {
+      if (!options?.silent) {
+        await handleRefreshBalances({ silent: true }).catch(() => {});
+      }
       const data = await postPlaidSync(options?.bypassCooldown ?? true);
       const feedback = getSyncFeedback(data);
       if (feedback && !options?.silent) {
@@ -500,7 +562,7 @@ export function Dashboard() {
             <span className="md:hidden font-semibold text-base capitalize text-slate-900">{activeTab}</span>
           </div>
 
-          {plaidUsage && activeTab === "accounts" && (
+          {plaidUsage && activeTab === "accounts" && plaidUsage.dailyBalanceCallLimit > 0 && (
             <div className="text-xs font-medium px-3 py-1.5 rounded-full bg-slate-50 text-slate-600 ring-1 ring-slate-200/60 ml-auto mr-2">
               Balance refreshes: {plaidUsage.balanceRefreshesToday}/{plaidUsage.dailyBalanceCallLimit}
             </div>
@@ -579,6 +641,17 @@ export function Dashboard() {
               <AccountsView
                 accounts={accounts}
                 onBankLinked={handleBankLinked}
+                onRefreshBalances={() => { void handleRefreshBalances(); }}
+                isRefreshingBalances={isRefreshingBalances}
+                balanceMeta={balanceMeta ?? (plaidUsage ? {
+                  usedCachedBalances: false,
+                  balanceCallsToday: plaidUsage.balanceRefreshesToday,
+                  balanceCallLimit: plaidUsage.dailyBalanceCallLimit,
+                  balanceCallsRemaining: Math.max(
+                    0,
+                    plaidUsage.dailyBalanceCallLimit - plaidUsage.balanceRefreshesToday,
+                  ),
+                } : null)}
                 onViewTransactions={(plaidAccountId) => {
                   setSelectedAccountId(plaidAccountId);
                   setActiveTab('transactions');

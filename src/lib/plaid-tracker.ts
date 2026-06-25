@@ -45,7 +45,8 @@ export async function isPlaidEndpointDailyLimitReached(
   userId: string | undefined,
   limit: number,
 ) {
-  if (limit <= 0) return true;
+  // 0 or negative = unlimited (no cap)
+  if (limit <= 0) return false;
 
   const callsToday = await getDailyPlaidEndpointCalls(endpoint, userId);
   return callsToday >= limit;

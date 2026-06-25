@@ -1,20 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
+import type { BalanceRefreshMeta } from "@/lib/plaid-balances";
 import {
   groupAccountsByInstitution,
   summarizeAccountBuckets,
   type FocusAccount,
 } from "@/lib/account-focus";
 import { ConnectBankButton } from "./connect-bank-button";
-import { Star, Receipt, Building2, Wallet, TrendingDown, TrendingUp } from "lucide-react";
+import { Star, Receipt, Building2, Wallet, TrendingDown, TrendingUp, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 type Props = {
   accounts: FocusAccount[];
   onViewTransactions: (plaidAccountId: string) => void;
   onBankLinked?: () => void;
+  onRefreshBalances?: () => void | Promise<void>;
+  isRefreshingBalances?: boolean;
+  balanceMeta?: BalanceRefreshMeta | null;
 };
 
 type FilterTab = "primary" | "cash" | "debt" | "all";
@@ -48,12 +53,51 @@ function accountKindStyles(type: string) {
   };
 }
 
-export function AccountsView({ accounts, onViewTransactions, onBankLinked }: Props) {
+function displayAccountBalance(account: FocusAccount) {
+  const current = account.currentBalance ?? 0;
+  const available = account.availableBalance;
+
+  if (account.type === "depository" && available != null && available !== current) {
+    return {
+      amount: available,
+      sublabel: `${formatCurrency(current)} current`,
+    };
+  }
+
+  return { amount: current, sublabel: null as string | null };
+}
+
+function formatBalanceUpdatedAt(updatedAt?: string | Date | null) {
+  if (!updatedAt) return "Unknown";
+  const iso = typeof updatedAt === "string" ? updatedAt : updatedAt.toISOString();
+  const dt = DateTime.fromISO(iso);
+  if (!dt.isValid) return "Unknown";
+  return dt.toRelative({ style: "short" }) ?? dt.toLocaleString(DateTime.DATETIME_MED);
+}
+
+export function AccountsView({
+  accounts,
+  onViewTransactions,
+  onBankLinked,
+  onRefreshBalances,
+  isRefreshingBalances = false,
+  balanceMeta,
+}: Props) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterTab>("primary");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const summary = useMemo(() => summarizeAccountBuckets(accounts), [accounts]);
+  const oldestUpdate = useMemo(() => {
+    const timestamps = accounts
+      .map((account) => account.updatedAt)
+      .filter(Boolean)
+      .map((value) => DateTime.fromISO(value as string).toMillis())
+      .filter((value) => !Number.isNaN(value));
+
+    if (timestamps.length === 0) return null;
+    return DateTime.fromMillis(Math.min(...timestamps));
+  }, [accounts]);
 
   const filteredAccounts = useMemo(() => {
     switch (filter) {
@@ -110,13 +154,36 @@ export function AccountsView({ accounts, onViewTransactions, onBankLinked }: Pro
 
   return (
     <div className="space-y-5">
-      <div className="hidden md:block">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Connected accounts</h1>
-        <p className="text-slate-500 mt-1 text-sm leading-relaxed">
-          Star the accounts that drive your daily cash flow — checking, main savings, and cards you actively use.
-          Overview and safe spend use primary accounts when any are selected.
-        </p>
+      <div className="hidden md:flex md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Connected accounts</h1>
+          <p className="text-slate-500 mt-1 text-sm leading-relaxed">
+            Star the accounts that drive your daily cash flow — checking, main savings, and cards you actively use.
+            Overview and safe spend use primary accounts when any are selected.
+          </p>
+        </div>
+        {onRefreshBalances ? (
+          <button
+            type="button"
+            onClick={() => onRefreshBalances()}
+            disabled={isRefreshingBalances}
+            className="inline-flex items-center gap-2 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold app-card hover:bg-white disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={isRefreshingBalances ? "animate-spin" : ""} />
+            Refresh balances
+          </button>
+        ) : null}
       </div>
+
+      {(balanceMeta?.usedCachedBalances || (oldestUpdate && oldestUpdate < DateTime.now().minus({ hours: 2 }))) && (
+        <div className="rounded-xl bg-amber-50/80 px-4 py-3 ring-1 ring-amber-200/60 text-sm text-amber-950 leading-relaxed">
+          {balanceMeta?.usedCachedBalances && (balanceMeta.balanceCallLimit ?? 0) > 0
+            ? `Daily Plaid balance limit reached (${balanceMeta.balanceCallsToday}/${balanceMeta.balanceCallLimit}). Amounts may be outdated — tap Refresh balances after midnight UTC, or use the header Refresh button.`
+            : balanceMeta?.usedCachedBalances
+              ? "Could not reach your bank just now — showing last saved balances. Tap Refresh balances to try again."
+              : `Balances last updated ${formatBalanceUpdatedAt(oldestUpdate?.toISO() ?? undefined)}. Tap Refresh balances to pull the latest from your bank.`}
+        </div>
+      )}
 
       {!summary.usingPrimaryFilter && (
         <div className="rounded-xl bg-amber-50/80 px-4 py-3 ring-1 ring-amber-200/60 text-sm text-amber-950 leading-relaxed">
@@ -189,6 +256,7 @@ export function AccountsView({ accounts, onViewTransactions, onBankLinked }: Pro
               {institutionAccounts.map((account) => {
                 const styles = accountKindStyles(account.type);
                 const isUpdating = updatingId === account.id;
+                const balance = displayAccountBalance(account);
 
                 return (
                   <li
@@ -231,9 +299,19 @@ export function AccountsView({ accounts, onViewTransactions, onBankLinked }: Pro
                     </div>
 
                     <div className="flex items-center justify-between sm:justify-end gap-4 pl-10 sm:pl-0">
-                      <p className={`text-xl font-bold tabular-nums tracking-tight ${styles.balance}`}>
-                        {formatCurrency(account.currentBalance ?? 0)}
-                      </p>
+                      <div className="text-right">
+                        <p className={`text-xl font-bold tabular-nums tracking-tight ${styles.balance}`}>
+                          {formatCurrency(balance.amount)}
+                        </p>
+                        {balance.sublabel ? (
+                          <p className="text-[11px] text-slate-500 mt-0.5">{balance.sublabel}</p>
+                        ) : null}
+                        {account.updatedAt ? (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Updated {formatBalanceUpdatedAt(account.updatedAt)}
+                          </p>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         onClick={() => onViewTransactions(account.plaidAccountId)}
