@@ -47,6 +47,20 @@ export function filterTransactionsByFocus<T extends { accountId: string }>(
   return transactions.filter((transaction) => focusIds.has(transaction.accountId));
 }
 
+/** Count today's spending from checking and credit cards, not just primary accounts. */
+export function filterTransactionsForDailySpend<T extends { accountId: string }>(
+  transactions: T[],
+  accounts: FocusAccount[],
+): T[] {
+  const spendAccountIds = new Set(
+    accounts
+      .filter((account) => account.type === "depository" || account.type === "credit")
+      .map((account) => account.plaidAccountId),
+  );
+
+  return transactions.filter((transaction) => spendAccountIds.has(transaction.accountId));
+}
+
 export function sumDepositoryCash(accounts: FocusAccount[]) {
   return getFocusDepositoryAccounts(accounts).reduce(
     (sum, account) => sum + (account.availableBalance ?? account.currentBalance ?? 0),

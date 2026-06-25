@@ -9,6 +9,7 @@ import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import { calculateTodayCashFlow, calculateWeeklyCashFlow, calculateNetDailyAverage } from "@/lib/cash-flow";
 import {
   filterTransactionsByFocus,
+  filterTransactionsForDailySpend,
   getFocusAccounts,
   sumDepositoryCash,
 } from "@/lib/account-focus";
@@ -42,7 +43,13 @@ export async function GET() {
         take: 50,
       }),
       prisma.transaction.findMany({
-        where: { userId, date: { gte: twoWeeksAgo ?? undefined } },
+        where: {
+          userId,
+          OR: [
+            { date: { gte: twoWeeksAgo ?? undefined } },
+            { authorizedDate: { gte: twoWeeksAgo ?? undefined } },
+          ],
+        },
         orderBy: { date: "desc" },
       }),
       prisma.dailyFinancialSnapshot.findMany({
@@ -80,24 +87,19 @@ export async function GET() {
     const focusAccounts = getFocusAccounts(accounts);
     const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
     const focusTransactionsAll = filterTransactionsByFocus(transactions, accounts);
+    const spendingTransactions = filterTransactionsForDailySpend(recentTransactions, accounts);
 
     const todayKey = DateTime.local().toISODate() ?? "";
     const briefMetrics = calculateDailyBriefMetrics({
       date: todayKey,
-      transactions: focusTransactions,
+      transactions: spendingTransactions,
       accounts: focusAccounts,
     });
-
-    let safeSpendForWeek = briefMetrics.safeSpendToday;
-    const aiSafeSpend = aiInsight?.cfoBrief?.safeSpendToday;
-    if (typeof aiSafeSpend === "number" && Number.isFinite(aiSafeSpend)) {
-      safeSpendForWeek = Math.max(0, aiSafeSpend);
-    }
 
     const todayCashFlow = calculateTodayCashFlow({
       totalSpent: briefMetrics.totalSpent,
       totalIncome: briefMetrics.totalIncome,
-      safeSpendToday: safeSpendForWeek,
+      safeSpendToday: briefMetrics.safeSpendToday,
     });
 
     const weeklyCashFlow = calculateWeeklyCashFlow({
@@ -120,7 +122,7 @@ export async function GET() {
         today: todayCashFlow,
         weekly: weeklyCashFlow,
         netDailyAverage: calculateNetDailyAverage(focusTransactions),
-        safeDailySpend: safeSpendForWeek,
+        safeDailySpend: todayCashFlow.dailyAllowance,
         primaryCash: sumDepositoryCash(accounts),
         usingPrimaryAccounts: accounts.some((account) => account.isPrimary),
       },

@@ -60,7 +60,9 @@ export function TodayCashFlowMeter({ today, status }: Props) {
         <p className="text-xs text-slate-500 mt-2.5 text-center">
           {isOver
             ? `${formatCurrency(spentToday - dailyAllowance)} over today's allowance`
-            : `${Math.round(spentPercent)}% of today's safe spend used`}
+            : spentToday === 0
+              ? "No posted or pending spending counted yet today — tap Refresh after new charges."
+              : `${Math.round(spentPercent)}% of today's safe spend used`}
         </p>
       </div>
     </div>

@@ -337,9 +337,9 @@ export function Dashboard() {
   const fallbackSafeSpendToday = Math.max(0,
     (sumDepositoryCash(accounts) * 0.4) / 14
   );
-  const safeSpendToday = typeof cfoBrief?.safeSpendToday === 'number'
-    ? cfoBrief.safeSpendToday
-    : fallbackSafeSpendToday;
+  const safeSpendToday = cashFlow?.today?.dailyAllowance
+    ?? cashFlow?.safeDailySpend
+    ?? fallbackSafeSpendToday;
   const availableCheckingCash = sumDepositoryCash(accounts);
   const protectedCashBuffer = Math.max(500, availableCheckingCash * 0.25);
   const monthlySafeSpend = safeSpendToday * 30;

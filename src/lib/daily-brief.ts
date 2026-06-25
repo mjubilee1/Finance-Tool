@@ -210,12 +210,17 @@ export function applyCalculatedSafeSpend<T extends { cfoBrief?: Record<string, u
   const cfoBrief = insight.cfoBrief ?? {};
   const aiSafeSpend = cfoBrief.safeSpendToday;
   const hasValidAiSafeSpend = typeof aiSafeSpend === "number" && Number.isFinite(aiSafeSpend);
+  const calculatedAllowance = roundCurrency(metrics.totalSpent + metrics.safeSpendToday);
+  const dailyAllowance = hasValidAiSafeSpend
+    ? Math.min(calculatedAllowance, roundCurrency(aiSafeSpend + metrics.totalSpent))
+    : calculatedAllowance;
+  const remainingToday = Math.max(0, roundCurrency(dailyAllowance - metrics.totalSpent));
 
   return {
     ...insight,
     cfoBrief: {
       ...cfoBrief,
-      safeSpendToday: hasValidAiSafeSpend ? Math.max(0, roundCurrency(aiSafeSpend)) : metrics.safeSpendToday,
+      safeSpendToday: remainingToday,
       safeSpendTodayReason:
         typeof cfoBrief.safeSpendTodayReason === "string" && cfoBrief.safeSpendTodayReason.trim()
           ? cfoBrief.safeSpendTodayReason
