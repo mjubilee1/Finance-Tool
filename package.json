@@ -1,6 +1,6 @@
 {
   "name": "financial-projection-tool",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -15,6 +15,9 @@
     "reset:plaid": "npx tsx scripts/reset-plaid.ts",
     "reset:plaid:me": "npx tsx scripts/reset-plaid.ts mjubil96@gmail.com",
     "version:bump": "node scripts/bump-version.mjs --manual",
+    "version:patch": "VERSION_BUMP=patch node scripts/bump-version.mjs --manual --no-prompt",
+    "version:minor": "VERSION_BUMP=minor node scripts/bump-version.mjs --manual --no-prompt",
+    "version:major": "VERSION_BUMP=major node scripts/bump-version.mjs --manual --no-prompt",
     "prepare": "husky"
   },
   "dependencies": {

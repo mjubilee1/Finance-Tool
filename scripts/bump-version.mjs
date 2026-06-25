@@ -6,6 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 const RELEASE_COMMIT_RE = /^chore: release v\d+\.\d+\.\d+$/;
+const VALID_BUMP_TYPES = new Set(["patch", "minor", "major", "skip"]);
 
 function getCurrentVersion() {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
@@ -25,6 +26,11 @@ function bumpVersion(semverType) {
   execSync(`npm version ${semverType} -m "chore: release v%s"`, { stdio: "inherit" });
 }
 
+function getBumpTypeFromEnv() {
+  const value = process.env.VERSION_BUMP?.trim().toLowerCase();
+  return VALID_BUMP_TYPES.has(value) ? value : null;
+}
+
 async function promptForBumpType(currentVersion) {
   const rl = createInterface({ input, output });
 
@@ -32,7 +38,8 @@ async function promptForBumpType(currentVersion) {
   console.log("  1) patch  — bug fixes / small changes");
   console.log("  2) minor  — new features");
   console.log("  3) major  — breaking changes");
-  console.log("  4) skip   — push without bumping\n");
+  console.log("  4) skip   — push without bumping");
+  console.log("\nTip: set VERSION_BUMP=minor (or patch/major/skip) to choose without prompting.\n");
 
   const answer = await rl.question("Choose [1-4] (default: 1): ");
   rl.close();
@@ -48,6 +55,27 @@ async function promptForBumpType(currentVersion) {
   return bumpTypes[choice] ?? null;
 }
 
+async function resolveBumpType(currentVersion) {
+  const fromEnv = getBumpTypeFromEnv();
+  if (fromEnv) {
+    console.log(`Using VERSION_BUMP=${fromEnv}.`);
+    return fromEnv;
+  }
+
+  if (process.env.CI === "true" || process.env.CI === "1") {
+    console.log("Skipping version bump in CI.");
+    return "skip";
+  }
+
+  if (process.stdin.isTTY) {
+    return promptForBumpType(currentVersion);
+  }
+
+  console.log("Non-interactive push detected — auto-bumping patch.");
+  console.log("Set VERSION_BUMP=minor|major|patch|skip to override (e.g. in Cursor terminal).");
+  return "patch";
+}
+
 async function main() {
   const manual = process.argv.includes("--manual");
 
@@ -56,18 +84,15 @@ async function main() {
     return;
   }
 
-  if (!process.stdin.isTTY || process.env.CI) {
-    console.log("Skipping version bump (non-interactive environment).");
-    return;
-  }
-
-  if (isReleaseCommit()) {
+  if (!manual && isReleaseCommit()) {
     console.log("Latest commit is already a release bump — continuing push.");
     return;
   }
 
   const currentVersion = getCurrentVersion();
-  const bumpType = await promptForBumpType(currentVersion);
+  const bumpType = manual
+    ? await promptForBumpType(currentVersion)
+    : await resolveBumpType(currentVersion);
 
   if (!bumpType) {
     console.error("Invalid choice. Push aborted.");
@@ -81,6 +106,7 @@ async function main() {
 
   bumpVersion(bumpType);
   const nextVersion = getCurrentVersion();
+
   if (manual) {
     console.log(`\nBumped to v${nextVersion}.\n`);
     return;
