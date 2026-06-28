@@ -1,16 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Send, User, BrainCircuit } from "lucide-react";
+import { User, BrainCircuit } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
 import { SpendingRadar } from "./chat/spending-radar";
 import { TransactionSpotlightCard, type TransactionSpotlight } from "./chat/transaction-spotlight";
+import { ChatComposer } from "./chat/chat-composer";
 
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  images?: string[];
   spotlight?: TransactionSpotlight | null;
 };
 
@@ -30,15 +32,15 @@ function fetchSpendingAlerts() {
 
 export function ChatInterface() {
   const queryClient = useQueryClient();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "Hi there. I am your personal CFO agent. Ask me for today's CFO brief, safe spend number, debt move, or spending leaks. Tap a charge in Spending radar below, or ask me what a mystery transaction is.",
+        "Hi there. I am your personal CFO agent. Ask me for today's CFO brief, safe spend number, debt move, or spending leaks. Upload a receipt photo, use the mic instead of typing, or tap a charge in Spending radar below.",
     },
   ]);
   const [input, setInput] = useState("");
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
 
@@ -51,7 +53,6 @@ export function ChatInterface() {
     const label = alert.merchantName ?? alert.name;
     const prompt = `What is the ${label} transaction for ${alert.amount.toFixed(2)} on ${alert.date}? Is this something I should keep paying or cancel?`;
     setInput(prompt);
-    inputRef.current?.focus();
   };
 
   const handleDismissAlert = async (
@@ -103,13 +104,22 @@ export function ChatInterface() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
+  const sendMessage = async () => {
     const userMessage = input.trim();
+    const images = [...pendingImages];
+
+    if ((!userMessage && images.length === 0) || isLoading) return;
+
     setInput("");
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userMessage }];
+    setPendingImages([]);
+
+    const userChatMessage: ChatMessage = {
+      role: "user",
+      content: userMessage || "Please review the attached photo(s).",
+      images: images.length > 0 ? images : undefined,
+    };
+
+    const nextMessages: ChatMessage[] = [...messages, userChatMessage];
     setMessages(nextMessages);
     setIsLoading(true);
 
@@ -118,7 +128,11 @@ export function ChatInterface() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages.map(({ role, content }) => ({ role, content })),
+          messages: nextMessages.map(({ role, content, images: messageImages }) => ({
+            role,
+            content,
+            images: messageImages,
+          })),
         }),
       });
       const data = await res.json();
@@ -190,6 +204,19 @@ export function ChatInterface() {
                     : "bg-slate-50 text-slate-800 ring-1 ring-slate-200/60"
                 }`}
               >
+                {m.images?.length ? (
+                  <div className={`flex flex-wrap gap-2 ${m.content ? "mb-3" : ""}`}>
+                    {m.images.map((image, imageIndex) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={`${image.slice(0, 24)}-${imageIndex}`}
+                        src={image}
+                        alt={`Uploaded photo ${imageIndex + 1}`}
+                        className="max-h-40 rounded-xl object-cover ring-1 ring-white/20"
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
                 {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
               </div>
@@ -215,25 +242,17 @@ export function ChatInterface() {
           ) : null}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 border-t border-slate-100 bg-slate-50/50">
-          <div className="relative">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="What is SPSQP WORKSHOP? Should I cancel it?"
-              className="w-full pl-4 pr-12 py-3 app-input rounded-full text-sm"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 bg-teal-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-teal-700 transition-colors"
-            >
-              <Send size={14} className="ml-[-1px]" />
-            </button>
-          </div>
-        </form>
+        <ChatComposer
+          value={input}
+          onChange={setInput}
+          pendingImages={pendingImages}
+          onPendingImagesChange={setPendingImages}
+          onSubmit={() => {
+            void sendMessage();
+          }}
+          disabled={isLoading}
+          isLoading={isLoading}
+        />
       </div>
     </div>
   );

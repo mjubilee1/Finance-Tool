@@ -13,7 +13,18 @@ import type { ChatCompletion } from "openai/resources/chat/completions";
 type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
+  images?: string[];
 };
+
+type OpenAiChatMessage =
+  | { role: "system" | "assistant"; content: string }
+  | {
+      role: "user";
+      content: string | Array<
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } }
+      >;
+    };
 
 type ProjectionAccount = {
   plaidAccountId: string;
@@ -187,6 +198,34 @@ function incrementChatUsage(userId: string, dailyLimit: number) {
   return true;
 }
 
+function toOpenAiMessages(messages: ChatMessage[]): OpenAiChatMessage[] {
+  return messages.map((message) => {
+    if (message.role !== "user" || !message.images?.length) {
+      return { role: message.role, content: message.content };
+    }
+
+    const parts: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } }
+    > = [];
+
+    if (message.content.trim()) {
+      parts.push({ type: "text", text: message.content.trim() });
+    } else {
+      parts.push({
+        type: "text",
+        text: "Please review the attached photo(s) in the context of my finances and tell me what you see and what I should do.",
+      });
+    }
+
+    for (const image of message.images.slice(0, 2)) {
+      parts.push({ type: "image_url", image_url: { url: image, detail: "auto" } });
+    }
+
+    return { role: "user", content: parts };
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -205,7 +244,7 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     const recentMessages = (Array.isArray(messages) ? messages : [])
       .filter((message: ChatMessage) => message.role === "user" || message.role === "assistant")
-      .filter((message: ChatMessage) => message.content?.trim())
+      .filter((message: ChatMessage) => message.content?.trim() || message.images?.length)
       .slice(-6);
 
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
@@ -278,6 +317,7 @@ Crucially, look at Current Accounts, Financial Goals, memories, recurring obliga
 - Proactively look for opportunities to optimize their daily transaction costs to help them hit their specific, high-priority goals faster.
 - Do not recommend extra debt payments unless mortgage, upcoming bills, minimum payments, and emergency buffer appear covered.
 - If debt APR, credit limit, minimum payment, due date, or statement date is missing, say it is missing instead of inventing it.
+When the user uploads photo(s), read receipts, bills, bank notifications, credit card screenshots, or statements carefully. Extract amounts, merchants, due dates, and whether the charge looks expected, wasteful, or urgent. Tie what you see back to their goals and safe spend when relevant.
 
 MEMORIES:
 ${memories}
@@ -358,7 +398,7 @@ If the user is only asking a question and not teaching durable facts, return an 
       model: "gpt-5",
       messages: [
         { role: "system", content: systemPrompt },
-        ...recentMessages
+        ...toOpenAiMessages(recentMessages),
       ],
       response_format: { type: "json_object" },
       max_completion_tokens: 3000,
