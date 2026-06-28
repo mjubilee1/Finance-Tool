@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import { stdin as processStdin, stdout as processStdout } from "node:process";
 
 const RELEASE_COMMIT_RE = /^chore: release v\d+\.\d+\.\d+$/;
 const VALID_BUMP_TYPES = new Set(["patch", "minor", "major", "skip"]);
+const EXIT_BUMPED = 2;
 
 function getCurrentVersion() {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
@@ -42,28 +43,54 @@ function getBumpTypeFromEnv() {
   return VALID_BUMP_TYPES.has(value) ? value : null;
 }
 
-async function promptForBumpType(currentVersion) {
-  const rl = createInterface({ input, output });
+function getPromptStreams() {
+  if (processStdin.isTTY) {
+    return { input: processStdin, output: processStdout, ownsStreams: false };
+  }
 
-  console.log(`\nPush to main — bump version? (current: v${currentVersion})`);
-  console.log("  1) patch  — bug fixes / small changes");
-  console.log("  2) minor  — new features");
-  console.log("  3) major  — breaking changes");
-  console.log("  4) skip   — push without bumping");
-  console.log("\nTip: set VERSION_BUMP=minor (or patch/major/skip) to choose without prompting.\n");
+  if (existsSync("/dev/tty")) {
+    return {
+      input: createReadStream("/dev/tty"),
+      output: createWriteStream("/dev/tty"),
+      ownsStreams: true,
+    };
+  }
 
-  const answer = await rl.question("Choose [1-4] (default: 1): ");
-  rl.close();
+  return null;
+}
 
-  const choice = answer.trim() || "1";
-  const bumpTypes = {
-    1: "patch",
-    2: "minor",
-    3: "major",
-    4: "skip",
-  };
+async function promptForBumpType(currentVersion, streams = getPromptStreams()) {
+  if (!streams) {
+    return null;
+  }
 
-  return bumpTypes[choice] ?? null;
+  const rl = createInterface({ input: streams.input, output: streams.output });
+
+  try {
+    console.log(`\nPush to main — bump version? (current: v${currentVersion})`);
+    console.log("  1) patch  — bug fixes / small changes");
+    console.log("  2) minor  — new features");
+    console.log("  3) major  — breaking changes");
+    console.log("  4) skip   — push without bumping");
+    console.log("\nTip: set VERSION_BUMP=minor (or patch/major/skip) to choose without prompting.\n");
+
+    const answer = await rl.question("Choose [1-4] (default: 1): ");
+    const choice = answer.trim() || "1";
+    const bumpTypes = {
+      1: "patch",
+      2: "minor",
+      3: "major",
+      4: "skip",
+    };
+
+    return bumpTypes[choice] ?? null;
+  } finally {
+    rl.close();
+    if (streams.ownsStreams) {
+      streams.input.destroy();
+      streams.output.end();
+    }
+  }
 }
 
 async function resolveBumpType(currentVersion) {
@@ -78,12 +105,13 @@ async function resolveBumpType(currentVersion) {
     return "skip";
   }
 
-  if (process.stdin.isTTY) {
-    return promptForBumpType(currentVersion);
+  const prompted = await promptForBumpType(currentVersion);
+  if (prompted) {
+    return prompted;
   }
 
-  console.log("Non-interactive push detected — auto-bumping patch.");
-  console.log("Set VERSION_BUMP=minor|major|patch|skip to override (e.g. in Cursor terminal).");
+  console.log("No TTY available — auto-bumping patch.");
+  console.log("Set VERSION_BUMP=minor|major|patch|skip to override.");
   return "patch";
 }
 
@@ -134,10 +162,8 @@ async function main() {
     return;
   }
 
-  console.log(
-    `\nBumped to v${nextVersion}. A release commit was created — run git push again to include it.\n`,
-  );
-  process.exit(1);
+  console.log(`\nBumped to v${nextVersion}. Finishing push...\n`);
+  process.exit(EXIT_BUMPED);
 }
 
 main().catch((error) => {

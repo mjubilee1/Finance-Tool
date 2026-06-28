@@ -1,9 +1,21 @@
 #!/usr/bin/env sh
 
+branch_from_ref() {
+  printf "%s" "$1" | sed 's#^refs/heads/##'
+}
+
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$remote_ref" = "refs/heads/main" ]; then
     node scripts/bump-version.mjs
-    exit $?
+    code=$?
+
+    if [ "$code" -eq 2 ]; then
+      branch=$(branch_from_ref "$local_ref")
+      git push origin "$branch" --follow-tags
+      exit $?
+    fi
+
+    exit $code
   fi
 done
 
