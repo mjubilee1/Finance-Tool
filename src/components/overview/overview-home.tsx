@@ -20,6 +20,7 @@ type CfoBrief = {
   debtMove?: string;
   spendingWarning?: string;
   todaysMove?: string;
+  systemImpact?: string;
 };
 
 type RecommendedAction = {
@@ -56,10 +57,8 @@ type Props = {
   nextBriefLabel: string | null;
   refreshHours?: number;
   snapshots: Array<Record<string, unknown>>;
-  recurringReviews: RecurringReview[];
-  onTakeAction: (sub: RecurringReview) => void;
-  actionStatuses: Record<string, "idle" | "loading" | "sent">;
   onOpenChat: () => void;
+  onOpenRecurring?: () => void;
   priorityGoal?: {
     name: string;
     paceMessage: string;
@@ -81,16 +80,15 @@ export function OverviewHome({
   nextBriefLabel,
   refreshHours,
   snapshots,
-  recurringReviews,
-  onTakeAction,
-  actionStatuses,
   onOpenChat,
+  onOpenRecurring,
   priorityGoal,
   isBriefPending = false,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const cfoBrief = aiInsight.cfoBrief;
   const primaryRecommendedAction = aiInsight.recommendedActions?.[0];
+  const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
 
@@ -138,6 +136,11 @@ export function OverviewHome({
               {cfoBrief?.debtMove ?? primaryRecommendedAction?.reason}
             </p>
           )}
+          {cfoBrief?.systemImpact ? (
+            <p className="text-sm text-teal-100/90 mt-2 leading-relaxed border-t border-teal-500/30 pt-2">
+              <span className="font-semibold text-teal-50">System impact:</span> {cfoBrief.systemImpact}
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -259,47 +262,42 @@ export function OverviewHome({
 
           {recurringReviews.length > 0 && (
             <div className="app-card p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="bg-rose-50 p-2.5 rounded-xl ring-1 ring-rose-200/50">
-                  <span className="text-lg">✂️</span>
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-rose-50 p-2.5 rounded-xl ring-1 ring-rose-200/50">
+                    <span className="text-lg">✂️</span>
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-slate-900 text-lg">Recurring to review</h2>
+                    <p className="text-sm text-slate-500">
+                      {recurringReviews.length} repeating charge{recurringReviews.length === 1 ? "" : "s"} flagged by your CFO.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="font-semibold text-slate-900 text-lg">Subscriptions to review</h2>
-                  <p className="text-sm text-slate-500">Recurring charges flagged by your CFO.</p>
-                </div>
+                {onOpenRecurring ? (
+                  <button
+                    type="button"
+                    onClick={onOpenRecurring}
+                    className="text-sm font-semibold text-teal-700 hover:text-teal-800 transition shrink-0"
+                  >
+                    Open recurring →
+                  </button>
+                ) : null}
               </div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {recurringReviews.map((sub) => (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {recurringReviews.slice(0, 2).map((sub) => (
                   <div
                     key={sub.merchant}
-                    className="rounded-xl bg-rose-50/40 p-5 ring-1 ring-rose-200/50 flex flex-col justify-between"
+                    className="rounded-xl bg-rose-50/40 p-5 ring-1 ring-rose-200/50"
                   >
-                    <div>
-                      <div className="flex justify-between items-start mb-2 gap-2">
-                        <p className="font-semibold text-slate-900 truncate">{sub.merchant}</p>
-                        <p className="font-bold text-rose-700 tabular-nums shrink-0">
-                          {formatCurrency(sub.averageAmount)}
-                        </p>
-                      </div>
-                      <p className="app-label text-rose-500 mb-3">{sub.frequency}</p>
-                      <p className="text-sm text-slate-600 leading-relaxed">{sub.recommendation}</p>
+                    <div className="flex justify-between items-start mb-2 gap-2">
+                      <p className="font-semibold text-slate-900 truncate">{sub.merchant}</p>
+                      <p className="font-bold text-rose-700 tabular-nums shrink-0">
+                        {formatCurrency(sub.averageAmount)}
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onTakeAction(sub)}
-                      disabled={actionStatuses[sub.merchant] === "loading" || actionStatuses[sub.merchant] === "sent"}
-                      className={`mt-4 w-full text-sm font-semibold py-2 rounded-xl transition-colors ring-1 ${
-                        actionStatuses[sub.merchant] === "sent"
-                          ? "bg-teal-50 ring-teal-200/60 text-teal-700"
-                          : "bg-white ring-rose-200/60 text-rose-700 hover:bg-rose-50"
-                      }`}
-                    >
-                      {actionStatuses[sub.merchant] === "loading"
-                        ? "Sending..."
-                        : actionStatuses[sub.merchant] === "sent"
-                          ? "Reminder sent!"
-                          : "Take action"}
-                    </button>
+                    <p className="app-label text-rose-500 mb-2">{sub.frequency}</p>
+                    <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{sub.recommendation}</p>
                   </div>
                 ))}
               </div>

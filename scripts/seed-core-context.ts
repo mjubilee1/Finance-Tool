@@ -4,6 +4,43 @@ import { getEmbedding } from "../src/lib/openai";
 import { getPineconeIndex } from "../src/lib/pinecone";
 import crypto from "crypto";
 
+const shouldUpdate = process.argv.includes("--update");
+const pineconeEnabled =
+  process.env.ENABLE_PINECONE_MEMORY === "true" || process.env.ENABLE_PINECONE_MEMORY === "1";
+
+async function upsertPineconeRecord(params: {
+  userId: string;
+  vectorId: string;
+  embedding: number[];
+  content: string;
+  type: string;
+}) {
+  if (!pineconeEnabled) {
+    return false;
+  }
+
+  try {
+    const index = getPineconeIndex();
+    await index.upsert({
+      records: [{
+        id: params.vectorId,
+        values: params.embedding,
+        metadata: {
+          userId: params.userId,
+          content: params.content,
+          type: params.type,
+          createdAt: new Date().toISOString(),
+        },
+      }],
+    });
+    return true;
+  } catch (error) {
+    console.error("  -> Pinecone upsert failed, saved to Prisma only.");
+    console.error(error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
 const CORE_CONTEXTS = [
   {
     title: "Core Personality & Decision-Making",
@@ -60,6 +97,10 @@ const CORE_CONTEXTS = [
   {
     title: "Personal CFO Daily Brief Rules",
     content: `The AI should act as my personal financial CFO, not just a budgeting assistant. Every day it should answer: Am I financially safe today? How much can I safely spend today? What bills, mortgage, utilities, taxes, insurance, subscriptions, credit card minimums, or debt payments are coming up? Did income, rent, paycheck, Lyft income, refunds, or unusual transactions hit? Should I hold cash or attack debt? The output should use this format: CFO Brief, Status, Cash safety, Upcoming bills, Income expected, Safe spend today, Debt move, Spending warning, Today's move. Strict rules: Protect the mortgage first. Protect upcoming bills. Protect the emergency cash buffer. Cover all minimum payments before extra debt payments. Do not recommend dropping checking below the buffer. If tenant rent is late, cash is low, or a big bill is coming, switch to conservative mode and tell me to hold cash. If paycheck or rent hits and bills are covered, switch to attack mode and say how much extra can safely go to debt. Use avalanche by default, but consider utilization when a near-max card or utilization threshold matters for credit score and consolidation options. Only recommend consolidation when rate, fees, payment, and total cost are clearly better. Track spending categories that match my life: mortgage, tenant rent, paycheck, Lyft income, Lyft expenses, credit card minimums, extra debt payments, utilities, insurance, IRS payment, food convenience, groceries, protein and fitness food, subscriptions, house repairs, travel, and fun money.`
+  },
+  {
+    title: "Money As A Reinforcing System",
+    content: `Treat money as a tool I am hardening and putting together — not just something to cut. Do not only say "you can save money." Assess how each decision affects the bigger picture and where freed cash should flow next. Every recommendation should explain system impact: does it protect core stability (mortgage, bills, minimums, buffer), fund growth (debt payoff, reserves, next property), maintain a real need, or leak strength? Show compounding when useful: less daily leakage → more debt paydown → lower utilization → better credit → cheaper future borrowing → more real estate optionality. When reviewing transactions or recurring charges, connect them to the whole machine: tenant income stabilizing the mortgage, paycheck covering fixed costs, Lyft profit after rental/fees, credit card interest dragging velocity, reserves enabling the next Baltimore/rental move. Prefer moves that create positive feedback loops. When goals compete, say which choice hardens the floor vs which bets on upside without a stable base. Income growth matters as much as expense cuts when the system needs more inflow. The mission is to assemble money so the pieces reinforce each other — stability first, then acceleration into wealth-building.`
   }
 ];
 
@@ -72,33 +113,58 @@ async function main() {
   }
 
   const userId = user.id;
-  const index = getPineconeIndex();
 
   console.log(`Seeding core context for user: ${userId}`);
+  if (shouldUpdate) {
+    console.log("Update mode: refreshing existing core context entries.");
+  }
+  if (!pineconeEnabled) {
+    console.log("Pinecone disabled — saving to database only.");
+  }
 
   for (const context of CORE_CONTEXTS) {
     console.log(`Processing: ${context.title}`);
     
-    // Check if it already exists to avoid duplicates
     const existing = await prisma.financialMemory.findFirst({
       where: {
         userId,
         title: context.title,
-        type: "CORE_CONTEXT"
-      }
+        type: "CORE_CONTEXT",
+      },
     });
 
-    if (existing) {
-      console.log(`  -> Already exists, skipping.`);
+    if (existing && !shouldUpdate) {
+      console.log("  -> Already exists, skipping.");
       continue;
     }
 
-    const vectorId = crypto.randomUUID();
-    const embedding = await getEmbedding(context.content);
-    
-    await index.upsert([
-      { id: vectorId, values: embedding, metadata: { userId, content: context.content, type: "CORE_CONTEXT", createdAt: new Date().toISOString() } }
-    ] as any);
+    const embedding = pineconeEnabled ? await getEmbedding(context.content) : null;
+    let vectorId: string | null = existing?.pineconeVectorId ?? null;
+
+    if (embedding && pineconeEnabled) {
+      vectorId = vectorId ?? crypto.randomUUID();
+      await upsertPineconeRecord({
+        userId,
+        vectorId,
+        embedding,
+        content: context.content,
+        type: "CORE_CONTEXT",
+      });
+    }
+
+    if (existing) {
+      await prisma.financialMemory.update({
+        where: { id: existing.id },
+        data: {
+          content: context.content,
+          importanceScore: 10,
+          source: "User Input",
+          pineconeVectorId: vectorId,
+        },
+      });
+      console.log("  -> Updated in Prisma.");
+      continue;
+    }
 
     await prisma.financialMemory.create({
       data: {
@@ -109,10 +175,10 @@ async function main() {
         source: "User Input",
         importanceScore: 10,
         pineconeVectorId: vectorId,
-      }
+      },
     });
 
-    console.log(`  -> Saved to Prisma and Pinecone.`);
+    console.log("  -> Saved to Prisma.");
   }
 
   console.log("Done seeding core context.");

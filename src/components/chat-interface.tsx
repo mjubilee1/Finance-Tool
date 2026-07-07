@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { User, BrainCircuit } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
@@ -30,13 +30,19 @@ function fetchSpendingAlerts() {
   });
 }
 
-export function ChatInterface() {
+export function ChatInterface({
+  seedPrompt = null,
+  onSeedPromptUsed,
+}: {
+  seedPrompt?: string | null;
+  onSeedPromptUsed?: () => void;
+}) {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "Hi there. I am your personal CFO agent. Ask me for today's CFO brief, safe spend number, debt move, or spending leaks. Upload a receipt photo, use the mic instead of typing, or tap a charge in Spending radar below.",
+        "Hi there. I am your personal CFO agent. I connect daily decisions to your bigger financial system — not just savings tips. Ask about today's brief, safe spend, a charge, or upload a receipt. Tap Spending radar below or use the mic instead of typing.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -48,6 +54,12 @@ export function ChatInterface() {
     queryKey: ["spending-alerts"],
     queryFn: fetchSpendingAlerts,
   });
+
+  useEffect(() => {
+    if (!seedPrompt?.trim()) return;
+    setInput(seedPrompt.trim());
+    onSeedPromptUsed?.();
+  }, [seedPrompt, onSeedPromptUsed]);
 
   const handleAskAboutAlert = (alert: SpendingAlert) => {
     const label = alert.merchantName ?? alert.name;

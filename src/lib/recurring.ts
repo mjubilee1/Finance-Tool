@@ -1,5 +1,27 @@
 import { prisma } from "./prisma";
 
+export function normalizeMerchantName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[0-9]/g, "")
+    .replace(/[^a-z\s]/g, "")
+    .trim();
+}
+
+export function estimateMonthlyAmount(averageAmount: number, frequency: string) {
+  const abs = Math.abs(averageAmount);
+  switch (frequency) {
+    case "weekly":
+      return abs * 4.33;
+    case "bi-weekly":
+      return abs * 2.17;
+    case "monthly":
+      return abs;
+    default:
+      return abs;
+  }
+}
+
 export async function detectRecurringPatterns(userId: string) {
   // Fetch user's transactions from the past 90 days to find patterns
   const ninetyDaysAgo = new Date();
@@ -17,10 +39,7 @@ export async function detectRecurringPatterns(userId: string) {
   const groups: Record<string, typeof transactions> = {};
 
   for (const t of transactions) {
-    const name = (t.merchantName || t.name).toLowerCase()
-      .replace(/[0-9]/g, "") // remove numbers (dates/ids)
-      .replace(/[^a-z\s]/g, "") // remove special chars
-      .trim();
+    const name = normalizeMerchantName(t.merchantName || t.name);
     
     if (name.length < 3) continue;
 

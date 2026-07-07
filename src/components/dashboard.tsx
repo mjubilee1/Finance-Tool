@@ -2,7 +2,7 @@
 
 import { formatCurrency } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, RefreshCw, RotateCcw, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, RefreshCw, RotateCcw, Repeat, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -24,9 +24,10 @@ import {
   type BalanceRefreshMeta,
 } from "@/lib/plaid-balances";
 import { Target } from "lucide-react";
+import { RecurringView } from "./recurring/recurring-view";
 import { AppVersion } from "./app-version";
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'projections' | 'goals';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals';
 
 type DashboardAccount = {
   id: string;
@@ -78,6 +79,7 @@ type CfoBrief = {
   debtMove?: string;
   spendingWarning?: string;
   todaysMove?: string;
+  systemImpact?: string;
 };
 
 type DashboardInsight = {
@@ -184,38 +186,15 @@ export function Dashboard() {
   const [sortOrder, setSortOrder] = useState<"date" | "amount_desc" | "amount_asc">("amount_desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [actionStatuses, setActionStatuses] = useState<Record<string, 'idle' | 'loading' | 'sent'>>({});
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [syncFeedback, setSyncFeedback] = useState<{ tone: SyncFeedbackTone; message: string } | null>(null);
+  const [chatSeedPrompt, setChatSeedPrompt] = useState<string | null>(null);
   const itemsPerPage = 10;
-
-  const handleTakeAction = async (sub: RecurringReview) => {
-    setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'loading' }));
-    try {
-      const res = await fetch("/api/action/remind", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          merchant: sub.merchant,
-          amount: sub.averageAmount,
-          frequency: sub.frequency
-        })
-      });
-      if (res.ok) {
-        setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'sent' }));
-      } else {
-        setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'idle' }));
-        alert("Failed to send reminder.");
-      }
-    } catch {
-      setActionStatuses(prev => ({ ...prev, [sub.merchant]: 'idle' }));
-      alert("Failed to send reminder.");
-    }
-  };
 
   const handleRefreshData = async () => {
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     await queryClient.invalidateQueries({ queryKey: ["spending-alerts"] });
+    await queryClient.invalidateQueries({ queryKey: ["recurring"] });
     await refetch();
   };
 
@@ -323,7 +302,6 @@ export function Dashboard() {
       : undefined,
   };
   const cfoBrief = aiInsight?.cfoBrief;
-  const recurringReviews = aiInsight?.recurringTransactionsToReview ?? [];
   const briefRefreshInfo = briefRefresh;
   const briefUpdatedLabel = briefRefreshInfo?.lastUpdatedAt
     ? new Date(briefRefreshInfo.lastUpdatedAt).toLocaleString([], {
@@ -521,6 +499,7 @@ export function Dashboard() {
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
           {renderNavItem("transactions", Receipt, "Transactions")}
+          {renderNavItem("recurring", Repeat, "Recurring")}
         </nav>
 
         <div className="p-4 border-t border-slate-200/80">
@@ -625,7 +604,10 @@ export function Dashboard() {
                   <p className="text-slate-500 mt-1">Ask what to do today, whether to hold cash, or which debt to attack next.</p>
                 </div>
                 <div className="flex-1 h-full min-h-[640px]">
-                  <ChatInterface />
+                  <ChatInterface
+                    seedPrompt={chatSeedPrompt}
+                    onSeedPromptUsed={() => setChatSeedPrompt(null)}
+                  />
                 </div>
               </div>
             )}
@@ -648,10 +630,8 @@ export function Dashboard() {
                   nextBriefLabel={nextBriefLabel}
                   refreshHours={briefRefreshInfo?.refreshHours}
                   snapshots={snapshots}
-                  recurringReviews={recurringReviews}
-                  onTakeAction={handleTakeAction}
-                  actionStatuses={actionStatuses}
                   onOpenChat={() => setActiveTab('chat')}
+                  onOpenRecurring={() => setActiveTab('recurring')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                 />
@@ -683,6 +663,22 @@ export function Dashboard() {
                   setSelectedAccountId(plaidAccountId);
                   setActiveTab('transactions');
                   setCurrentPage(1);
+                }}
+              />
+            )}
+
+            {/* View: RECURRING */}
+            {activeTab === 'recurring' && (
+              <RecurringView
+                onAskCfo={(prompt) => {
+                  setChatSeedPrompt(prompt);
+                  setActiveTab("chat");
+                }}
+                onViewTransactions={(merchant) => {
+                  setSearchQuery(merchant);
+                  setSelectedAccountId(null);
+                  setCurrentPage(1);
+                  setActiveTab("transactions");
                 }}
               />
             )}

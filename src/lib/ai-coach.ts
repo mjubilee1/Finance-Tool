@@ -231,6 +231,7 @@ export async function generateDailyInsight(userId: string) {
 ${CFO_AGENT_INSTRUCTIONS}
 
 Analyze the user's data and provide JSON. This is the daily CFO brief, so lead with concrete next actions and only use numbers supported by the supplied data.
+Assess impact on the bigger financial system — not just savings tips. Explain how today's move hardens stability or accelerates growth (debt, credit, reserves, rental readiness).
 Crucially, look at Current Accounts, Financial Goals, recent income, recurring obligations, debt accounts, and spending patterns. Look for opportunities to optimize daily transaction costs while protecting mortgage, minimum payments, upcoming bills, and cash buffer first.
 
 MEMORIES:
@@ -329,9 +330,10 @@ Generate a JSON response exactly matching this structure:
     "safeSpendTodayReason": "...",
     "debtMove": "...",
     "spendingWarning": "...",
-    "todaysMove": "..."
+    "todaysMove": "...",
+    "systemImpact": "..."
   },
-  "dailySummary": "...", // Include insights balancing their cashflow, debt, and progress towards goals
+  "dailySummary": "...", // Connect cash flow, debt, and goals to the bigger reinforcing system — not just what happened
   "financialHealthScore": 72,
   "scoreReasoning": "...",
   "spendingTrend": {
@@ -347,7 +349,8 @@ Generate a JSON response exactly matching this structure:
       "title": "...",
       "estimatedSavings": 60,
       "difficulty": "easy",
-      "reason": "..."
+      "reason": "...", // include where freed money should flow next and what part of the system it strengthens
+      "systemImpact": "..." // one sentence: protects core, funds growth, or stops a leak in the reinforcing loop
     }
   ],
   "recurringTransactionsToReview": [
@@ -355,7 +358,7 @@ Generate a JSON response exactly matching this structure:
       "merchant": "...",
       "averageAmount": 15.99,
       "frequency": "monthly",
-      "recommendation": "..."
+      "recommendation": "...", // include system impact: keep, cut, or renegotiate — and what that does for the bigger picture
     }
   ],
   "possibleTenantPayments": [

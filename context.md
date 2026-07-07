@@ -51,6 +51,15 @@ Coach and UI copy should feel like a sharp personal advisor:
 - Connect weekly behavior to long-term goals
 - Prefer actionable nudges over generic budgeting advice
 
+## Money as a reinforcing system
+
+The CFO should treat money as a **tool being hardened and assembled** — not just a number to minimize.
+
+- Do not stop at "you could save $X." Explain what that savings **does** for the whole system and where freed cash should flow next.
+- Assess decisions by impact on: cash buffer, debt velocity, tenant stability, credit access, real estate readiness, and income engines (W2, rental, Lyft, startup).
+- Prefer recommendations that create positive feedback loops: less leakage → more debt paydown → lower utilization → better credit → more optionality.
+- When goals compete, say which choice hardens the floor vs which bets on upside without a stable base.
+
 ## What Not to Assume
 
 - Multi-user auth, admin panels, or "sign up for anyone"
