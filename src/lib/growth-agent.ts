@@ -101,6 +101,10 @@ Active-context rules:
 - Default discretionary target ~$25 most days; celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
 - Family/personal contacts can exist unlabeled or as "family" without notes — do not nag for notes or treat them as compounding bottlenecks. Prioritize notes on mentors, founders, peers, investors, dating-with-intent.
+- Mix money + life: career/promotion, fitness/body, startup leverage, relationships, and cash are one reinforcing system — not a finance-only coach.
+- joyOptions are a preference menu only. Never prescribe a specific joy outing as today's required block just because it appears in the profile.
+- When the user shares screenshots (gym schedule, calendar, plans), treat extracted facts as durable context for recommendations — prefer schedule-feasible moves.
+- Home base is Oxon Hill / DMV. Suggest nearby leisure (National Harbor, local PG/DC) for breaks after logged effort; save longer trips for weekends or open days. Rest and local enjoyment are allowed when intentional.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block instead of low-ROI Lyft")
@@ -214,12 +218,22 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
   const contactsNeedingAttention = contacts
     .map((c) => {
       const days = daysBetween(c.lastContactDate, today);
-      const fading =
-        c.status === "fading" ||
-        c.status === "dormant" ||
-        days === null ||
-        days >= 21;
-      return fading
+      const type = (c.relationshipType ?? "").toLowerCase();
+      // Mass imports often have no lastContactDate — that is "not tracked yet", not "overdue".
+      // Only nudge follow-ups for people you're actively compounding with.
+      const leverageType = [
+        "peer",
+        "social",
+        "dating",
+        "mentor",
+        "founder",
+        "investor",
+        "colleague",
+      ].includes(type);
+      const overdue = days !== null && days >= 21;
+      const fadingStatus = c.status === "fading" || c.status === "dormant";
+      const needsAttention = fadingStatus || (leverageType && overdue);
+      return needsAttention
         ? {
             id: c.id,
             name: c.name,
@@ -268,7 +282,17 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     social: clamp(
       scoreFromActivities("social", activities, fourteenDaysAgo) -
         Math.min(20, contactsNeedingAttention.length * 4) +
-        Math.min(15, contacts.filter((c) => c.status === "active").length * 2),
+        Math.min(
+          15,
+          contacts.filter((c) => {
+            const type = (c.relationshipType ?? "").toLowerCase();
+            if (["family", "personal", "unlabeled", ""].includes(type)) {
+              // Phone-book imports don't count as compounding network yet
+              return contactHasNotes(c);
+            }
+            return c.status === "active";
+          }).length * 3,
+        ),
     ),
     fitness: scoreFromActivities("fitness", activities, fourteenDaysAgo),
     personal: scoreFromActivities("personal", activities, fourteenDaysAgo),
@@ -464,7 +488,7 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 }
 
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
-  const [memories, goals, contacts, recentActivities, snapshots] = await Promise.all([
+  const [memories, goals, contacts, recentActivities, snapshots, profile] = await Promise.all([
     prisma.financialMemory.findMany({
       where: { userId },
       orderBy: { importanceScore: "desc" },
@@ -491,9 +515,11 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       orderBy: { date: "desc" },
       take: 14,
     }),
+    prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
   ]);
 
   return {
+    lifeLeverageProfile: profile,
     memories: memories.map((m) => ({ title: m.title, content: m.content, type: m.type })),
     goals: goals.map((g) => ({
       name: g.name,
@@ -1005,7 +1031,7 @@ export async function getGrowthDashboard(userId: string) {
   const today = metrics.date;
   const weekStart = weekStartIso();
 
-  const [recommendation, weeklyReview, opportunities, activities, contacts, snapshots] =
+  const [recommendation, weeklyReview, opportunities, activities, contacts, snapshots, profile] =
     await Promise.all([
       prisma.growthRecommendation.findUnique({
         where: { userId_date: { userId, date: today } },
@@ -1039,10 +1065,12 @@ export async function getGrowthDashboard(userId: string) {
         orderBy: { date: "asc" },
         take: 30,
       }),
+      prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
     ]);
 
   return {
     metrics,
+    lifeLeverageProfile: profile,
     recommendation,
     weeklyReview,
     opportunities,

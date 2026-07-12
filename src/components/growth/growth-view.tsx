@@ -66,6 +66,17 @@ type GrowthDashboard = {
       creditDebt: number;
     };
   };
+  lifeLeverageProfile: {
+    promotionTarget: string | null;
+    promotionDeadline: string | null;
+    promotionUpsideAnnual: number | null;
+    currentWeight: number | null;
+    targetWeight: number | null;
+    fitnessGoal: string | null;
+    lyftHourlyNet: number | null;
+    joyOptions: string[];
+    notes: string | null;
+  } | null;
   recommendation: {
     id: string;
     action: string;
@@ -136,6 +147,22 @@ type GrowthDashboard = {
 
 const DOMAINS = ["career", "startup", "financial", "social", "fitness", "personal"] as const;
 
+const ACTIVITY_CATEGORIES_BY_DOMAIN: Record<(typeof DOMAINS)[number], string[]> = {
+  career: ["project", "deep_work", "meeting", "learning", "leadership", "promotion", "other"],
+  startup: ["build", "ship", "customer", "learning", "positioning", "other"],
+  financial: ["debt", "budget", "admin", "investing", "lyft", "other"],
+  social: ["networking", "follow_up", "dating", "family", "event", "other"],
+  fitness: ["gym", "run", "walk", "sports", "recovery", "other"],
+  personal: ["errands", "rest", "joy", "chores", "planning", "other"],
+};
+
+function categoriesForDomain(domain: string) {
+  if ((DOMAINS as readonly string[]).includes(domain)) {
+    return ACTIVITY_CATEGORIES_BY_DOMAIN[domain as (typeof DOMAINS)[number]];
+  }
+  return ACTIVITY_CATEGORIES_BY_DOMAIN.personal;
+}
+
 const CONTACT_TYPE_OPTIONS = [
   "unlabeled",
   "family",
@@ -188,6 +215,160 @@ function buildWeeklyTldr(review: NonNullable<GrowthDashboard["weeklyReview"]>): 
   };
 }
 
+type TodayPlanBlock = {
+  key: string;
+  label: string;
+  time: string;
+  why: string;
+  domain: string;
+  category: string;
+  leverage: "immediate_income" | "long_term_leverage";
+  minutes: number;
+  impact: number;
+  tone: "teal" | "sky" | "amber" | "slate";
+};
+
+type DayShape = "office" | "wfh" | "weekend";
+
+function dayShapeFor(weekday: number): DayShape {
+  // Luxon: 1=Mon … 7=Sun. Real rhythm: Mon–Wed office, Thu–Fri WFH, Sat–Sun open.
+  if (weekday >= 1 && weekday <= 3) return "office";
+  if (weekday === 4 || weekday === 5) return "wfh";
+  return "weekend";
+}
+
+function buildTodayPlan(
+  metrics: GrowthDashboard["metrics"],
+  recommendation: GrowthDashboard["recommendation"],
+  profile: GrowthDashboard["lifeLeverageProfile"],
+): { dayLabel: string; summary: string; blocks: TodayPlanBlock[] } {
+  const now = DateTime.local();
+  const shape = dayShapeFor(now.weekday);
+  const isWeekend = shape === "weekend";
+  const isOffice = shape === "office";
+  const leverageMinutes = Math.min(
+    isOffice ? 60 : isWeekend ? 90 : 75,
+    Math.max(45, recommendation?.timeRequiredMinutes ?? (isOffice ? 45 : 60)),
+  );
+  const cashTight = metrics.financialSignals.safeSpendToday < 25 || metrics.financialSignals.cashAvailable < 1000;
+  const socialThin = metrics.domains.social < 55 || metrics.activityCounts.social === 0;
+  const promotionUpside = profile?.promotionUpsideAnnual ?? 0;
+  const lyftHourlyNet = profile?.lyftHourlyNet ?? 20;
+  const promotionDeadline = profile?.promotionDeadline
+    ? DateTime.fromISO(profile.promotionDeadline)
+    : null;
+  const promotionSoon = promotionDeadline?.isValid
+    ? promotionDeadline.diff(now, "days").days <= 60
+    : Boolean(profile?.promotionTarget);
+  const leverageLabel = promotionSoon
+    ? isOffice
+      ? "Promotion desk block"
+      : "Promotion project block"
+    : recommendation?.domain === "social" || socialThin
+      ? isOffice
+        ? "Network / async outreach"
+        : "Network / startup leverage"
+      : isOffice
+        ? "Desk leverage block"
+        : "Startup leverage";
+  const leverageWhy = promotionSoon
+    ? `${profile?.promotionTarget ?? "Promotion work"} could add ${
+        promotionUpside > 0 ? formatCurrency(promotionUpside) : "meaningful salary"
+      }/yr — protect this before chasing ${formatCurrency(lyftHourlyNet)}/hr.${
+        isOffice ? " Keep it desk-compatible during office hours." : ""
+      }`
+    : firstSentence(recommendation?.action, 120) ??
+      (isOffice
+        ? "Desk-compatible ship, outreach, or learning that compounds beyond today's cash."
+        : "Ship, outreach, or learn something that can compound beyond today's cash.");
+  // joyOptions are a preference menu — never auto-assign one as today's title.
+  const joyMenu = (profile?.joyOptions ?? []).filter(Boolean).slice(0, 3);
+  const joyMenuHint =
+    joyMenu.length > 0 ? ` Options when it fits: ${joyMenu.join(", ")}.` : "";
+  const joyLabel = isWeekend
+    ? "Intentional joy block"
+    : isOffice
+      ? "Small evening joy"
+      : "Short joy reset";
+  const joyTime = isWeekend ? "2-4 hr cap" : isOffice ? "20-40 min" : "30-60 min";
+  const joyMinutes = isWeekend ? 150 : isOffice ? 30 : 45;
+  const joyWhy = cashTight
+    ? `Pick a low-cost version so enjoyment doesn't create Monday pressure.${joyMenuHint}`
+    : isWeekend
+      ? `Enjoyment is allowed when chosen on purpose and capped.${joyMenuHint}`
+      : isOffice
+        ? "Office day — joy stays short and evening-sized, not a weekend outing."
+        : "WFH day — protect deep work first; joy stays capped around the job day.";
+  const lyftWhy = cashTight
+    ? isOffice
+      ? "Morning Lyft is already in the rhythm; add evening only if the weekly fee still needs covering."
+      : "Use Lyft to reduce cash pressure, but keep one leverage block protected."
+    : isOffice
+      ? `Morning Lyft is already baked in — evening only if needed; ~${formatCurrency(lyftHourlyNet)}/hr net.`
+      : `Only drive after higher-leverage blocks; estimate ${formatCurrency(lyftHourlyNet)}/hr net.`;
+  const summary =
+    shape === "weekend"
+      ? "Protect body, one leverage block, and intentional joy. Lyft fills cash gaps, not the whole day."
+      : shape === "office"
+        ? "Office day — protect a desk leverage block around work. Joy stays small; Lyft is morning/evening only."
+        : "WFH day — protect a deeper leverage block, keep joy capped, and don't let Lyft eat the deep work.";
+
+  return {
+    dayLabel: now.toFormat("cccc"),
+    summary,
+    blocks: [
+      {
+        key: "gym",
+        label: profile?.fitnessGoal ? "Gym / body goal" : "Gym / body reset",
+        time: "45-75 min",
+        why: profile?.fitnessGoal ?? "Keeps tomorrow's work energy from borrowing against today.",
+        domain: "fitness",
+        category: "gym",
+        leverage: "long_term_leverage",
+        minutes: 60,
+        impact: 7,
+        tone: "teal",
+      },
+      {
+        key: "leverage",
+        label: leverageLabel,
+        time: `${leverageMinutes} min`,
+        why: leverageWhy,
+        domain: promotionSoon ? "career" : recommendation?.domain ?? (socialThin ? "social" : "startup"),
+        category: promotionSoon ? "promotion" : recommendation?.domain === "social" || socialThin ? "networking" : "build",
+        leverage: "long_term_leverage",
+        minutes: leverageMinutes,
+        impact: 8,
+        tone: "sky",
+      },
+      {
+        key: "joy",
+        label: joyLabel,
+        time: joyTime,
+        why: joyWhy,
+        domain: "personal",
+        category: "joy",
+        leverage: "long_term_leverage",
+        minutes: joyMinutes,
+        impact: 6,
+        tone: "amber",
+      },
+      {
+        key: "lyft",
+        label: cashTight ? "Lyft cash block" : isOffice ? "Optional evening Lyft" : "Optional Lyft",
+        time: cashTight ? (isOffice ? "60-90 min evening" : "2-3 hr") : isOffice ? "60-90 min evening" : "60-90 min",
+        why: lyftWhy,
+        domain: "financial",
+        category: "lyft",
+        leverage: "immediate_income",
+        minutes: cashTight ? (isOffice ? 75 : 150) : 75,
+        impact: cashTight ? 7 : 4,
+        tone: "slate",
+      },
+    ],
+  };
+}
+
 export function GrowthView() {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -202,10 +383,11 @@ export function GrowthView() {
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [showWeeklyDetails, setShowWeeklyDetails] = useState(false);
   const [showMoveDetails, setShowMoveDetails] = useState(false);
+  const [showProfileForm, setShowProfileForm] = useState(false);
   const [activityForm, setActivityForm] = useState({
     date: DateTime.local().toISODate() ?? "",
-    domain: "startup",
-    category: "build",
+    domain: "career",
+    category: "project",
     title: "",
     leverage: "long_term_leverage",
     minutesSpent: "60",
@@ -220,6 +402,17 @@ export function GrowthView() {
     notes: "",
     suggestedNextAction: "",
     status: "active",
+  });
+  const [profileForm, setProfileForm] = useState({
+    promotionTarget: "",
+    promotionDeadline: "",
+    promotionUpsideAnnual: "",
+    currentWeight: "",
+    targetWeight: "",
+    fitnessGoal: "",
+    lyftHourlyNet: "20",
+    joyOptions: "National Harbor walk, local ice cream, DC hop",
+    notes: "",
   });
 
   const { data, isLoading, isFetching, error } = useQuery({
@@ -280,6 +473,42 @@ export function GrowthView() {
         body: JSON.stringify({ force }),
       });
       invalidate();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const openProfileForm = () => {
+    const profile = data?.lifeLeverageProfile;
+    setProfileForm({
+      promotionTarget: profile?.promotionTarget ?? "Promotion by end of August",
+      promotionDeadline: profile?.promotionDeadline ?? "",
+      promotionUpsideAnnual: profile?.promotionUpsideAnnual?.toString() ?? "20000",
+      currentWeight: profile?.currentWeight?.toString() ?? "",
+      targetWeight: profile?.targetWeight?.toString() ?? "",
+      fitnessGoal: profile?.fitnessGoal ?? "Gym + cardio to protect energy and body goals",
+      lyftHourlyNet: profile?.lyftHourlyNet?.toString() ?? "20",
+      joyOptions: profile?.joyOptions?.length
+        ? profile.joyOptions.join(", ")
+        : "National Harbor walk, local ice cream, DC hop",
+      notes: profile?.notes ?? "",
+    });
+    setShowProfileForm((v) => !v);
+  };
+
+  const saveLifeLeverageProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy("profile");
+    try {
+      const res = await fetch("/api/growth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileForm),
+      });
+      if (res.ok) {
+        setShowProfileForm(false);
+        invalidate();
+      }
     } finally {
       setBusy(null);
     }
@@ -356,6 +585,29 @@ export function GrowthView() {
         setActivityForm((prev) => ({ ...prev, title: "", notes: "" }));
         invalidate();
       }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const logTodayPlanBlock = async (block: TodayPlanBlock) => {
+    setBusy(`today-plan-${block.key}`);
+    try {
+      const res = await fetch("/api/growth/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: DateTime.local().toISODate() ?? "",
+          domain: block.domain,
+          category: block.category,
+          title: block.label,
+          leverage: block.leverage,
+          minutesSpent: block.minutes,
+          impactScore: block.impact,
+          notes: block.why,
+        }),
+      });
+      if (res.ok) invalidate();
     } finally {
       setBusy(null);
     }
@@ -483,6 +735,7 @@ export function GrowthView() {
     score: Math.round(s.compoundingScore),
   }));
   const weeklyTldr = weeklyReview ? buildWeeklyTldr(weeklyReview) : null;
+  const todayPlan = buildTodayPlan(metrics, recommendation, data.lifeLeverageProfile);
 
   return (
     <div className="space-y-6 min-w-0 w-full max-w-full">
@@ -558,6 +811,214 @@ export function GrowthView() {
           <p className="text-sm text-slate-800 leading-relaxed break-words">
             {metrics.bottlenecks[0] ?? "No major bottleneck detected — keep compounding."}
           </p>
+        </div>
+      </div>
+
+      <div className="app-card p-5 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <p className="app-label mb-1">Life leverage profile</p>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Teach the app your real tradeoffs
+            </h2>
+            <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+              Promotion upside, Lyft hourly value, body goal, and joy defaults make the planner less generic.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openProfileForm}
+            className="text-xs font-semibold text-teal-700 shrink-0"
+          >
+            {showProfileForm ? "Close" : data.lifeLeverageProfile ? "Edit profile" : "Set up"}
+          </button>
+        </div>
+
+        {data.lifeLeverageProfile && !showProfileForm ? (
+          <div className="mt-4 grid sm:grid-cols-4 gap-2 text-xs">
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
+              <p className="app-label">Career</p>
+              <p className="font-semibold text-slate-900">
+                {data.lifeLeverageProfile.promotionTarget ?? "Not set"}
+              </p>
+              {data.lifeLeverageProfile.promotionUpsideAnnual ? (
+                <p className="text-slate-500 mt-1">
+                  +{formatCurrency(data.lifeLeverageProfile.promotionUpsideAnnual)}/yr potential
+                </p>
+              ) : null}
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
+              <p className="app-label">Lyft</p>
+              <p className="font-semibold text-slate-900">
+                ~{formatCurrency(data.lifeLeverageProfile.lyftHourlyNet ?? 20)}/hr net
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
+              <p className="app-label">Body</p>
+              <p className="font-semibold text-slate-900">
+                {data.lifeLeverageProfile.fitnessGoal ?? "Not set"}
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
+              <p className="app-label">Joy</p>
+              <p className="font-semibold text-slate-900">
+                {data.lifeLeverageProfile.joyOptions?.slice(0, 2).join(", ") || "Not set"}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {showProfileForm ? (
+          <form onSubmit={saveLifeLeverageProfile} className="mt-4 grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="app-label block mb-1.5">Career leverage target</label>
+              <input
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.promotionTarget}
+                onChange={(e) => setProfileForm({ ...profileForm, promotionTarget: e.target.value })}
+                placeholder="Promotion by end of August"
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1.5">Target date</label>
+              <input
+                type="date"
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.promotionDeadline}
+                onChange={(e) => setProfileForm({ ...profileForm, promotionDeadline: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1.5">Annual upside ($)</label>
+              <input
+                type="number"
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.promotionUpsideAnnual}
+                onChange={(e) =>
+                  setProfileForm({ ...profileForm, promotionUpsideAnnual: e.target.value })
+                }
+                placeholder="20000"
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1.5">Lyft net per hour ($)</label>
+              <input
+                type="number"
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.lyftHourlyNet}
+                onChange={(e) => setProfileForm({ ...profileForm, lyftHourlyNet: e.target.value })}
+                placeholder="20"
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1.5">Current weight</label>
+              <input
+                type="number"
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.currentWeight}
+                onChange={(e) => setProfileForm({ ...profileForm, currentWeight: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1.5">Target weight</label>
+              <input
+                type="number"
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.targetWeight}
+                onChange={(e) => setProfileForm({ ...profileForm, targetWeight: e.target.value })}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="app-label block mb-1.5">Fitness goal</label>
+              <input
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.fitnessGoal}
+                onChange={(e) => setProfileForm({ ...profileForm, fitnessGoal: e.target.value })}
+                placeholder="Cardio 3x/week, cut weight, build energy"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="app-label block mb-1.5">Joy options</label>
+              <input
+                className="app-input w-full px-3 py-2 text-sm"
+                value={profileForm.joyOptions}
+                onChange={(e) => setProfileForm({ ...profileForm, joyOptions: e.target.value })}
+                placeholder="National Harbor walk, local ice cream, DC hop"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="app-label block mb-1.5">Extra context</label>
+              <textarea
+                className="app-input w-full px-3 py-2 text-sm min-h-[72px]"
+                value={profileForm.notes}
+                onChange={(e) => setProfileForm({ ...profileForm, notes: e.target.value })}
+                placeholder="Anything the app should remember when choosing where your time goes."
+              />
+            </div>
+            <div className="sm:col-span-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={busy === "profile"}
+                className="app-btn-primary px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {busy === "profile" ? "Saving..." : "Save leverage profile"}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </div>
+
+      <div className="app-card p-5 min-w-0 ring-1 ring-teal-100/80">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div>
+            <p className="app-label mb-1">Today planner</p>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {todayPlan.dayLabel} life allocation
+            </h2>
+            <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+              {todayPlan.summary}
+            </p>
+          </div>
+          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200/70 shrink-0">
+            Keep Overview money-only
+          </span>
+        </div>
+
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          {todayPlan.blocks.map((block) => {
+            const toneClass =
+              block.tone === "teal"
+                ? "bg-teal-50/80 ring-teal-200/70 text-teal-800"
+                : block.tone === "sky"
+                  ? "bg-sky-50/80 ring-sky-200/70 text-sky-800"
+                  : block.tone === "amber"
+                    ? "bg-amber-50/80 ring-amber-200/70 text-amber-800"
+                    : "bg-slate-50 ring-slate-200/80 text-slate-700";
+            const isLogging = busy === `today-plan-${block.key}`;
+
+            return (
+              <div key={block.key} className={`rounded-2xl p-3 ring-1 ${toneClass}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{block.label}</p>
+                    <p className="text-xs font-semibold mt-0.5">{block.time}</p>
+                  </div>
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                    {block.leverage === "immediate_income" ? "cash" : "compound"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{block.why}</p>
+                <button
+                  type="button"
+                  onClick={() => logTodayPlanBlock(block)}
+                  disabled={busy !== null}
+                  className="mt-3 w-full rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-white/80 hover:bg-white disabled:opacity-60"
+                >
+                  {isLogging ? "Logging..." : "Log when done"}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1159,60 +1620,106 @@ export function GrowthView() {
         </div>
         {showActivityForm ? (
           <form onSubmit={submitActivity} className="grid sm:grid-cols-2 gap-2 mb-4 p-3 rounded-xl bg-slate-50">
-            <input
-              required
-              className="app-input w-full px-3 py-1.5 text-sm sm:col-span-2"
-              placeholder="What did you do?"
-              value={activityForm.title}
-              onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}
-            />
-            <select
-              className="app-input w-full px-3 py-1.5 text-sm"
-              value={activityForm.domain}
-              onChange={(e) => setActivityForm({ ...activityForm, domain: e.target.value })}
-            >
-              {DOMAINS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-            <select
-              className="app-input w-full px-3 py-1.5 text-sm"
-              value={activityForm.leverage}
-              onChange={(e) => setActivityForm({ ...activityForm, leverage: e.target.value })}
-            >
-              <option value="long_term_leverage">Long-term leverage</option>
-              <option value="immediate_income">Immediate income</option>
-            </select>
-            <input
-              type="date"
-              className="app-input w-full px-3 py-1.5 text-sm"
-              value={activityForm.date}
-              onChange={(e) => setActivityForm({ ...activityForm, date: e.target.value })}
-            />
-            <input
-              className="app-input w-full px-3 py-1.5 text-sm"
-              placeholder="Category (e.g. networking)"
-              value={activityForm.category}
-              onChange={(e) => setActivityForm({ ...activityForm, category: e.target.value })}
-            />
-            <input
-              type="number"
-              className="app-input w-full px-3 py-1.5 text-sm"
-              placeholder="Minutes"
-              value={activityForm.minutesSpent}
-              onChange={(e) => setActivityForm({ ...activityForm, minutesSpent: e.target.value })}
-            />
-            <input
-              type="number"
-              min={1}
-              max={10}
-              className="app-input w-full px-3 py-1.5 text-sm"
-              placeholder="Impact 1-10"
-              value={activityForm.impactScore}
-              onChange={(e) => setActivityForm({ ...activityForm, impactScore: e.target.value })}
-            />
+            <div className="flex items-start gap-2 min-w-0 sm:col-span-2">
+              <textarea
+                required
+                className="app-input min-w-0 flex-1 px-3 py-2 text-sm min-h-[72px] resize-y"
+                placeholder="What did you do? Tap mic to speak…"
+                value={activityForm.title}
+                onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}
+              />
+              <VoiceToTextButton
+                value={activityForm.title}
+                onChange={(title) => setActivityForm((prev) => ({ ...prev, title }))}
+                disabled={busy === "activity"}
+                aria-label="Speak activity"
+              />
+            </div>
+            <label className="block min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500">Domain</span>
+              <select
+                className="app-input w-full px-3 py-1.5 text-sm mt-1 capitalize"
+                value={activityForm.domain}
+                onChange={(e) => {
+                  const domain = e.target.value;
+                  const cats = categoriesForDomain(domain);
+                  setActivityForm({
+                    ...activityForm,
+                    domain,
+                    category: cats.includes(activityForm.category) ? activityForm.category : cats[0],
+                  });
+                }}
+              >
+                {DOMAINS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500">Leverage</span>
+              <select
+                className="app-input w-full px-3 py-1.5 text-sm mt-1"
+                value={activityForm.leverage}
+                onChange={(e) => setActivityForm({ ...activityForm, leverage: e.target.value })}
+              >
+                <option value="long_term_leverage">Long-term leverage</option>
+                <option value="immediate_income">Immediate income</option>
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500">Date</span>
+              <input
+                type="date"
+                className="app-input w-full px-3 py-1.5 text-sm mt-1"
+                value={activityForm.date}
+                onChange={(e) => setActivityForm({ ...activityForm, date: e.target.value })}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500">Category</span>
+              <select
+                className="app-input w-full px-3 py-1.5 text-sm mt-1 capitalize"
+                value={
+                  categoriesForDomain(activityForm.domain).includes(activityForm.category)
+                    ? activityForm.category
+                    : categoriesForDomain(activityForm.domain)[0]
+                }
+                onChange={(e) => setActivityForm({ ...activityForm, category: e.target.value })}
+              >
+                {categoriesForDomain(activityForm.domain).map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500">Minutes</span>
+              <input
+                type="number"
+                className="app-input w-full px-3 py-1.5 text-sm mt-1"
+                placeholder="e.g. 60"
+                value={activityForm.minutesSpent}
+                onChange={(e) => setActivityForm({ ...activityForm, minutesSpent: e.target.value })}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500">Impact (1–10)</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className="app-input w-full px-3 py-1.5 text-sm mt-1"
+                placeholder="e.g. 5"
+                value={activityForm.impactScore}
+                onChange={(e) => setActivityForm({ ...activityForm, impactScore: e.target.value })}
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                How much this compounds — not how fun it was
+              </span>
+            </label>
             <button
               type="submit"
               disabled={busy === "activity"}
