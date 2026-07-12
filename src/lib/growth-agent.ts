@@ -3,7 +3,13 @@ import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getFocusAccounts, filterTransactionsForDailySpend } from "./account-focus";
 import { calculateDailyBriefMetrics } from "./daily-brief";
+import { calculateGoalFunding } from "./goal-funding";
 import { storeFinancialMemories } from "./financial-memory";
+import {
+  contactHasNotes,
+  formatContactNotesForAgent,
+  migrateLegacyContactNotes,
+} from "./growth-contact-notes";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -84,6 +90,22 @@ to meet a founder, ship a feature, or strengthen a relationship is the better mo
 Explain opportunity cost explicitly.
 
 Be direct, practical, and numbers-aware. No fluff. No generic motivation.
+
+Active-context rules:
+- Do not invent projects the user is not working on. If core context says a product is inactive (e.g. real-estate agent SaaS), never recommend that work.
+- Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
+- Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person; Mon–Wed often already include ~5am + ~2hr morning Lyft before commute.
+- Name when an action fits (desk lunch message, Thu deep block, evening/weekend Lyft or meet).
+- Often weigh: drive Lyft today (cover weekly Hertz/Lyft fee → Capital One surplus) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost.
+- Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
+- Default discretionary target ~$25 most days; celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
+- Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
+
+Writing style for recommendations (critical — UI is small):
+- action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block instead of low-ROI Lyft")
+- whyItMatters / longTermBenefit / opportunityCost: 1 sentence each, max ~28 words
+- nextActions: 3–4 steps, each max ~14 words, concrete verbs only
+- Do not pack scripts, templates, or long explanations into any field
 `;
 
 function clamp(score: number, min = 0, max = 100) {
@@ -138,6 +160,7 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     prisma.growthContact.findMany({
       where: { userId },
       orderBy: { updatedAt: "desc" },
+      include: { noteEntries: { select: { id: true }, take: 1 } },
     }),
     prisma.financialGoal.findMany({
       where: { userId, status: "active" },
@@ -207,20 +230,30 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     .filter((c): c is NonNullable<typeof c> => Boolean(c))
     .slice(0, 8);
 
-  const goalsBehind = goals
-    .map((g) => {
-      const progressPct =
-        g.targetAmount > 0 ? clamp((g.currentAmount / g.targetAmount) * 100) : 0;
-      const daysLeft = daysBetween(today, g.targetDate);
-      const behind =
-        Boolean(g.targetDate) &&
-        ((daysLeft !== null && daysLeft < 60 && progressPct < 50) ||
-          (daysLeft !== null && daysLeft < 0 && progressPct < 100));
-      return behind
-        ? { name: g.name, progressPct, targetDate: g.targetDate }
-        : null;
-    })
-    .filter((g): g is NonNullable<typeof g> => Boolean(g));
+  const goalsBehind = (() => {
+    const funding = calculateGoalFunding({
+      checkingCash: brief.cashAvailable,
+      goals,
+    });
+    const fundedById = new Map(funding.goals.map((g) => [g.id, g]));
+
+    return goals
+      .map((g) => {
+        const funded = fundedById.get(g.id);
+        const progressPct = funded?.progressPct ?? (g.targetAmount > 0
+          ? clamp((g.currentAmount / g.targetAmount) * 100)
+          : 0);
+        const daysLeft = daysBetween(today, g.targetDate);
+        const behind =
+          Boolean(g.targetDate) &&
+          ((daysLeft !== null && daysLeft < 60 && progressPct < 50) ||
+            (daysLeft !== null && daysLeft < 0 && progressPct < 100));
+        return behind
+          ? { name: g.name, progressPct, targetDate: g.targetDate }
+          : null;
+      })
+      .filter((g): g is NonNullable<typeof g> => Boolean(g));
+  })();
 
   const debtPressure = creditDebt > 5000 ? 15 : creditDebt > 2000 ? 8 : 0;
   const cashStrength = brief.cashAvailable > 3000 ? 20 : brief.cashAvailable > 1500 ? 10 : -10;
@@ -257,8 +290,20 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
       bottlenecks.push(`${domain} momentum is weak (score ${Math.round(score)})`);
     }
   }
-  if (contactsNeedingAttention.length >= 3) {
-    bottlenecks.push(`${contactsNeedingAttention.length} relationships need follow-up`);
+  if (contactsNeedingAttention.length >= 1) {
+    bottlenecks.push(
+      contactsNeedingAttention.length === 1
+        ? `Relationship follow-up due: ${contactsNeedingAttention[0].name}`
+        : `${contactsNeedingAttention.length} relationships need follow-up`,
+    );
+  } else if (contacts.length === 0) {
+    bottlenecks.push("Network is empty — no relationship compounding yet");
+  } else if (contacts.every((c) => !contactHasNotes(c))) {
+    bottlenecks.push(
+      `Network is thin: ${contacts.length} contact${contacts.length === 1 ? "" : "s"} with no notes or mutual-value context`,
+    );
+  } else if (activityCounts.social === 0) {
+    bottlenecks.push("No networking activity logged in the last 14 days");
   }
   if (goalsBehind.length > 0) {
     bottlenecks.push(`Goals behind schedule: ${goalsBehind.map((g) => g.name).join(", ")}`);
@@ -356,20 +401,20 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 
   if (metrics.domains.startup < 55) {
     return {
-      action: "Ship one concrete startup progress block (feature, customer convo, or positioning)",
+      action: "Ship one concrete software/career leverage block (feature, learning, or positioning)",
       whyItMatters:
-        "Startup progress compounds only through shipped learning. Idle weeks reset momentum.",
+        "Career/build momentum compounds only when you ship or learn on work you are actually doing — not abandoned ideas.",
       longTermBenefit:
-        "Each shipped increment improves product-market learning and income upside beyond Lyft hours.",
+        "Each real shipped increment improves skills and income upside beyond Lyft hours.",
       timeRequiredMinutes: 90,
       opportunityCost:
-        "One Lyft evening may pay tonight; one shipped increment can pay for years.",
+        "One Lyft evening may help cover the weekly Hertz fee; one shipped increment can pay for years.",
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [],
       nextActions: [
-        "Pick the single highest-learning task",
+        "Pick one active project (not an abandoned idea)",
         "Timebox 90 minutes with no distractions",
-        "Write one sentence of what you learned afterward",
+        "Write one sentence of what you shipped or learned",
       ],
       leverageType: "long_term_leverage",
       domain: "startup",
@@ -425,7 +470,16 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       take: 12,
     }),
     prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
-    prisma.growthContact.findMany({ where: { userId }, take: 25 }),
+    prisma.growthContact.findMany({
+      where: { userId },
+      take: 25,
+      include: {
+        noteEntries: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, body: true, images: true, createdAt: true },
+        },
+      },
+    }),
     prisma.growthActivity.findMany({
       where: { userId },
       orderBy: { date: "desc" },
@@ -453,7 +507,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       trust: c.trustLevel,
       lastContact: c.lastContactDate,
       status: c.status,
-      notes: c.notes,
+      notes: formatContactNotesForAgent(c.noteEntries, c.notes),
       suggestedNext: c.suggestedNextAction,
       mutualValue: c.mutualValue,
     })),
@@ -546,16 +600,16 @@ export async function generateHighLeverageRecommendation(
           content: `Given goals, finances, relationships, workload signals, health context, and available time, answer:
 What is the highest-leverage thing I can do TODAY?
 
-Return JSON exactly:
+Return JSON exactly (keep every string SHORT — scannable mobile UI):
 {
-  "action": "...",
-  "whyItMatters": "...",
-  "longTermBenefit": "...",
+  "action": "short imperative, max 16 words",
+  "whyItMatters": "one sentence, max 28 words",
+  "longTermBenefit": "one sentence, max 28 words",
   "timeRequiredMinutes": 60,
-  "opportunityCost": "...",
+  "opportunityCost": "one short phrase or sentence",
   "relatedGoals": ["..."],
   "relatedPeople": ["..."],
-  "nextActions": ["..."],
+  "nextActions": ["3-4 short steps, max 14 words each"],
   "leverageType": "long_term_leverage",
   "domain": "startup",
   "opportunities": [{"title":"...","description":"...","domain":"social","urgency":"high","relatedPeople":["..."]}]
@@ -615,6 +669,11 @@ async function upsertDetectedOpportunities(userId: string, raw: unknown[]) {
     const opp = item as Record<string, unknown>;
     if (typeof opp.title !== "string" || !opp.title.trim()) continue;
     const title = opp.title.trim();
+    const description =
+      typeof opp.description === "string" && opp.description.trim()
+        ? opp.description.trim()
+        : title;
+    if (isStaleOpportunityCopy(`${title} ${description}`)) continue;
     const existing = await prisma.growthOpportunity.findFirst({
       where: { userId, title, status: "open" },
     });
@@ -623,10 +682,7 @@ async function upsertDetectedOpportunities(userId: string, raw: unknown[]) {
       data: {
         userId,
         title,
-        description:
-          typeof opp.description === "string" && opp.description.trim()
-            ? opp.description.trim()
-            : title,
+        description,
         domain: typeof opp.domain === "string" ? opp.domain : null,
         urgency:
           opp.urgency === "high" || opp.urgency === "low" || opp.urgency === "medium"
@@ -638,6 +694,23 @@ async function upsertDetectedOpportunities(userId: string, raw: unknown[]) {
       },
     });
   }
+}
+
+/** Block AI from re-opening known-outdated opportunity themes. */
+function isStaleOpportunityCopy(text: string) {
+  const lower = text.toLowerCase();
+  const stalePatterns = [
+    /list(ing)? (the )?basement/,
+    /basement (unit|vacanc|tenant|rental)/,
+    /fb marketplace.*basement|basement.*fb marketplace/,
+    /re saas|real.?estate saas|real.?estate agent (app|saas|tool|crm)/,
+    /warm intros?.{0,40}re saas|yc alum.{0,40}(re|real.?estate)/,
+    /pg county agents?/,
+    /discovery calls? with .{0,40}agents?/,
+    /agents? with 20\+ transactions/,
+    /outreach (list|to) .{0,30}(real.?estate )?agents?/,
+  ];
+  return stalePatterns.some((pattern) => pattern.test(lower));
 }
 
 export async function syncOpportunities(userId: string, metrics: GrowthMetrics) {
@@ -662,6 +735,45 @@ export async function syncOpportunities(userId: string, metrics: GrowthMetrics) 
     });
   }
 
+  // Always surface network growth when the graph is thin — not only when someone is "stale".
+  const contacts = await prisma.growthContact.findMany({
+    where: { userId, status: "active" },
+    orderBy: { updatedAt: "desc" },
+    take: 20,
+    include: { noteEntries: { select: { id: true }, take: 1 } },
+  });
+  const withoutNotes = contacts.filter((c) => !contactHasNotes(c));
+  if (contacts.length === 0) {
+    candidates.push({
+      title: "Add 3 high-leverage people to your network map",
+      description:
+        "Growth compounds through relationships. Start with mentors, founders, and warm intros — not your whole phone book.",
+      domain: "social",
+      urgency: "high",
+      relatedPeople: [],
+    });
+  } else if (withoutNotes.length > 0) {
+    const focus = withoutNotes[0];
+    candidates.push({
+      title: `Capture notes on ${focus.name}`,
+      description:
+        "Name-only contacts don't compound. Add who they are, mutual value, and one next conversation so networking advice can get specific.",
+      domain: "social",
+      urgency: "medium",
+      relatedPeople: [focus.name],
+    });
+  }
+  if (contacts.length > 0 && metrics.activityCounts.social === 0) {
+    candidates.push({
+      title: "Log one networking move this week",
+      description:
+        "You have people on the map but no social activity logged. One message, intro ask, or coffee compounds more than another low-signal scroll.",
+      domain: "social",
+      urgency: "high",
+      relatedPeople: contacts.slice(0, 2).map((c) => c.name),
+    });
+  }
+
   if (metrics.leverageMix.longTermLeverage === 0) {
     candidates.push({
       title: "Schedule a long-term leverage block this week",
@@ -673,10 +785,12 @@ export async function syncOpportunities(userId: string, metrics: GrowthMetrics) 
     });
   }
 
+  // Only nudge goals that are still underfunded after checking allocation.
   for (const goal of metrics.goalsBehind.slice(0, 2)) {
+    if (goal.progressPct >= 80) continue;
     candidates.push({
       title: `Unstick goal: ${goal.name}`,
-      description: `${goal.name} is behind (${Math.round(goal.progressPct)}% progress). Decide the next smallest high-leverage action.`,
+      description: `${goal.name} is behind (${Math.round(goal.progressPct)}% covered by checking/savings). Decide the next smallest high-leverage action.`,
       domain: "financial",
       urgency: "medium",
       relatedPeople: [],
@@ -713,7 +827,9 @@ export async function generateWeeklyGrowthReview(
   const fallback = {
     whatWorked: metrics.improving
       ? ["Compounding score is holding or improving"]
-      : ["Financial tracking and awareness stayed active"],
+      : metrics.contactsNeedingAttention.length === 0 && context.contacts.length > 0
+        ? ["Kept at least one relationship warm"]
+        : ["Financial tracking and awareness stayed active"],
     whatDidnt:
       metrics.bottlenecks.length > 0
         ? metrics.bottlenecks.slice(0, 3)
@@ -721,28 +837,45 @@ export async function generateWeeklyGrowthReview(
     biggestReturn:
       metrics.leverageMix.longTermLeverage > 0
         ? "Time invested in long-term leverage activities"
-        : "Maintaining financial visibility",
+        : context.contacts.length > 0
+          ? "Starting a relationship map — now deepen it with notes and outreach"
+          : "Maintaining financial visibility",
     timeWasted:
       metrics.financialSignals.recentDailySpendAverage > 60
         ? "Convenience spending and low-signal busywork"
         : "Unstructured time that could have been leverage blocks",
     stopDoing:
       metrics.financialSignals.recentDailySpendAverage > 60
-        ? ["Default convenience-food runs"]
+        ? ["Default convenience-food runs", "Ignoring network follow-ups"]
         : ["Reactive days without a leverage priority"],
-    doMore:
-      metrics.domains.social < 55
-        ? ["Relationship follow-ups", "One shipping block for startup/career"]
-        : ["Protect weekly leverage blocks", "Log growth activities"],
-    relationshipsImproved: metrics.contactsNeedingAttention.length === 0
-      ? ["Relationship follow-ups appear current"]
-      : [],
+    doMore: [
+      ...(context.contacts.some((c) => !c.notes)
+        ? ["Add notes on your key contacts"]
+        : metrics.activityCounts.social === 0 && context.contacts.length > 0
+          ? ["Send one high-signal networking message"]
+          : context.contacts.length === 0
+            ? ["Add 3 leverage people to Relationships"]
+            : []),
+      ...(metrics.domains.social < 55
+        ? ["One relationship follow-up this week"]
+        : []),
+      ...(metrics.financialSignals.recentDailySpendAverage > 60
+        ? ["Cap discretionary spend for 7 days"]
+        : ["Protect one shipping or learning block"]),
+    ].slice(0, 3),
+    relationshipsImproved:
+      metrics.contactsNeedingAttention.length === 0 && context.contacts.length > 0
+        ? ["Touchpoints look current — deepen with notes/mutual value"]
+        : [],
     goalsBehind: metrics.goalsBehind.map((g) => g.name),
-    biggestBottleneck: metrics.bottlenecks[0] ?? "Unclear bottleneck — log more domain activity",
+    biggestBottleneck:
+      metrics.bottlenecks.find((b) => /network|relationship|social|contact/i.test(b)) ??
+      metrics.bottlenecks[0] ??
+      "Unclear bottleneck — log more domain activity",
     adjustments: [
+      "Balance money moves with network compounding",
       "Start each day with one high-leverage action",
       "Review fading relationships weekly",
-      "Rebalance immediate income vs long-term leverage intentionally",
     ],
     compoundingScore: metrics.compoundingScore,
   };
@@ -766,13 +899,19 @@ export async function generateWeeklyGrowthReview(
             { role: "system", content: GROWTH_AGENT_INSTRUCTIONS },
             {
               role: "user",
-              content: `Produce a weekly growth retrospective. Ask and answer:
-What worked? What didn't? Biggest return? Where was time wasted?
-What should I stop / do more? Which relationships improved?
-Which goals are behind? Biggest bottleneck? Recommended adjustments.
+              content: `Produce a SHORT weekly growth retrospective a busy founder can scan in 20 seconds.
+
+Rules:
+- "tldr" = one sentence only (max 20 words)
+- Cover BOTH money AND network/relationships when contacts exist — do not make this finance-only
+- If contacts lack notes or no social activity was logged, include that in doMore / bottleneck
+- Every array item = ONE short action or fact (max 12 words)
+- Max 3 items per array
+- No paragraphs. No semicolon-chains. No joining multiple ideas with "and then"
 
 Return JSON:
 {
+  "tldr": "...",
   "whatWorked": ["..."],
   "whatDidnt": ["..."],
   "biggestReturn": "...",
@@ -797,22 +936,38 @@ ${JSON.stringify(context)}`,
       const content = completion.choices[0]?.message?.content;
       if (content) {
         const parsed = JSON.parse(content) as Record<string, unknown>;
-        const arr = (value: unknown, fb: string[]) =>
-          Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : fb;
-        const str = (value: unknown, fb: string) =>
-          typeof value === "string" && value.trim() ? value.trim() : fb;
+        const shortArr = (value: unknown, fb: string[]) => {
+          const list = Array.isArray(value)
+            ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+            : fb;
+          return list.slice(0, 3).map((item) =>
+            item.length > 100 ? `${item.slice(0, 97).trim()}…` : item.trim(),
+          );
+        };
+        const shortStr = (value: unknown, fb: string) => {
+          const raw = typeof value === "string" && value.trim() ? value.trim() : fb;
+          return raw.length > 160 ? `${raw.slice(0, 157).trim()}…` : raw;
+        };
+
+        const tldr =
+          typeof parsed.tldr === "string" && parsed.tldr.trim() ? parsed.tldr.trim() : null;
 
         reviewData = {
-          whatWorked: arr(parsed.whatWorked, fallback.whatWorked),
-          whatDidnt: arr(parsed.whatDidnt, fallback.whatDidnt),
-          biggestReturn: str(parsed.biggestReturn, fallback.biggestReturn ?? ""),
-          timeWasted: str(parsed.timeWasted, fallback.timeWasted ?? ""),
-          stopDoing: arr(parsed.stopDoing, fallback.stopDoing),
-          doMore: arr(parsed.doMore, fallback.doMore),
-          relationshipsImproved: arr(parsed.relationshipsImproved, fallback.relationshipsImproved),
-          goalsBehind: arr(parsed.goalsBehind, fallback.goalsBehind),
-          biggestBottleneck: str(parsed.biggestBottleneck, fallback.biggestBottleneck ?? ""),
-          adjustments: arr(parsed.adjustments, fallback.adjustments),
+          whatWorked: shortArr(parsed.whatWorked, fallback.whatWorked),
+          whatDidnt: shortArr(parsed.whatDidnt, fallback.whatDidnt),
+          biggestReturn: shortStr(parsed.biggestReturn, fallback.biggestReturn ?? ""),
+          timeWasted: shortStr(parsed.timeWasted, fallback.timeWasted ?? ""),
+          stopDoing: shortArr(parsed.stopDoing, fallback.stopDoing),
+          doMore: shortArr(parsed.doMore, fallback.doMore),
+          relationshipsImproved: shortArr(
+            parsed.relationshipsImproved,
+            fallback.relationshipsImproved,
+          ),
+          goalsBehind: shortArr(parsed.goalsBehind, fallback.goalsBehind),
+          biggestBottleneck: tldr
+            ? shortStr(tldr, fallback.biggestBottleneck ?? "")
+            : shortStr(parsed.biggestBottleneck, fallback.biggestBottleneck ?? ""),
+          adjustments: shortArr(parsed.adjustments, fallback.adjustments),
           compoundingScore:
             typeof parsed.compoundingScore === "number"
               ? parsed.compoundingScore
@@ -839,6 +994,7 @@ export async function getGrowthDashboard(userId: string) {
   const metrics = await calculateGrowthMetrics(userId);
   await persistGrowthSnapshot(userId, metrics);
   await syncOpportunities(userId, metrics);
+  await migrateLegacyContactNotes(userId);
 
   const today = metrics.date;
   const weekStart = weekStartIso();
@@ -864,7 +1020,13 @@ export async function getGrowthDashboard(userId: string) {
       prisma.growthContact.findMany({
         where: { userId },
         orderBy: { updatedAt: "desc" },
-        take: 30,
+        take: 100,
+        include: {
+          noteEntries: {
+            orderBy: { createdAt: "desc" },
+            take: 50,
+          },
+        },
       }),
       prisma.growthSnapshot.findMany({
         where: { userId },

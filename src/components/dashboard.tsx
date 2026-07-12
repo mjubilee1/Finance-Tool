@@ -126,6 +126,8 @@ type CashFlowData = {
   };
   netDailyAverage: number;
   safeDailySpend: number;
+  primaryCash?: number;
+  usingPrimaryAccounts?: boolean;
 };
 
 type DashboardGoal = {
@@ -594,8 +596,8 @@ export function Dashboard() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-4xl mx-auto w-full h-full flex flex-col">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
+          <div className="max-w-4xl mx-auto w-full min-w-0 h-full flex flex-col">
             
             {/* View: CHAT */}
             {activeTab === 'chat' && (
@@ -817,7 +819,11 @@ export function Dashboard() {
 
             {/* View: GOALS */}
             {activeTab === 'goals' && (
-              <GoalsView goals={goals} netDailyAverage={cashFlow?.netDailyAverage ?? 0} />
+              <GoalsView
+                goals={goals}
+                netDailyAverage={cashFlow?.netDailyAverage ?? 0}
+                checkingCash={cashFlow?.primaryCash ?? 0}
+              />
             )}
 
           </div>

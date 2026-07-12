@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { formatContactNotesForAgent } from "@/lib/growth-contact-notes";
+
+const contactInclude = {
+  noteEntries: {
+    orderBy: { createdAt: "desc" as const },
+    take: 50,
+  },
+};
 
 export async function GET() {
   try {
@@ -13,6 +21,7 @@ export async function GET() {
     const contacts = await prisma.growthContact.findMany({
       where: { userId: session.user.id },
       orderBy: { updatedAt: "desc" },
+      include: contactInclude,
     });
 
     return NextResponse.json({ contacts });
@@ -47,23 +56,60 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const contact = await prisma.growthContact.create({
-      data: {
-        userId: session.user.id,
-        name: name.trim(),
-        relationshipType: relationshipType || null,
-        trustLevel: Math.max(1, Math.min(5, parseInt(String(trustLevel), 10) || 3)),
-        sharedInterests: sharedInterests || null,
-        collaborationPotential: Math.max(
-          1,
-          Math.min(5, parseInt(String(collaborationPotential), 10) || 3),
-        ),
-        lastContactDate: lastContactDate || null,
-        suggestedNextAction: suggestedNextAction || null,
-        mutualValue: mutualValue || null,
-        notes: notes || null,
-        status: ["active", "fading", "dormant"].includes(status) ? status : "active",
-      },
+    const userId = session.user.id;
+    const initialNotes = typeof notes === "string" ? notes.trim() : "";
+
+    const contact = await prisma.$transaction(async (tx) => {
+      const created = await tx.growthContact.create({
+        data: {
+          userId,
+          name: name.trim(),
+          relationshipType: relationshipType || null,
+          trustLevel: Math.max(1, Math.min(5, parseInt(String(trustLevel), 10) || 3)),
+          sharedInterests: sharedInterests || null,
+          collaborationPotential: Math.max(
+            1,
+            Math.min(5, parseInt(String(collaborationPotential), 10) || 3),
+          ),
+          lastContactDate: lastContactDate || null,
+          suggestedNextAction: suggestedNextAction || null,
+          mutualValue: mutualValue || null,
+          notes: initialNotes || null,
+          status: ["active", "fading", "dormant"].includes(status) ? status : "active",
+        },
+      });
+
+      if (initialNotes) {
+        const entry = await tx.growthContactNote.create({
+          data: {
+            contactId: created.id,
+            userId,
+            body: initialNotes,
+            images: [],
+          },
+        });
+        await tx.growthContact.update({
+          where: { id: created.id },
+          data: {
+            notes: formatContactNotesForAgent(
+              [
+                {
+                  id: entry.id,
+                  body: entry.body,
+                  images: entry.images,
+                  createdAt: entry.createdAt,
+                },
+              ],
+              null,
+            ),
+          },
+        });
+      }
+
+      return tx.growthContact.findUniqueOrThrow({
+        where: { id: created.id },
+        include: contactInclude,
+      });
     });
 
     return NextResponse.json({ contact });
@@ -104,7 +150,7 @@ export async function PATCH(request: Request) {
       data.suggestedNextAction = rest.suggestedNextAction;
     }
     if (typeof rest.mutualValue === "string") data.mutualValue = rest.mutualValue;
-    if (typeof rest.notes === "string") data.notes = rest.notes;
+    // Notes are append-only via POST /api/growth/contacts/notes
     if (typeof rest.status === "string" && ["active", "fading", "dormant"].includes(rest.status)) {
       data.status = rest.status;
     }
