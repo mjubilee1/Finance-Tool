@@ -19,6 +19,11 @@ type PromptAccount = {
   currentBalance: number | null;
   availableBalance: number | null;
   isPrimary?: boolean;
+  creditLimit?: number | null;
+  aprPercent?: number | null;
+  minimumPayment?: number | null;
+  dueDay?: number | null;
+  statementDay?: number | null;
 };
 
 type PromptGoal = {
@@ -239,7 +244,7 @@ ${buildKnownCashScheduleContext()}
 MEMORIES:
 ${memories}
 
-CURRENT ACCOUNTS (For cash decisions use available/spendable, not ledger current. Primary accounts drive cash-flow math when starred.):
+CURRENT ACCOUNTS (For cash decisions use available/spendable, not ledger current. Primary accounts drive cash-flow math when starred. For credit cards use balance + creditLimit + aprPercent for utilization and avalanche.):
 ${JSON.stringify((accounts as PromptAccount[]).map((a) => ({
     name: a.name,
     type: a.type,
@@ -248,6 +253,15 @@ ${JSON.stringify((accounts as PromptAccount[]).map((a) => ({
     ledgerCurrent: a.currentBalance,
     availableBalance: a.availableBalance,
     isPrimary: a.isPrimary ?? false,
+    creditLimit: a.creditLimit ?? null,
+    aprPercent: a.aprPercent ?? null,
+    minimumPayment: a.minimumPayment ?? null,
+    dueDay: a.dueDay ?? null,
+    statementDay: a.statementDay ?? null,
+    utilizationPct:
+      a.type === "credit" && a.creditLimit && a.creditLimit > 0
+        ? Math.round(((a.currentBalance ?? 0) / a.creditLimit) * 1000) / 10
+        : null,
   })))}
 
 PRIMARY CASH-FLOW ACCOUNTS IN USE (spendable balances):

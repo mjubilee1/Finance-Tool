@@ -73,6 +73,9 @@ model User {
   weeklyGrowthReviews     WeeklyGrowthReview[]
   growthOpportunities     GrowthOpportunity[]
   lifeLeverageProfile     LifeLeverageProfile?
+  trendDigests            TrendDigest[]
+  coachSessions           CoachSession[]
+  coachMessages           CoachMessage[]
 }
 
 model PlaidItem {
@@ -113,6 +116,12 @@ model FinancialAccount {
   availableBalance Float?
   isoCurrencyCode  String?
   isPrimary        Boolean  @default(false)
+  /// User-entered credit card details (Plaid does not reliably provide these)
+  creditLimit      Float?
+  aprPercent       Float?
+  minimumPayment   Float?
+  dueDay           Int?     // 1-31 day of month payment is due
+  statementDay     Int?     // 1-31 statement close day
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -210,6 +219,8 @@ model FinancialGoal {
   name          String
   targetAmount  Float
   currentAmount Float
+  /// Planned recurring contribution (e.g. $15/mo from a canceled sub)
+  monthlyContribution Float?
   targetDate    String?   // YYYY-MM-DD
   category      String?
   priority      Int       @default(3) // 1=High, 2=Medium, 3=Low
@@ -383,4 +394,74 @@ model LifeLeverageProfile {
   updatedAt             DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Daily curated tech/AI signal digest — not a news firehose
+model TrendDigest {
+  id              String   @id @default(cuid())
+  userId          String
+  date            String // YYYY-MM-DD
+  mainTitle       String
+  mainWhy         String   @db.Text
+  mainAction      String
+  focusGuardrail  String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items TrendItem[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model TrendItem {
+  id               String   @id @default(cuid())
+  digestId         String
+  title            String
+  summary          String   @db.Text
+  whyItMatters     String   @db.Text
+  theme            String // ai_models | labs | infra | startup | hardware_software
+  sourceLabel      String
+  sourceUrl        String?
+  relevanceScore   Float    @default(5)
+  status           String   @default("new") // new | noted | parked | dismissed
+  loggedActivityId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  digest TrendDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+
+  @@index([digestId, status])
+}
+
+model CoachSession {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages CoachMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model CoachMessage {
+  id                 String   @id @default(cuid())
+  sessionId          String
+  userId             String
+  role               String // user | assistant
+  content            String   @db.Text
+  images             String[] @default([])
+  spotlightJson      String?  @db.Text
+  goalSuggestionJson String?  @db.Text
+  createdAt          DateTime @default(now())
+
+  session CoachSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([userId, createdAt])
 }

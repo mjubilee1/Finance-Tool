@@ -356,7 +356,7 @@ function buildTodayPlan(
   };
 }
 
-export function GrowthView() {
+export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -832,6 +832,15 @@ export function GrowthView() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onOpenTrends ? (
+            <button
+              type="button"
+              onClick={onOpenTrends}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl ring-1 ring-slate-200/70"
+            >
+              Trends →
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {

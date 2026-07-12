@@ -11,6 +11,11 @@ export type FocusAccount = {
   subtype?: string | null;
   mask?: string | null;
   updatedAt?: string | Date | null;
+  creditLimit?: number | null;
+  aprPercent?: number | null;
+  minimumPayment?: number | null;
+  dueDay?: number | null;
+  statementDay?: number | null;
 };
 
 export function hasPrimarySelection(accounts: FocusAccount[]) {

@@ -342,14 +342,29 @@ export function calculateGoalPace(params: {
   currentAmount: number;
   targetDate?: string | null;
   netDailyAverage: number;
+  /** Planned monthly redirect (e.g. $15 from canceled sub) */
+  monthlyContribution?: number | null;
+  category?: string | null;
 }): GoalPace {
-  const { targetAmount, currentAmount, targetDate, netDailyAverage } = params;
+  const {
+    targetAmount,
+    currentAmount,
+    targetDate,
+    netDailyAverage,
+    monthlyContribution,
+    category,
+  } = params;
   const remaining = roundCurrency(Math.max(0, targetAmount - currentAmount));
+  const plannedMonthly =
+    monthlyContribution != null && Number.isFinite(monthlyContribution) && monthlyContribution > 0
+      ? monthlyContribution
+      : null;
+  const plannedDaily = plannedMonthly != null ? plannedMonthly / 30 : 0;
 
   if (remaining <= 0) {
     return {
       remaining: 0,
-      dailyContribution: netDailyAverage,
+      dailyContribution: Math.max(netDailyAverage, plannedDaily),
       daysToComplete: 0,
       projectedDate: null,
       monthsToComplete: 0,
@@ -359,7 +374,8 @@ export function calculateGoalPace(params: {
     };
   }
 
-  const dailyContribution = Math.max(0, netDailyAverage);
+  // Prefer planned redirect over "leftover cash flow" when the goal is a debt redirect plan.
+  const dailyContribution = Math.max(0, netDailyAverage, plannedDaily);
 
   if (dailyContribution <= 0) {
     return {
@@ -370,7 +386,10 @@ export function calculateGoalPace(params: {
       monthsToComplete: null,
       tenDollarsFasterDays: null,
       onTrack: false,
-      paceMessage: "Current cash flow won't fund this goal — reduce spending or increase income.",
+      paceMessage:
+        category === "debt_payoff"
+          ? "Track payments manually as you send extras to the card — this isn’t funded from checking allocation."
+          : "Current cash flow won't fund this goal — reduce spending or increase income.",
     };
   }
 
@@ -380,7 +399,14 @@ export function calculateGoalPace(params: {
   const monthsToComplete = roundCurrency(daysToComplete / 30);
 
   let onTrack = true;
-  let paceMessage = `At current pace, on track by ${projected.toFormat("MMM d, yyyy")}.`;
+  let paceMessage =
+    plannedMonthly != null && plannedMonthly >= netDailyAverage * 30
+      ? `Plan: ${formatCurrencyDelta(plannedMonthly)}/mo toward this — on track by ${projected.toFormat("MMM d, yyyy")}.`
+      : `At current pace, on track by ${projected.toFormat("MMM d, yyyy")}.`;
+
+  if (category === "debt_payoff" && plannedMonthly != null) {
+    paceMessage = `Redirect ${formatCurrencyDelta(plannedMonthly)}/mo to the card — update progress when you pay. On pace by ${projected.toFormat("MMM d, yyyy")}.`;
+  }
 
   if (targetDate) {
     const target = DateTime.fromISO(targetDate);

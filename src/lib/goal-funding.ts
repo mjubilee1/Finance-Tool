@@ -38,19 +38,64 @@ function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function goalTargetSortKey(targetDate?: string | null) {
-  const trimmed = typeof targetDate === "string" ? targetDate.trim() : "";
-  // Empty string must not sort before real dates ("" < "2026-09-01")
-  return trimmed || "9999-12-31";
-}
-
 /**
  * Goals are often funded from checking (Chase + Capital One) without a separate pot.
- * Allocate spendable checking cash across savings-style goals by priority, then date.
+ *
+ * Order of claim on surplus (after buffer):
+ * 1. Dated goals within ~12 months (soonest first)
+ * 2. Undated goals (active intent — e.g. a trip with no date yet)
+ * 3. Longer-dated goals (e.g. house in 2027) by priority, then sooner date
+ *
+ * Without this, a 17-month "near" house starves an undated trip (no date = infinity).
  */
 function isMoneySavingsGoal(category?: string | null) {
   const value = category ?? "savings";
   return value === "savings" || value === "debt_payoff";
+}
+
+const NEAR_TERM_MONTHS = 12;
+
+function monthsUntilTarget(targetDate?: string | null) {
+  const trimmed = typeof targetDate === "string" ? targetDate.trim() : "";
+  if (!trimmed) return null;
+  const target = new Date(`${trimmed}T00:00:00.000Z`).getTime();
+  if (!Number.isFinite(target)) return null;
+  const diffMs = target - Date.now();
+  return diffMs / (30 * 24 * 60 * 60 * 1000);
+}
+
+/** 0 = near dated, 1 = undated, 2 = far dated */
+function fundingBucket(targetDate?: string | null): 0 | 1 | 2 {
+  const months = monthsUntilTarget(targetDate);
+  if (months == null) return 1;
+  if (months <= NEAR_TERM_MONTHS) return 0;
+  return 2;
+}
+
+function compareSavingsGoals(a: GoalFundingInput, b: GoalFundingInput) {
+  const aBucket = fundingBucket(a.targetDate);
+  const bBucket = fundingBucket(b.targetDate);
+  if (aBucket !== bBucket) return aBucket - bBucket;
+
+  const aMonths = monthsUntilTarget(a.targetDate);
+  const bMonths = monthsUntilTarget(b.targetDate);
+
+  if (aBucket === 0 || aBucket === 2) {
+    // Dated: sooner first, then priority
+    if (aMonths != null && bMonths != null && aMonths !== bMonths) {
+      return aMonths - bMonths;
+    }
+    const priorityDiff = (a.priority ?? 3) - (b.priority ?? 3);
+    if (priorityDiff !== 0) return priorityDiff;
+  } else {
+    // Undated: priority first
+    const priorityDiff = (a.priority ?? 3) - (b.priority ?? 3);
+    if (priorityDiff !== 0) return priorityDiff;
+  }
+
+  const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  return aCreated - bCreated;
 }
 
 export function calculateGoalFunding(params: {
@@ -66,20 +111,12 @@ export function calculateGoalFunding(params: {
   const allocatableCash = roundCurrency(Math.max(0, checkingCash - protectedBuffer));
 
   // Only dollar savings goals get checking allocation. Life goals track % progress.
+  // Debt payoff is funded by payments, not by parking checking on the goal card.
   const savingsGoals = params.goals.filter((goal) => (goal.category ?? "savings") === "savings");
   const debtGoals = params.goals.filter((goal) => goal.category === "debt_payoff");
   const lifeGoals = params.goals.filter((goal) => !isMoneySavingsGoal(goal.category));
 
-  const ordered = [...savingsGoals].sort((a, b) => {
-    const priorityDiff = (a.priority ?? 3) - (b.priority ?? 3);
-    if (priorityDiff !== 0) return priorityDiff;
-    const aDate = goalTargetSortKey(a.targetDate);
-    const bDate = goalTargetSortKey(b.targetDate);
-    if (aDate !== bDate) return aDate.localeCompare(bDate);
-    const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return aCreated - bCreated;
-  });
+  const ordered = [...savingsGoals].sort(compareSavingsGoals);
 
   let pool = allocatableCash;
   const allocationById = new Map<string, number>();

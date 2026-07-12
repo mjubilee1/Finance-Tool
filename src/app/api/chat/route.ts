@@ -3,6 +3,7 @@ import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
 import { storeFinancialMemories } from "@/lib/financial-memory";
+import { parseGoalSuggestion, GOAL_SUGGESTION_RULES, type GoalSuggestion } from "@/lib/goal-suggestion";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import { DateTime } from "luxon";
@@ -64,13 +65,58 @@ type ChatResponsePayload = {
     savingsTip?: string;
     severity?: "review" | "watch" | "ok";
   } | null;
+  goalSuggestion?: GoalSuggestion | null;
 };
+
+const MAX_CONTEXT_MESSAGES = 10;
+const MAX_HISTORY_MESSAGES = 50;
+
+function sanitizeChatMessages(messages: unknown): ChatMessage[] {
+  return (Array.isArray(messages) ? messages : [])
+    .filter((message): message is ChatMessage => {
+      const candidate = message as Partial<ChatMessage>;
+      return candidate.role === "user" || candidate.role === "assistant";
+    })
+    .map((message) => ({
+      role: message.role,
+      content: typeof message.content === "string" ? message.content : "",
+      images: Array.isArray(message.images)
+        ? message.images.filter((image): image is string => typeof image === "string" && image.startsWith("data:image/"))
+        : undefined,
+    }))
+    .filter((message) => message.content.trim() || message.images?.length);
+}
+
+function buildCoachSessionTitle(message: ChatMessage) {
+  const title = message.content.trim() || "Screenshot review";
+  return title.length > 60 ? `${title.slice(0, 57)}...` : title;
+}
+
+function parseStoredJson<T>(value: string | null): T | null {
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function stringifyStoredJson(value: unknown) {
+  if (!value) return null;
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
 
 function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
   const content = response.choices[0]?.message.content;
 
   if (typeof content !== "string" || !content.trim()) {
-    return { message: "", memoriesToStore: [], shouldRefreshBrief: false };
+    return { message: "", memoriesToStore: [], shouldRefreshBrief: false, goalSuggestion: null };
   }
 
   try {
@@ -95,12 +141,14 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
         typeof parsed.spotlight.headline === "string"
           ? parsed.spotlight
           : null,
+      goalSuggestion: parseGoalSuggestion(parsed.goalSuggestion),
     };
   } catch {
     return {
       message: content.trim(),
       memoriesToStore: [],
       shouldRefreshBrief: false,
+      goalSuggestion: null,
     };
   }
 }
@@ -236,6 +284,82 @@ function toOpenAiMessages(messages: ChatMessage[]): OpenAiChatMessage[] {
   });
 }
 
+export async function GET(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const requestedSessionId = new URL(req.url).searchParams.get("sessionId");
+    const sessions = await prisma.coachSession.findMany({
+      where: { userId: session.user.id },
+      orderBy: { updatedAt: "desc" },
+      take: 25,
+      include: {
+        _count: { select: { messages: true } },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { content: true, createdAt: true },
+        },
+      },
+    });
+
+    const coachSession = requestedSessionId
+      ? await prisma.coachSession.findFirst({
+          where: { id: requestedSessionId, userId: session.user.id },
+        })
+      : (sessions[0] ?? null);
+
+    const sessionSummaries = sessions.map((historySession) => ({
+      id: historySession.id,
+      title: historySession.title,
+      createdAt: historySession.createdAt,
+      updatedAt: historySession.updatedAt,
+      messageCount: historySession._count.messages,
+      lastMessage: historySession.messages[0]?.content ?? null,
+      lastMessageAt: historySession.messages[0]?.createdAt ?? null,
+    }));
+
+    if (requestedSessionId && !coachSession) {
+      return NextResponse.json({ error: "Coach session not found" }, { status: 404 });
+    }
+
+    if (!coachSession) {
+      return NextResponse.json({ session: null, sessions: sessionSummaries, messages: [] });
+    }
+
+    const messages = await prisma.coachMessage.findMany({
+      where: { sessionId: coachSession.id, userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      take: MAX_HISTORY_MESSAGES,
+    });
+
+    return NextResponse.json({
+      session: {
+        id: coachSession.id,
+        title: coachSession.title,
+        createdAt: coachSession.createdAt,
+        updatedAt: coachSession.updatedAt,
+      },
+      sessions: sessionSummaries,
+      messages: messages.reverse().map((message) => ({
+        id: message.id,
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content,
+        images: message.images.length > 0 ? message.images : undefined,
+        spotlight: parseStoredJson(message.spotlightJson),
+        goalSuggestion: parseStoredJson(message.goalSuggestionJson),
+        createdAt: message.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Failed to load coach history:", error);
+    return NextResponse.json({ error: "Failed to load coach history" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -251,11 +375,46 @@ export async function POST(req: Request) {
       );
     }
 
-    const { messages } = await req.json();
-    const recentMessages = (Array.isArray(messages) ? messages : [])
-      .filter((message: ChatMessage) => message.role === "user" || message.role === "assistant")
-      .filter((message: ChatMessage) => message.content?.trim() || message.images?.length)
-      .slice(-6);
+    const body = await req.json();
+    const requestMessages = sanitizeChatMessages(body.messages);
+    const latestUserMessage = [...requestMessages].reverse().find((message) => message.role === "user");
+    if (!latestUserMessage) {
+      return NextResponse.json({ error: "Send a message or upload a screenshot first." }, { status: 400 });
+    }
+
+    const requestedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+    let coachSession = requestedSessionId
+      ? await prisma.coachSession.findFirst({
+          where: { id: requestedSessionId, userId: session.user.id },
+        })
+      : null;
+
+    coachSession ??= await prisma.coachSession.create({
+      data: {
+        userId: session.user.id,
+        title: buildCoachSessionTitle(latestUserMessage),
+      },
+    });
+
+    const persistedContext = await prisma.coachMessage.findMany({
+      where: { sessionId: coachSession.id, userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      take: MAX_CONTEXT_MESSAGES,
+    });
+
+    const savedContextMessages: ChatMessage[] = persistedContext
+      .reverse()
+      .map((message) => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content,
+        images: message.images.length > 0 ? message.images : undefined,
+      }));
+
+    const recentMessages = (
+      savedContextMessages.length > 0
+        ? [...savedContextMessages, latestUserMessage]
+        : requestMessages
+    ).slice(-MAX_CONTEXT_MESSAGES);
 
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
     const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns] = await Promise.all([
@@ -299,6 +458,15 @@ export async function POST(req: Request) {
       debtRule: "Debt accounts affect current balance/net worth only. Mortgage/loan transactions are excluded from daily income/spend.",
     };
 
+    const typicalPaycheck = (() => {
+      const payroll = recentTransactions.find((t) => {
+        if (t.amount >= 0) return false;
+        const label = `${t.name} ${t.merchantName ?? ""}`.toLowerCase();
+        return label.includes("amergis") || label.includes("payroll");
+      });
+      return payroll ? Math.abs(payroll.amount) : null;
+    })();
+
     const systemPrompt = `
 ${CFO_AGENT_INSTRUCTIONS}
 
@@ -335,7 +503,9 @@ When the user uploads photo(s), read them carefully:
 - Life screenshots (gym schedule, calendar, workout plan, goal boards, travel plans): extract the durable schedule/facts into memoriesToStore so the Today Planner and coach stay current — do not leave that knowledge only in this chat turn.
 Joy preferences mentioned by the user are a menu of options, not an automatic assignment for today.
 
-${buildKnownCashScheduleContext()}
+${GOAL_SUGGESTION_RULES}
+
+${buildKnownCashScheduleContext(DateTime.local(), { typicalPaycheck })}
 
 MEMORIES:
 ${memories}
@@ -348,6 +518,15 @@ ${JSON.stringify(accounts.map(a => ({
     availableBalance: a.availableBalance,
     type: a.type,
     subtype: a.subtype,
+    creditLimit: a.creditLimit,
+    aprPercent: a.aprPercent,
+    minimumPayment: a.minimumPayment,
+    dueDay: a.dueDay,
+    statementDay: a.statementDay,
+    utilizationPct:
+      a.type === "credit" && a.creditLimit && a.creditLimit > 0
+        ? Math.round(((a.currentBalance ?? 0) / a.creditLimit) * 1000) / 10
+        : null,
   })))}
 
 FINANCIAL GOALS:
@@ -397,6 +576,19 @@ Return JSON only with this exact shape:
     "savingsTip": "Optional one-line savings action",
     "severity": "review"
   },
+  "goalSuggestion": {
+    "action": "create | update",
+    "goalId": "optional existing id when action is update",
+    "matchName": "optional name match when id unknown",
+    "name": "Extra to highest-APR card from canceled Canva",
+    "type": "debt_payoff",
+    "reason": "You freed ~$15/mo. Buffer and near-term trip look covered — point that surplus at high-APR debt instead of a new trip goal.",
+    "targetAmount": 500,
+    "monthlyRedirect": 15,
+    "addAmount": 15,
+    "priority": 1,
+    "targetDate": null
+  },
   "memoriesToStore": [
     {
       "title": "Short stable title",
@@ -407,6 +599,7 @@ Return JSON only with this exact shape:
   "shouldRefreshBrief": true
 }
 Use spotlight null when the user is not asking about a specific transaction.
+Use goalSuggestion null unless one high-value tracked goal clearly helps (see GOAL SUGGESTIONS rules). Never invent many goals.
 When the user asks about a specific transaction, merchant, or charge they do not recognize, explain what it likely is using RECENT TRANSACTIONS and RECURRING PATTERNS.
 If you can identify the charge, include a spotlight card with merchant, amount, date, a short headline, categoryGuess, savingsTip, and severity ("review", "watch", or "ok").
 If it still looks suspicious or wasteful, set severity to "review" and suggest a concrete savings action.
@@ -449,9 +642,48 @@ If the user is only asking a question and not teaching durable facts, return an 
       }
     }
 
+    let assistantHistoryMessage = chatResponse.message;
+    if (savedMemoryTitles.length > 0) {
+      assistantHistoryMessage += `\n\nSaved for your financial overview: ${savedMemoryTitles.join(", ")}.`;
+    }
+    if (briefRefreshed) {
+      assistantHistoryMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
+    }
+
+    await prisma.$transaction([
+      prisma.coachMessage.create({
+        data: {
+          sessionId: coachSession.id,
+          userId: session.user.id,
+          role: "user",
+          content: latestUserMessage.content,
+          images: latestUserMessage.images ?? [],
+        },
+      }),
+      prisma.coachMessage.create({
+        data: {
+          sessionId: coachSession.id,
+          userId: session.user.id,
+          role: "assistant",
+          content: assistantHistoryMessage,
+          spotlightJson: stringifyStoredJson(chatResponse.spotlight),
+          goalSuggestionJson: stringifyStoredJson(chatResponse.goalSuggestion),
+        },
+      }),
+      prisma.coachSession.update({
+        where: { id: coachSession.id },
+        data: {
+          updatedAt: new Date(),
+          ...(coachSession.title ? {} : { title: buildCoachSessionTitle(latestUserMessage) }),
+        },
+      }),
+    ]);
+
     return NextResponse.json({
+      sessionId: coachSession.id,
       message: chatResponse.message,
       spotlight: chatResponse.spotlight ?? null,
+      goalSuggestion: chatResponse.goalSuggestion ?? null,
       memoriesSaved: savedMemoryTitles,
       briefRefreshed,
     });

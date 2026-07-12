@@ -38,7 +38,9 @@ Bigger-picture rules:
 
 function nextWeekdayDates(referenceDate: DateTime, weekday: number, count: number) {
   const start = referenceDate.startOf("day");
-  const firstOffset = (weekday - start.weekday + 7) % 7;
+  // If today is already that weekday, start with *next* occurrence (paycheck usually already landed).
+  let firstOffset = (weekday - start.weekday + 7) % 7;
+  if (firstOffset === 0) firstOffset = 7;
 
   return Array.from({ length: count }, (_, index) =>
     start.plus({ days: firstOffset + index * 7 }).toISODate(),
@@ -54,16 +56,53 @@ function nextMonthlyFirst(referenceDate: DateTime) {
   return dueDate.toISODate();
 }
 
-export function buildKnownCashScheduleContext(referenceDate = DateTime.local()) {
-  const paydays = nextWeekdayDates(referenceDate, 5, 3);
+/** Fridays strictly after today and on/before the given end date (inclusive). */
+function fridayPaydaysThrough(referenceDate: DateTime, endDateIso: string | null) {
+  if (!endDateIso) return nextWeekdayDates(referenceDate, 5, 3);
+  const end = DateTime.fromISO(endDateIso).startOf("day");
+  if (!end.isValid) return nextWeekdayDates(referenceDate, 5, 3);
+
+  const dates: string[] = [];
+  let cursor = referenceDate.startOf("day");
+  let firstOffset = (5 - cursor.weekday + 7) % 7;
+  if (firstOffset === 0) firstOffset = 7;
+  cursor = cursor.plus({ days: firstOffset });
+
+  while (cursor <= end && dates.length < 8) {
+    const iso = cursor.toISODate();
+    if (iso) dates.push(iso);
+    cursor = cursor.plus({ weeks: 1 });
+  }
+  return dates;
+}
+
+/**
+ * Shared paycheck / mortgage cadence for coach + brief.
+ * Optional typicalPaycheck overrides the ~$1,555 Amergis default when live payroll is known.
+ */
+export function buildKnownCashScheduleContext(
+  referenceDate = DateTime.local(),
+  options?: { typicalPaycheck?: number | null },
+) {
   const nextMortgageDue = nextMonthlyFirst(referenceDate);
+  const paydaysBeforeMortgage = fridayPaydaysThrough(referenceDate, nextMortgageDue);
+  const upcomingPaydays = nextWeekdayDates(referenceDate, 5, 4);
+  const typicalPaycheck =
+    options?.typicalPaycheck != null && options.typicalPaycheck > 0
+      ? options.typicalPaycheck
+      : 1555.27;
+  const checksBeforeMortgage = paydaysBeforeMortgage.length;
+  const incomeBeforeMortgage = Math.round(typicalPaycheck * checksBeforeMortgage * 100) / 100;
 
   return `
 KNOWN CASH SCHEDULE:
-- W2 paycheck cadence: every Friday, deposited into Chase (primary checking). Upcoming expected Fridays: ${paydays.join(", ")}.
-- Mortgage cadence: due around the 1st of each month; next known due date: ${nextMortgageDue}. Rough amount from core context: about $2,659/month.
+- W2 paycheck cadence: every Friday into Chase (primary). Typical take-home recently ~$${typicalPaycheck.toFixed(2)} per check (Amergis payroll pattern — prefer live payroll amounts from transactions when present).
+- Upcoming Fridays: ${upcomingPaydays.join(", ") || "none listed"}.
+- Fridays still landing on/before next mortgage (${nextMortgageDue}): ${checksBeforeMortgage} check(s) — ${paydaysBeforeMortgage.join(", ") || "none"} — about $${incomeBeforeMortgage.toFixed(2)} of W2 inflow before that mortgage if the pattern holds.
+- Mortgage cadence: due around the 1st; next known due: ${nextMortgageDue}. Rough amount ~$2,659/month.
 - Treat live bank transactions and explicit memories as stronger than these defaults if they disagree.
-- When deciding "hold cash vs pay extra debt," compare spendable/available cash (not ledger current) against: next mortgage, upcoming bills/minimums, protected buffer, and the next Friday paycheck.
+- When deciding hold cash vs pay extra debt: use spendable/available cash, plus the REMAINING Friday checks before the next mortgage — not only the next single paycheck. Rough floor = mortgage + near-term bills/minimums + cash buffer. If spendable + remaining W2 checks clearly cover that floor, name the surplus and allow a planned extra card payment (still keep minimums + buffer).
+- Do not freeze all extra debt paydown just because one paycheck has not hit yet if two or three more Fridays still land before the mortgage.
 - If the floor is protected, explain when paying extra to high-APR credit cards is financially better than holding cash purely for emotional comfort.
 `;
 }

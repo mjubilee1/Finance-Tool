@@ -12,7 +12,7 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, Flame, LayoutDashboard, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, Flame, LayoutDashboard, Menu, Radar, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,8 +28,9 @@ import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
 import { RecurringView } from "./recurring/recurring-view";
 import { ThemeToggle } from "./theme-toggle";
+import { TrendsView } from "./trends/trends-view";
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'trends';
 
 type DashboardAccount = {
   id: string;
@@ -44,6 +45,11 @@ type DashboardAccount = {
   isPrimary?: boolean;
   institutionName?: string | null;
   updatedAt?: string;
+  creditLimit?: number | null;
+  aprPercent?: number | null;
+  minimumPayment?: number | null;
+  dueDay?: number | null;
+  statementDay?: number | null;
 };
 
 type DashboardTransaction = {
@@ -532,6 +538,7 @@ export function Dashboard() {
           {renderNavItem("overview", LayoutDashboard, "Overview")}
           {renderNavItem("chat", BrainCircuit, "Coach")}
           {renderNavItem("growth", Flame, "Growth")}
+          {renderNavItem("trends", Radar, "Trends")}
           {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
@@ -699,7 +706,12 @@ export function Dashboard() {
             )}
 
             {/* View: GROWTH */}
-            {activeTab === 'growth' && <GrowthView />}
+            {activeTab === 'growth' && (
+              <GrowthView onOpenTrends={() => setActiveTab("trends")} />
+            )}
+            {activeTab === "trends" && (
+              <TrendsView onOpenGrowth={() => setActiveTab("growth")} />
+            )}
 
             {/* View: ACCOUNTS */}
             {activeTab === 'accounts' && (

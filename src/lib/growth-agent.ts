@@ -108,6 +108,8 @@ Active-context rules:
 - One highest-leverage move per day. Do not regenerate the same theme if it was skipped or done.
 - If memories/context say the user already has a boss promotion list / existing promo plan, do NOT suggest drafting a promo one-pager — suggest executing the next concrete item from their existing path, or a different leverage domain.
 - When CONTEXT includes avoidedMoves / skippedMoves, propose something meaningfully different.
+- Goal discipline: do not invent a pile of goals. If freed cash appears (canceled sub, surplus after buffer), prefer pointing it at highest-APR debt or an existing near-term money goal. Mention "create a tracked goal in Goals" only when one clear outcome is worth tracking — never flood the list.
+- Trends digest (trendsContext) is background signal only. Never turn a headline into a new side project. Prefer finishing open leverage / promotion work; reading may inform, not derail.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block instead of low-ROI Lyft")
@@ -495,7 +497,8 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
   const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves] =
+  const today = DateTime.local().toISODate()!;
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends] =
     await Promise.all([
       prisma.financialMemory.findMany({
         where: { userId },
@@ -528,6 +531,15 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
         where: { userId, date: { gte: fourteenDaysAgo } },
         orderBy: { date: "desc" },
         take: 14,
+      }),
+      prisma.trendDigest.findUnique({
+        where: { userId_date: { userId, date: today } },
+        select: {
+          mainTitle: true,
+          mainWhy: true,
+          mainAction: true,
+          focusGuardrail: true,
+        },
       }),
     ]);
 
@@ -574,6 +586,15 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       bottlenecks: s.bottlenecks,
     })),
     avoidedMoves: skippedOrDoneMoves,
+    trendsContext: todayTrends
+      ? {
+          note: "CONTEXT ONLY — do not replace today's move with a trend chase or new side project.",
+          mainThing: todayTrends.mainTitle,
+          why: todayTrends.mainWhy,
+          suggestedNoteAction: todayTrends.mainAction,
+          focusGuardrail: todayTrends.focusGuardrail,
+        }
+      : null,
     metrics,
   };
 }
@@ -659,6 +680,7 @@ Rules for this response:
 - One move for today only.
 - Respect avoidedMoves (skipped/done recently) — do not recycle them.
 - If memories say the user already has a boss promotion checklist / existing promo plan, do not invent a "draft promo one-pager" — either point at executing one concrete next step from their existing path, or pick a different domain.
+- If trendsContext is present, treat it as BACKGROUND SIGNAL only. Do not make "read AI news" or "start a project inspired by a trend" the daily move unless the user already logged a trend note as today's work.
 ${avoidNote}
 
 Return JSON exactly (keep every string SHORT — scannable mobile UI):

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { User, BrainCircuit } from "lucide-react";
+import { User, BrainCircuit, Clock3, MessageSquarePlus } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
 import { SpendingRadar } from "./chat/spending-radar";
 import { TransactionSpotlightCard, type TransactionSpotlight } from "./chat/transaction-spotlight";
+import { GoalSuggestionCard } from "./chat/goal-suggestion-card";
+import type { GoalSuggestion } from "@/lib/goal-suggestion";
 import { ChatComposer } from "./chat/chat-composer";
 
 type ChatMessage = {
@@ -14,12 +16,68 @@ type ChatMessage = {
   content: string;
   images?: string[];
   spotlight?: TransactionSpotlight | null;
+  goalSuggestion?: GoalSuggestion | null;
+};
+
+type ChatHistoryResponse = {
+  session: {
+    id: string;
+    title: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  sessions: Array<{
+    id: string;
+    title: string | null;
+    createdAt: string;
+    updatedAt: string;
+    messageCount: number;
+    lastMessage: string | null;
+    lastMessageAt: string | null;
+  }>;
+  messages: Array<ChatMessage & { id: string; createdAt: string }>;
 };
 
 type SpendingAlertsResponse = {
   alerts: SpendingAlert[];
   estimatedMonthlyLeak: number;
 };
+
+const initialCoachMessages: ChatMessage[] = [
+  {
+    role: "assistant",
+    content:
+      "Hi — I'm your Life OS coach. Money, career, body, and network in one place. Ask about today's brief, safe spend, a charge, gym/promo blocks, or upload a screenshot. If we find a smart money move (like a canceled sub → card payoff), I may suggest one goal for you to confirm — never a pile of them.",
+  },
+];
+
+function fetchChatHistory(sessionId?: string | null) {
+  const params = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+
+  return fetch(`/api/chat${params}`).then(async (res) => {
+    if (!res.ok) {
+      throw new Error("Failed to load coach history.");
+    }
+    return res.json() as Promise<ChatHistoryResponse>;
+  });
+}
+
+function formatHistoryDate(value: string | null) {
+  if (!value) return "No messages yet";
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function previewText(value: string | null) {
+  const text = value?.replace(/\s+/g, " ").trim();
+  if (!text) return "No messages saved yet.";
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+}
 
 function fetchSpendingAlerts() {
   return fetch("/api/spending-alerts").then(async (res) => {
@@ -38,22 +96,46 @@ export function ChatInterface({
   onSeedPromptUsed?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Hi — I'm your Life OS coach. Money, career, body, and network in one place. Ask about today's brief, safe spend, what to buy, a charge, gym/promo blocks, or upload a screenshot. Tap Spending radar below or use the mic instead of typing.",
-    },
-  ]);
+  const historyHydratedRef = useRef(false);
+  const hasLocalInteractionRef = useRef(false);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialCoachMessages);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [activeCoachTab, setActiveCoachTab] = useState<"chat" | "history">("chat");
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingHistorySessionId, setLoadingHistorySessionId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
+
+  const { data: chatHistory } = useQuery({
+    queryKey: ["chat-history"],
+    queryFn: () => fetchChatHistory(),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
 
   const { data: radarData, isLoading: radarLoading } = useQuery({
     queryKey: ["spending-alerts"],
     queryFn: fetchSpendingAlerts,
   });
+
+  useEffect(() => {
+    if (!chatHistory || historyHydratedRef.current || hasLocalInteractionRef.current) return;
+
+    historyHydratedRef.current = true;
+    setSessionId(chatHistory.session?.id ?? null);
+    setMessages(
+      chatHistory.messages.length > 0
+        ? chatHistory.messages.map(({ role, content, images, spotlight, goalSuggestion }) => ({
+            role,
+            content,
+            images,
+            spotlight,
+            goalSuggestion,
+          }))
+        : initialCoachMessages,
+    );
+  }, [chatHistory]);
 
   useEffect(() => {
     if (!seedPrompt?.trim()) return;
@@ -65,6 +147,55 @@ export function ChatInterface({
     const label = alert.merchantName ?? alert.name;
     const prompt = `What is the ${label} transaction for ${alert.amount.toFixed(2)} on ${alert.date}? Is this something I should keep paying or cancel?`;
     setInput(prompt);
+    setActiveCoachTab("chat");
+  };
+
+  const applyChatHistory = (history: ChatHistoryResponse) => {
+    setSessionId(history.session?.id ?? null);
+    setMessages(
+      history.messages.length > 0
+        ? history.messages.map(({ role, content, images, spotlight, goalSuggestion }) => ({
+            role,
+            content,
+            images,
+            spotlight,
+            goalSuggestion,
+          }))
+        : initialCoachMessages,
+    );
+  };
+
+  const handleOpenHistorySession = async (historySessionId: string) => {
+    setLoadingHistorySessionId(historySessionId);
+
+    try {
+      const history = await fetchChatHistory(historySessionId);
+      historyHydratedRef.current = true;
+      hasLocalInteractionRef.current = true;
+      applyChatHistory(history);
+      setActiveCoachTab("chat");
+    } catch (err) {
+      console.error(err);
+      setMessages([
+        {
+          role: "assistant",
+          content: err instanceof Error ? err.message : "Couldn't load that coach session.",
+        },
+      ]);
+      setActiveCoachTab("chat");
+    } finally {
+      setLoadingHistorySessionId(null);
+    }
+  };
+
+  const handleNewChat = () => {
+    historyHydratedRef.current = true;
+    hasLocalInteractionRef.current = true;
+    setSessionId(null);
+    setMessages(initialCoachMessages);
+    setInput("");
+    setPendingImages([]);
+    setActiveCoachTab("chat");
   };
 
   const handleDismissAlert = async (
@@ -95,6 +226,7 @@ export function ChatInterface({
 
       await queryClient.invalidateQueries({ queryKey: ["spending-alerts"] });
 
+      hasLocalInteractionRef.current = true;
       setMessages((prev) => [
         ...prev,
         {
@@ -132,6 +264,7 @@ export function ChatInterface({
     };
 
     const nextMessages: ChatMessage[] = [...messages, userChatMessage];
+    hasLocalInteractionRef.current = true;
     setMessages(nextMessages);
     setIsLoading(true);
 
@@ -140,6 +273,7 @@ export function ChatInterface({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          sessionId,
           messages: nextMessages.map(({ role, content, images: messageImages }) => ({
             role,
             content,
@@ -154,6 +288,9 @@ export function ChatInterface({
       }
 
       let assistantMessage = data.message as string;
+      if (typeof data.sessionId === "string") {
+        setSessionId(data.sessionId);
+      }
 
       if (Array.isArray(data.memoriesSaved) && data.memoriesSaved.length > 0) {
         assistantMessage += `\n\nSaved for your financial overview: ${data.memoriesSaved.join(", ")}.`;
@@ -170,8 +307,10 @@ export function ChatInterface({
           role: "assistant",
           content: assistantMessage,
           spotlight: data.spotlight ?? null,
+          goalSuggestion: data.goalSuggestion ?? null,
         },
       ]);
+      void queryClient.invalidateQueries({ queryKey: ["chat-history"] });
     } catch (err) {
       console.error(err);
       setMessages((prev) => [
@@ -198,76 +337,178 @@ export function ChatInterface({
         onDismiss={handleDismissAlert}
       />
 
-      <div className="flex flex-col h-[500px] app-card overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-              <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  m.role === "user"
-                    ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
-                    : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]"
-                }`}
-              >
-                {m.role === "user" ? <User size={16} /> : <BrainCircuit size={16} />}
-              </div>
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                  m.role === "user"
-                    ? "bg-[var(--accent)] text-white shadow-sm shadow-blue-600/15"
-                    : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink)] ring-1 ring-[var(--card-border)]"
-                }`}
-              >
-                {m.images?.length ? (
-                  <div className={`flex flex-wrap gap-2 ${m.content ? "mb-3" : ""}`}>
-                    {m.images.map((image, imageIndex) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={`${image.slice(0, 24)}-${imageIndex}`}
-                        src={image}
-                        alt={`Uploaded photo ${imageIndex + 1}`}
-                        className="max-h-40 rounded-xl object-cover ring-1 ring-white/20"
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
-                {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
-              </div>
-            </div>
-          ))}
-          {isLoading ? (
-            <div className="flex gap-3 flex-row">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]">
-                <BrainCircuit size={16} />
-              </div>
-              <div className="bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] ring-1 ring-[var(--card-border)] text-[var(--ink)] rounded-2xl px-4 py-3 flex items-center gap-1">
-                <div className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce" />
-                <div
-                  className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                />
-                <div
-                  className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
-              </div>
-            </div>
-          ) : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex w-full rounded-2xl bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-1 ring-1 ring-[var(--card-border)] sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setActiveCoachTab("chat")}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${
+              activeCoachTab === "chat"
+                ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
+                : "text-[var(--muted)] hover:text-[var(--ink)]"
+            }`}
+          >
+            Coach
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCoachTab("history")}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${
+              activeCoachTab === "history"
+                ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
+                : "text-[var(--muted)] hover:text-[var(--ink)]"
+            }`}
+          >
+            History
+          </button>
         </div>
 
-        <ChatComposer
-          value={input}
-          onChange={setInput}
-          pendingImages={pendingImages}
-          onPendingImagesChange={setPendingImages}
-          onSubmit={() => {
-            void sendMessage();
-          }}
+        <button
+          type="button"
+          onClick={handleNewChat}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/15 disabled:opacity-60"
           disabled={isLoading}
-          isLoading={isLoading}
-        />
+        >
+          <MessageSquarePlus size={16} />
+          New chat
+        </button>
       </div>
+
+      {activeCoachTab === "history" ? (
+        <div className="h-[500px] app-card overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--card-border)] px-4 py-3 sm:px-5">
+            <div>
+              <p className="text-sm font-semibold text-[var(--ink)]">Coach history</p>
+              <p className="text-xs text-[var(--muted)]">Open a past session and continue from there.</p>
+            </div>
+            <Clock3 size={18} className="text-[var(--muted)]" />
+          </div>
+
+          <div className="h-[calc(500px-65px)] overflow-y-auto p-4 sm:p-5">
+            {chatHistory?.sessions.length ? (
+              <div className="space-y-3">
+                {chatHistory.sessions.map((historySession) => {
+                  const isActive = historySession.id === sessionId;
+                  const isLoadingSession = loadingHistorySessionId === historySession.id;
+
+                  return (
+                    <button
+                      key={historySession.id}
+                      type="button"
+                      onClick={() => {
+                        void handleOpenHistorySession(historySession.id);
+                      }}
+                      className={`w-full rounded-2xl p-4 text-left ring-1 transition ${
+                        isActive
+                          ? "bg-[var(--accent-soft)] ring-[var(--accent)]"
+                          : "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] ring-[var(--card-border)] hover:bg-[color-mix(in_srgb,var(--ink)_7%,transparent)]"
+                      }`}
+                      disabled={isLoadingSession}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--ink)]">
+                            {historySession.title || "Coach session"}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
+                            {previewText(historySession.lastMessage)}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--muted)]">
+                          {historySession.messageCount} msgs
+                        </span>
+                      </div>
+                      <p className="mt-3 text-[11px] font-medium text-[var(--muted)]">
+                        {isLoadingSession ? "Opening..." : formatHistoryDate(historySession.lastMessageAt ?? historySession.updatedAt)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--card-border)] p-6 text-center">
+                <Clock3 size={24} className="mb-3 text-[var(--muted)]" />
+                <p className="text-sm font-semibold text-[var(--ink)]">No coach history yet</p>
+                <p className="mt-1 max-w-sm text-xs leading-relaxed text-[var(--muted)]">
+                  Send a message in Coach after running the migration, then it will appear here.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col h-[500px] app-card overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+            {messages.map((m, i) => (
+              <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    m.role === "user"
+                      ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
+                      : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]"
+                  }`}
+                >
+                  {m.role === "user" ? <User size={16} /> : <BrainCircuit size={16} />}
+                </div>
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                    m.role === "user"
+                      ? "bg-[var(--accent)] text-white shadow-sm shadow-blue-600/15"
+                      : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink)] ring-1 ring-[var(--card-border)]"
+                  }`}
+                >
+                  {m.images?.length ? (
+                    <div className={`flex flex-wrap gap-2 ${m.content ? "mb-3" : ""}`}>
+                      {m.images.map((image, imageIndex) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={`${image.slice(0, 24)}-${imageIndex}`}
+                          src={image}
+                          alt={`Uploaded photo ${imageIndex + 1}`}
+                          className="max-h-40 rounded-xl object-cover ring-1 ring-white/20"
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                  {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
+                  {m.goalSuggestion ? <GoalSuggestionCard suggestion={m.goalSuggestion} /> : null}
+                </div>
+              </div>
+            ))}
+            {isLoading ? (
+              <div className="flex gap-3 flex-row">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]">
+                  <BrainCircuit size={16} />
+                </div>
+                <div className="bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] ring-1 ring-[var(--card-border)] text-[var(--ink)] rounded-2xl px-4 py-3 flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce" />
+                  <div
+                    className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
+                    style={{ animationDelay: "0.1s" }}
+                  />
+                  <div
+                    className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            pendingImages={pendingImages}
+            onPendingImagesChange={setPendingImages}
+            onSubmit={() => {
+              void sendMessage();
+            }}
+            disabled={isLoading}
+            isLoading={isLoading}
+          />
+        </div>
+      )}
     </div>
   );
 }

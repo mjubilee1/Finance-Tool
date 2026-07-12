@@ -33,7 +33,15 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, targetAmount, targetDate, currentAmount = 0, priority = 3, type } = body;
+    const {
+      name,
+      targetAmount,
+      targetDate,
+      currentAmount = 0,
+      priority = 3,
+      type,
+      monthlyContribution,
+    } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -48,12 +56,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Money goals need a target amount" }, { status: 400 });
     }
 
+    const parsedMonthly =
+      monthlyContribution === undefined || monthlyContribution === null || monthlyContribution === ""
+        ? null
+        : Number(monthlyContribution);
+    const safeMonthly =
+      parsedMonthly != null && Number.isFinite(parsedMonthly) && parsedMonthly > 0
+        ? Math.round(parsedMonthly * 100) / 100
+        : null;
+
     const parsedTarget = isLifeGoal
       ? 100
       : parseFloat(String(targetAmount));
-    const parsedCurrent = isLifeGoal
+    let parsedCurrent = isLifeGoal
       ? Math.min(100, Math.max(0, parseFloat(String(currentAmount)) || 0))
       : parseFloat(String(currentAmount)) || 0;
+
+    // Seed first month of a planned redirect so the goal isn't stuck at $0.
+    if (!isLifeGoal && parsedCurrent <= 0 && safeMonthly != null) {
+      parsedCurrent = safeMonthly;
+    }
 
     const goal = await prisma.financialGoal.create({
       data: {
@@ -61,6 +83,7 @@ export async function POST(request: Request) {
         name: name.trim(),
         targetAmount: parsedTarget,
         currentAmount: parsedCurrent,
+        monthlyContribution: safeMonthly,
         targetDate:
           typeof targetDate === "string" && targetDate.trim()
             ? targetDate.trim()
@@ -88,20 +111,65 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { id, currentAmount, targetAmount, name, targetDate, priority, status } = body;
+    const {
+      id,
+      currentAmount,
+      targetAmount,
+      name,
+      targetDate,
+      priority,
+      status,
+      monthlyContribution,
+      addAmount,
+      type,
+      category,
+    } = body;
 
     if (!id || typeof id !== "string") {
       return NextResponse.json({ error: "Missing ID" }, { status: 400 });
     }
 
+    const existing = await prisma.financialGoal.findFirst({
+      where: { id, userId: session.user.id },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const data: Record<string, unknown> = {};
-    if (currentAmount !== undefined) data.currentAmount = parseFloat(String(currentAmount));
+    if (addAmount !== undefined && addAmount !== null && addAmount !== "") {
+      const add = Number(addAmount);
+      if (!Number.isFinite(add) || add === 0) {
+        return NextResponse.json({ error: "Invalid addAmount" }, { status: 400 });
+      }
+      data.currentAmount = Math.round((existing.currentAmount + add) * 100) / 100;
+    } else if (currentAmount !== undefined) {
+      data.currentAmount = parseFloat(String(currentAmount));
+    }
     if (targetAmount !== undefined) data.targetAmount = parseFloat(String(targetAmount));
     if (typeof name === "string" && name.trim()) data.name = name.trim();
-    if (typeof targetDate === "string") data.targetDate = targetDate || null;
+    if (typeof targetDate === "string") data.targetDate = targetDate.trim() || null;
     if (priority !== undefined) data.priority = parseInt(String(priority), 10);
     if (typeof status === "string" && ["active", "completed", "abandoned"].includes(status)) {
       data.status = status;
+    }
+    const nextCategory =
+      typeof type === "string" && type.trim()
+        ? type.trim()
+        : typeof category === "string" && category.trim()
+          ? category.trim()
+          : null;
+    if (nextCategory) data.category = nextCategory;
+    if (monthlyContribution !== undefined) {
+      if (monthlyContribution === null || monthlyContribution === "") {
+        data.monthlyContribution = null;
+      } else {
+        const monthly = Number(monthlyContribution);
+        if (!Number.isFinite(monthly) || monthly < 0) {
+          return NextResponse.json({ error: "Invalid monthlyContribution" }, { status: 400 });
+        }
+        data.monthlyContribution = Math.round(monthly * 100) / 100;
+      }
     }
 
     if (Object.keys(data).length === 0) {
