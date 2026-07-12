@@ -39,6 +39,10 @@ yarn-error.log*
 # local plaid token storage (dev only)
 /.data/
 
+# private contact exports — never commit phone books / VCFs
+*.vcf
+/data/private/
+
 # vercel
 .vercel
 

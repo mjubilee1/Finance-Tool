@@ -136,6 +136,20 @@ type GrowthDashboard = {
 
 const DOMAINS = ["career", "startup", "financial", "social", "fitness", "personal"] as const;
 
+const CONTACT_TYPE_OPTIONS = [
+  "unlabeled",
+  "family",
+  "peer",
+  "social",
+  "dating",
+  "mentor",
+  "founder",
+  "investor",
+  "colleague",
+  "tenant",
+  "other",
+] as const;
+
 function expandReviewBullets(items: string[], max = 5): string[] {
   const out: string[] = [];
   for (const item of items) {
@@ -312,6 +326,20 @@ export function GrowthView() {
       body: JSON.stringify({ id, status: "dismissed" }),
     });
     invalidate();
+  };
+
+  const updateContactType = async (id: string, relationshipType: string) => {
+    setBusy(`contact-type-${id}`);
+    try {
+      const res = await fetch("/api/growth/contacts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, relationshipType }),
+      });
+      if (res.ok) invalidate();
+    } finally {
+      setBusy(null);
+    }
   };
 
   const submitActivity = async (e: React.FormEvent) => {
@@ -770,14 +798,20 @@ export function GrowthView() {
                 onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
               />
               <div className="grid grid-cols-2 gap-2 min-w-0">
-                <input
-                  className="app-input w-full min-w-0 px-3 py-1.5 text-sm"
-                  placeholder="Type (mentor, founder…)"
+                <select
+                  className="app-input w-full min-w-0 px-3 py-1.5 text-sm capitalize"
                   value={contactForm.relationshipType}
                   onChange={(e) =>
                     setContactForm({ ...contactForm, relationshipType: e.target.value })
                   }
-                />
+                  aria-label="Relationship type"
+                >
+                  {CONTACT_TYPE_OPTIONS.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="date"
                   className="app-input w-full min-w-0 px-3 py-1.5 text-sm"
@@ -899,36 +933,62 @@ export function GrowthView() {
                               ) : null}
                             </div>
                             <p className="text-xs text-slate-500 truncate">
-                              {c.relationshipType ?? "contact"} · {c.status}
+                              {c.status}
                               {c.lastContactDate ? ` · ${c.lastContactDate}` : ""}
+                              {!latest &&
+                              (c.relationshipType ?? "unlabeled") === "family"
+                                ? " · notes optional"
+                                : !latest
+                                  ? " · no notes yet"
+                                  : ""}
                             </p>
                             {!expanded && latest ? (
                               <p className="text-xs text-slate-600 mt-1 line-clamp-1">{latest}</p>
                             ) : null}
-                            {!expanded && !latest ? (
-                              <p className="text-xs text-slate-400 mt-1">No notes yet</p>
-                            ) : null}
                           </button>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                editingContactId === c.id
-                                  ? closeContactNotes()
-                                  : openContactNotes(c)
-                              }
-                              className="text-xs font-semibold text-teal-700 px-1.5 py-1"
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <select
+                              className="app-input text-[11px] font-semibold capitalize px-2 py-1 max-w-[7.5rem]"
+                              value={(c.relationshipType ?? "unlabeled").toLowerCase()}
+                              disabled={busy === `contact-type-${c.id}`}
+                              onChange={(e) => void updateContactType(c.id, e.target.value)}
+                              aria-label={`Label for ${c.name}`}
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              {editingContactId === c.id ? "Close" : "Note"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleContactExpanded(c.id)}
-                              className="p-1 text-slate-400 hover:text-slate-700"
-                              aria-label={expanded ? "Collapse" : "Expand"}
-                            >
-                              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
+                              {CONTACT_TYPE_OPTIONS.map((type) => (
+                                <option key={type} value={type}>
+                                  {type}
+                                </option>
+                              ))}
+                              {!CONTACT_TYPE_OPTIONS.includes(
+                                (c.relationshipType ?? "unlabeled").toLowerCase() as (typeof CONTACT_TYPE_OPTIONS)[number],
+                              ) && c.relationshipType ? (
+                                <option value={c.relationshipType.toLowerCase()}>
+                                  {c.relationshipType}
+                                </option>
+                              ) : null}
+                            </select>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  editingContactId === c.id
+                                    ? closeContactNotes()
+                                    : openContactNotes(c)
+                                }
+                                className="text-xs font-semibold text-teal-700 px-1.5 py-1"
+                              >
+                                {editingContactId === c.id ? "Close" : "Note"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleContactExpanded(c.id)}
+                                className="p-1 text-slate-400 hover:text-slate-700"
+                                aria-label={expanded ? "Collapse" : "Expand"}
+                              >
+                                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </button>
+                            </div>
                           </div>
                         </div>
 

@@ -100,6 +100,7 @@ Active-context rules:
 - Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
 - Default discretionary target ~$25 most days; celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
+- Family/personal contacts can exist unlabeled or as "family" without notes — do not nag for notes or treat them as compounding bottlenecks. Prioritize notes on mentors, founders, peers, investors, dating-with-intent.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block instead of low-ROI Lyft")
@@ -742,7 +743,12 @@ export async function syncOpportunities(userId: string, metrics: GrowthMetrics) 
     take: 20,
     include: { noteEntries: { select: { id: true }, take: 1 } },
   });
-  const withoutNotes = contacts.filter((c) => !contactHasNotes(c));
+  const withoutNotes = contacts.filter((c) => {
+    const type = (c.relationshipType ?? "").toLowerCase();
+    // Family / personal aren't compounding targets — don't nag for notes.
+    if (["family", "personal", "roommate", "tenant"].includes(type)) return false;
+    return !contactHasNotes(c);
+  });
   if (contacts.length === 0) {
     candidates.push({
       title: "Add 3 high-leverage people to your network map",

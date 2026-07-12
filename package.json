@@ -12,6 +12,7 @@
     "e2e:yc-login:headed": "PLAYWRIGHT_HEADED=true playwright test e2e/yc-login.spec.ts",
     "e2e:yc-login:ui": "playwright test e2e/yc-login.spec.ts --ui",
     "e2e:report": "playwright show-report",
+    "update-relationship": "npx tsx scripts/import-vcf-contacts.ts \"/Users/trell/Downloads/Daily life.vcf\"",
     "reset:plaid": "npx tsx scripts/reset-plaid.ts",
     "reset:plaid:me": "npx tsx scripts/reset-plaid.ts mjubil96@gmail.com",
     "version:bump": "node scripts/bump-version.mjs --manual",
