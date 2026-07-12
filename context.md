@@ -1,19 +1,31 @@
 # Product Context
 
-This is a **personal finance tool built for one user** — not a multi-tenant product, not a generic SaaS, and not designed for arbitrary sign-ups or shared accounts.
+This is a **personal life OS with a CFO core, built for one user (Trell)** — not a multi-tenant product, not a generic SaaS, and not designed for arbitrary sign-ups or shared accounts.
 
 ## Purpose
 
-Help stay on track with **long-term financial goals** while staying financially sharp day to day. Small spending decisions should connect to the bigger picture: micro choices add up to macro outcomes.
+Trell's **default daily app**: open every day, log constantly, get sharper coaching over time.
+
+Help stay on track with **long-term goals** (money + career + body + network) while staying sharp day to day. Small choices should connect to the bigger picture: micro logging compounds into macro outcomes.
 
 The app should:
-
-- Track progress toward goals and plans
+- Be the place Trell **opens every day** and **constantly logs into** (activities, contacts, spends, screenshots, wins)
+- Track progress toward goals and plans across life domains
 - **Celebrate good weeks** — e.g. "You did well this week; it's okay to spend a little extra"
-- **Alert** when spending or habits drift off course
+- **Alert** when spending or habits drift off course (including thin network / ignored follow-ups)
 - Support occasional out-of-the-ordinary purchases without guilt, when the numbers justify it
 - Default variable spend ~**$25/day** most days; allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
 - Future-proof money by tying income and goals to the right accounts
+- Call out low-leverage traps plainly: e.g. "You don't need 6 hours of Lyft for ~$100 — protect a networking / promotion block too"
+
+### Daily loop (logging flywheel)
+
+1. **Open Today Planner** — what to protect today (body, leverage, joy, optional Lyft)
+2. **Log as life happens** — gym, outreach, Lyft, spend, contact notes, screenshots
+3. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
+4. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
+
+The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real Lyft-vs-leverage tradeoffs.
 
 ## Planning Philosophy
 
