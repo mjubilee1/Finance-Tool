@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImagePlus, Mic, MicOff, Send, X } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Plus, X } from "lucide-react";
 import { readImageAsDataUrl } from "@/lib/chat-images";
 
 type Props = {
@@ -14,6 +14,8 @@ type Props = {
   isLoading?: boolean;
 };
 
+const MAX_IMAGES = 2;
+
 export function ChatComposer({
   value,
   onChange,
@@ -23,7 +25,7 @@ export function ChatComposer({
   disabled = false,
   isLoading = false,
 }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -40,18 +42,27 @@ export function ChatComposer({
     };
   }, []);
 
-  const canSend = (value.trim().length > 0 || pendingImages.length > 0) && !disabled && !isLoading && !isTranscribing;
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-  const handlePickImages = async (files: FileList | null) => {
-    if (!files?.length) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }, [value, pendingImages.length]);
+
+  const canSend =
+    (value.trim().length > 0 || pendingImages.length > 0) && !disabled && !isLoading && !isTranscribing;
+
+  const addImages = async (files: File[]) => {
+    if (!files.length) return;
 
     setComposerError(null);
 
     try {
       const nextImages = [...pendingImages];
-      for (const file of Array.from(files)) {
-        if (nextImages.length >= 2) {
-          setComposerError("You can attach up to 2 photos per message.");
+      for (const file of files) {
+        if (nextImages.length >= MAX_IMAGES) {
+          setComposerError(`You can attach up to ${MAX_IMAGES} photos per message.`);
           break;
         }
         const dataUrl = await readImageAsDataUrl(file);
@@ -60,11 +71,27 @@ export function ChatComposer({
       onPendingImagesChange(nextImages);
     } catch (error) {
       setComposerError(error instanceof Error ? error.message : "Could not attach photo.");
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     }
+  };
+
+  const handlePickImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    await addImages(Array.from(files));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFiles = Array.from(event.clipboardData.items)
+      .filter((item) => item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (!imageFiles.length) return;
+
+    event.preventDefault();
+    void addImages(imageFiles);
   };
 
   const stopRecordingTracks = () => {
@@ -96,7 +123,7 @@ export function ChatComposer({
       }
 
       onChange(value.trim() ? `${value.trim()} ${transcript}` : transcript);
-      inputRef.current?.focus();
+      textareaRef.current?.focus();
     } catch (error) {
       setComposerError(error instanceof Error ? error.message : "Voice input failed.");
     } finally {
@@ -163,110 +190,117 @@ export function ChatComposer({
     onPendingImagesChange(pendingImages.filter((_, imageIndex) => imageIndex !== index));
   };
 
+  const placeholder = isTranscribing
+    ? "Transcribing voice..."
+    : isRecording
+      ? "Listening..."
+      : "Ask your coach, paste a screenshot, or tap the mic";
+
   return (
-    <div className="p-4 border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] space-y-3">
-      {pendingImages.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {pendingImages.map((image, index) => (
-            <div key={`${image.slice(0, 24)}-${index}`} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={image}
-                alt={`Attachment ${index + 1}`}
-                className="h-16 w-16 rounded-xl object-cover ring-1 ring-[var(--card-border)]"
-              />
-              <button
-                type="button"
-                onClick={() => removeImage(index)}
-                className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--ink)] text-[var(--card-solid)] p-0.5"
-                aria-label="Remove photo"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {composerError ? (
-        <p className="text-xs text-rose-600 dark:text-rose-300">{composerError}</p>
-      ) : null}
-
+    <div className="border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] p-3 sm:p-4">
       <form
         onSubmit={(event) => {
           event.preventDefault();
           if (canSend) onSubmit();
         }}
-        className="flex items-center gap-2"
+        className="rounded-2xl ring-1 ring-[var(--card-border)] bg-[var(--card)] shadow-sm"
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={["image/jpeg", "image/png", "image/webp", "image/gif"].join(",")}
-          capture="environment"
-          className="hidden"
-          onChange={(event) => {
-            void handlePickImages(event.target.files);
-          }}
-        />
+        {pendingImages.length > 0 ? (
+          <div className="flex flex-wrap gap-2 border-b border-[var(--card-border)] px-3 py-2.5">
+            {pendingImages.map((image, index) => (
+              <div key={`${image.slice(0, 24)}-${index}`} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={image}
+                  alt={`Attachment ${index + 1}`}
+                  className="h-14 w-14 rounded-lg object-cover ring-1 ring-[var(--card-border)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(index)}
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--ink)] text-[var(--card-solid)] p-0.5"
+                  aria-label="Remove photo"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || isLoading || isTranscribing || pendingImages.length >= 2}
-          className="shrink-0 w-10 h-10 rounded-full app-card flex items-center justify-center text-[var(--ink-soft)] hover:brightness-110 disabled:opacity-50"
-          title="Upload photo"
-          aria-label="Upload photo"
-        >
-          <ImagePlus size={18} />
-        </button>
-
-        <button
-          type="button"
-          onClick={toggleRecording}
-          disabled={disabled || isLoading || isTranscribing}
-          className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-            isRecording
-              ? "bg-rose-600 text-white animate-pulse"
-              : "app-card text-[var(--ink-soft)] hover:brightness-110"
-          } disabled:opacity-50`}
-          title={isRecording ? "Stop recording" : "Voice input"}
-          aria-label={isRecording ? "Stop recording" : "Voice input"}
-        >
-          {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
-        </button>
-
-        <div className="relative flex-1 min-w-0">
+        <div className="flex items-end gap-1.5 px-2 py-2 sm:gap-2 sm:px-3">
           <input
-            ref={inputRef}
-            type="text"
+            ref={fileInputRef}
+            type="file"
+            accept={["image/jpeg", "image/png", "image/webp", "image/gif"].join(",")}
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void handlePickImages(event.target.files);
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || isLoading || isTranscribing || pendingImages.length >= MAX_IMAGES}
+            className="mb-0.5 shrink-0 rounded-full p-2 text-[var(--ink-soft)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] disabled:opacity-50"
+            title="Add photo"
+            aria-label="Add photo"
+          >
+            <Plus size={20} />
+          </button>
+
+          <textarea
+            ref={textareaRef}
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            placeholder={
-              isTranscribing
-                ? "Transcribing voice..."
-                : isRecording
-                  ? "Listening..."
-                  : "Ask a question, upload a receipt, or use the mic"
-            }
+            onPaste={handlePaste}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (canSend) onSubmit();
+              }
+            }}
+            placeholder={placeholder}
             disabled={disabled || isLoading || isTranscribing}
-            className="w-full pl-4 pr-12 py-3 app-input rounded-full text-sm placeholder:text-[var(--muted)]"
+            rows={1}
+            className="min-h-[40px] max-h-40 flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-[var(--ink)] placeholder:text-[var(--muted)] focus:outline-none disabled:opacity-60"
           />
+
+          <button
+            type="button"
+            onClick={toggleRecording}
+            disabled={disabled || isLoading || isTranscribing}
+            className={`mb-0.5 shrink-0 rounded-full p-2 transition disabled:opacity-50 ${
+              isRecording
+                ? "bg-rose-600 text-white animate-pulse"
+                : "text-[var(--ink-soft)] hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
+            }`}
+            title={isRecording ? "Stop recording" : "Voice input"}
+            aria-label={isRecording ? "Stop recording" : "Voice input"}
+          >
+            {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+          </button>
+
           <button
             type="submit"
             disabled={!canSend}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 bg-[var(--accent)] text-white rounded-full flex items-center justify-center disabled:opacity-50 hover:brightness-110 transition-colors"
+            className="mb-0.5 shrink-0 rounded-full bg-[var(--ink)] p-2 text-[var(--card-solid)] transition hover:brightness-110 disabled:opacity-40"
             aria-label="Send message"
           >
-            <Send size={14} className="ml-[-1px]" />
+            <ArrowUp size={18} strokeWidth={2.5} />
           </button>
         </div>
       </form>
 
-      <p className="text-[11px] text-[var(--ink-soft)] text-center leading-relaxed">
-        Photos work for receipts, bills, and bank screenshots. Tap the mic, speak, then send or edit the
-        transcript.
-      </p>
+      {composerError ? (
+        <p className="mt-2 px-1 text-xs text-rose-600 dark:text-rose-300">{composerError}</p>
+      ) : (
+        <p className="mt-2 px-1 text-center text-[11px] leading-relaxed text-[var(--ink-soft)]">
+          Paste screenshots directly into the box. Mic sits on the right — speak, edit, then send.
+        </p>
+      )}
     </div>
   );
 }
