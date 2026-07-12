@@ -634,6 +634,7 @@ export function Dashboard() {
                   onOpenChat={() => setActiveTab('chat')}
                   onOpenRecurring={() => setActiveTab('recurring')}
                   onOpenGrowth={() => setActiveTab('growth')}
+                  onOpenGoals={() => setActiveTab('goals')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                 />

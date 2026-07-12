@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
 import { getStatusStyle } from "@/lib/cash-flow";
 import type { TodayCashFlow, WeeklyCashFlow } from "@/lib/cash-flow";
@@ -9,7 +10,14 @@ import { TodayCashFlowMeter } from "./today-cash-flow-meter";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronDown, ChevronUp, Flame, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Flame, MessageSquare, Repeat, Sparkles, Target } from "lucide-react";
+
+function getTimeGreeting(date = DateTime.local()) {
+  const hour = date.hour;
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 type CfoBrief = {
   status?: string;
@@ -61,6 +69,7 @@ type Props = {
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
+  onOpenGoals?: () => void;
   priorityGoal?: {
     name: string;
     paceMessage: string;
@@ -85,6 +94,7 @@ export function OverviewHome({
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
+  onOpenGoals,
   priorityGoal,
   isBriefPending = false,
 }: Props) {
@@ -94,6 +104,8 @@ export function OverviewHome({
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
+  const todayLabel = DateTime.local().toFormat("EEEE, MMMM d");
+  const greeting = getTimeGreeting();
 
   const { data: growthPreview } = useQuery({
     queryKey: ["growth-overview-preview"],
@@ -118,27 +130,59 @@ export function OverviewHome({
         </div>
       ) : null}
 
-      <div className="flex md:hidden items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Today</h1>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-teal-700/80">{todayLabel}</p>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight mt-1">{greeting}</h1>
+          <p className="text-slate-500 text-sm mt-1">Your daily cash flow at a glance.</p>
+        </div>
         <span
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ring-1 ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}
+          className={`inline-flex items-center gap-2 px-3 py-1.5 md:px-3.5 rounded-full text-xs md:text-sm font-semibold ring-1 shrink-0 ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
+          <span className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${statusStyle.dot}`} />
           {statusLabel}
         </span>
       </div>
 
-      <div className="hidden md:flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Good morning</h1>
-          <p className="text-slate-500 mt-1">Your daily cash flow at a glance.</p>
-        </div>
-        <span
-          className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-semibold ring-1 ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onOpenChat}
+          className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
         >
-          <span className={`w-2 h-2 rounded-full ${statusStyle.dot}`} />
-          {statusLabel}
-        </span>
+          <MessageSquare size={14} className="text-teal-600" />
+          Ask CFO
+        </button>
+        {onOpenGrowth ? (
+          <button
+            type="button"
+            onClick={onOpenGrowth}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+          >
+            <Flame size={14} className="text-orange-600" />
+            Growth
+          </button>
+        ) : null}
+        {onOpenGoals ? (
+          <button
+            type="button"
+            onClick={onOpenGoals}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+          >
+            <Target size={14} className="text-teal-600" />
+            Goals
+          </button>
+        ) : null}
+        {onOpenRecurring ? (
+          <button
+            type="button"
+            onClick={onOpenRecurring}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+          >
+            <Repeat size={14} className="text-teal-600" />
+            Recurring
+          </button>
+        ) : null}
       </div>
 
       <TodayCashFlowMeter today={cashFlow.today} status={cfoBrief?.status} />
