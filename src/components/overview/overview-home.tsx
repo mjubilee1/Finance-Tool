@@ -6,12 +6,74 @@ import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
-import type { TodayCashFlow, WeeklyCashFlow } from "@/lib/cash-flow";
+import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint } from "@/lib/cash-flow";
 import { TodayCashFlowMeter } from "./today-cash-flow-meter";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown, ChevronUp, Flame, Heart, MessageSquare, Repeat, Sparkles, Target } from "lucide-react";
+
+function DailySpendTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: DailySpendPoint }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+
+  const hasSpend = point.totalSpent > 0;
+  const breakdown = point.breakdown ?? [];
+  const topMerchants = point.topMerchants ?? [];
+
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5 text-sm shadow-lg max-w-[240px]"
+      style={{
+        border: "1px solid var(--card-border)",
+        background: "var(--card-solid)",
+        color: "var(--ink)",
+      }}
+    >
+      <p className="font-semibold tabular-nums mb-1">{label}</p>
+      <p className="tabular-nums mb-2">
+        Total: <span className="font-bold">{formatCurrency(point.totalSpent)}</span>
+      </p>
+      {!hasSpend ? (
+        <p className="text-xs text-[var(--muted)]">No spending counted this day.</p>
+      ) : (
+        <>
+          {breakdown.length > 0 ? (
+            <div className="space-y-1 mb-2">
+              <p className="app-label text-[10px]">By type</p>
+              {breakdown.map((item) => (
+                <div key={item.label} className="flex justify-between gap-3 text-xs">
+                  <span className="text-[var(--ink-soft)] truncate">{item.label}</span>
+                  <span className="tabular-nums shrink-0">{formatCurrency(item.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {topMerchants.length > 0 ? (
+            <div className="space-y-1 border-t border-[var(--card-border)] pt-2">
+              <p className="app-label text-[10px]">Top places</p>
+              {topMerchants.map((item) => (
+                <div key={item.label} className="flex justify-between gap-3 text-xs">
+                  <span className="text-[var(--ink-soft)] truncate">{item.label}</span>
+                  <span className="tabular-nums shrink-0">{formatCurrency(item.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
 
 type CfoBrief = {
   status?: string;
@@ -60,7 +122,7 @@ type Props = {
   briefUpdatedLabel: string | null;
   nextBriefLabel: string | null;
   refreshHours?: number;
-  dailySpendSeries: Array<{ date: string; totalSpent: number }>;
+  dailySpendSeries: DailySpendPoint[];
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
@@ -461,17 +523,8 @@ export function OverviewHome({
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip
-                      formatter={(value) => formatCurrency(Number(value))}
-                      contentStyle={{
-                        borderRadius: 12,
-                        border: "1px solid var(--card-border)",
-                        background: "var(--card-solid)",
-                        color: "var(--ink)",
-                        boxShadow: "0 4px 12px rgba(15,23,42,0.2)",
-                      }}
-                    />
-                    <Line type="monotone" dataKey="totalSpent" stroke="var(--accent)" strokeWidth={2.5} dot={false} />
+                    <Tooltip content={<DailySpendTooltip />} />
+                    <Line type="monotone" dataKey="totalSpent" stroke="var(--accent)" strokeWidth={2.5} dot={false} name="Spent" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

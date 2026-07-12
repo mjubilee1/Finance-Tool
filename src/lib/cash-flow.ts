@@ -8,6 +8,20 @@ type CashFlowTransaction = {
   amount: number;
   pending?: boolean | null;
   categoryPrimary?: string | null;
+  name?: string | null;
+  merchantName?: string | null;
+};
+
+export type DailySpendBreakdownItem = {
+  label: string;
+  amount: number;
+};
+
+export type DailySpendPoint = {
+  date: string;
+  totalSpent: number;
+  breakdown?: DailySpendBreakdownItem[];
+  topMerchants?: DailySpendBreakdownItem[];
 };
 
 export type WeekDaySummary = {
@@ -59,10 +73,74 @@ function isTransfer(transaction: CashFlowTransaction) {
   return transaction.categoryPrimary?.toLowerCase().includes("transfer") ?? false;
 }
 
-export type DailySpendPoint = {
-  date: string;
-  totalSpent: number;
-};
+function spendBucket(transaction: CashFlowTransaction): string {
+  const text = [
+    transaction.name,
+    transaction.merchantName,
+    transaction.categoryPrimary,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    text.includes("food") ||
+    text.includes("restaurant") ||
+    text.includes("dining") ||
+    text.includes("grocery") ||
+    text.includes("coffee") ||
+    text.includes("bakery")
+  ) {
+    return "Food";
+  }
+  if (
+    text.includes("gas") ||
+    text.includes("fuel") ||
+    text.includes("transport") ||
+    text.includes("uber") ||
+    text.includes("lyft") ||
+    text.includes("parking") ||
+    text.includes("shell") ||
+    text.includes("bp ") ||
+    text.includes("sunoco") ||
+    text.includes("marathon")
+  ) {
+    return "Gas / rides";
+  }
+  if (
+    text.includes("utility") ||
+    text.includes("utilities") ||
+    text.includes("mortgage") ||
+    text.includes("insurance") ||
+    text.includes("rent") ||
+    text.includes("pepco") ||
+    text.includes("interest") ||
+    text.includes("loan")
+  ) {
+    return "Bills / interest";
+  }
+  if (
+    text.includes("merchandise") ||
+    text.includes("shopping") ||
+    text.includes("amazon") ||
+    text.includes("target") ||
+    text.includes("h&m") ||
+    text.includes("apple")
+  ) {
+    return "Shopping";
+  }
+  if (text.includes("entertainment") || text.includes("netflix") || text.includes("spotify")) {
+    return "Entertainment";
+  }
+  return "Other";
+}
+
+function topAmounts(map: Map<string, number>, limit: number): DailySpendBreakdownItem[] {
+  return Array.from(map.entries())
+    .map(([label, amount]) => ({ label, amount: roundCurrency(amount) }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, limit);
+}
 
 /** Last N days of spending from transactions (not snapshot rows). */
 export function buildDailySpendSeries(
@@ -77,24 +155,37 @@ export function buildDailySpendSeries(
   const startKey = start.toISODate() ?? "";
   const todayKey = today.toISODate() ?? "";
 
-  const byDate = new Map<string, number>();
+  const byDate = new Map<
+    string,
+    { total: number; buckets: Map<string, number>; merchants: Map<string, number> }
+  >();
   for (let i = 0; i < days; i++) {
     const key = start.plus({ days: i }).toISODate();
-    if (key) byDate.set(key, 0);
+    if (key) byDate.set(key, { total: 0, buckets: new Map(), merchants: new Map() });
   }
 
   for (const transaction of transactions) {
     if (isTransfer(transaction) || transaction.amount <= 0) continue;
     const activityDate = getTransactionActivityDate(transaction);
     if (activityDate < startKey || activityDate > todayKey) continue;
-    if (!byDate.has(activityDate)) continue;
-    // Include pending on the activity day so recent spend shows up before settle.
-    byDate.set(activityDate, (byDate.get(activityDate) ?? 0) + transaction.amount);
+    const day = byDate.get(activityDate);
+    if (!day) continue;
+
+    const amount = transaction.amount;
+    day.total += amount;
+
+    const bucket = spendBucket(transaction);
+    day.buckets.set(bucket, (day.buckets.get(bucket) ?? 0) + amount);
+
+    const merchant = (transaction.merchantName || transaction.name || "Unknown").trim();
+    day.merchants.set(merchant, (day.merchants.get(merchant) ?? 0) + amount);
   }
 
-  return Array.from(byDate.entries()).map(([date, totalSpent]) => ({
+  return Array.from(byDate.entries()).map(([date, day]) => ({
     date,
-    totalSpent: roundCurrency(totalSpent),
+    totalSpent: roundCurrency(day.total),
+    breakdown: topAmounts(day.buckets, 6),
+    topMerchants: topAmounts(day.merchants, 4),
   }));
 }
 

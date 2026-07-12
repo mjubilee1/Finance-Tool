@@ -1,7 +1,7 @@
 "use client";
 
 import { sumDepositoryCash } from "@/lib/account-focus";
-import { calculateGoalPace } from "@/lib/cash-flow";
+import { calculateGoalPace, type DailySpendPoint } from "@/lib/cash-flow";
 import { isLifeGoalType } from "@/lib/goal-types";
 import { formatCurrency } from "@/lib/format";
 import {
@@ -146,7 +146,7 @@ type DashboardGoal = {
 type DashboardData = {
   transactions: DashboardTransaction[];
   snapshots: Array<Record<string, unknown>>;
-  dailySpendSeries?: Array<{ date: string; totalSpent: number }>;
+  dailySpendSeries?: DailySpendPoint[];
   aiInsight: DashboardInsight | null;
   accounts: DashboardAccount[];
   goals: DashboardGoal[];
