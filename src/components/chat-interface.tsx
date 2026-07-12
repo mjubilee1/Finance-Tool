@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { User, BrainCircuit, Clock3, MessageSquarePlus } from "lucide-react";
+import { User, BrainCircuit, Clock3, MessageSquarePlus, Volume2, VolumeX, LoaderCircle } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
 import { SpendingRadar } from "./chat/spending-radar";
@@ -10,6 +10,8 @@ import { TransactionSpotlightCard, type TransactionSpotlight } from "./chat/tran
 import { GoalSuggestionCard } from "./chat/goal-suggestion-card";
 import type { GoalSuggestion } from "@/lib/goal-suggestion";
 import { ChatComposer } from "./chat/chat-composer";
+import { useCoachSpeech } from "@/hooks/use-coach-speech";
+import { READ_ALOUD_STORAGE_KEY } from "@/lib/coach-speech";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -106,6 +108,19 @@ export function ChatInterface({
   const [isLoading, setIsLoading] = useState(false);
   const [loadingHistorySessionId, setLoadingHistorySessionId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [readAloudEnabled, setReadAloudEnabled] = useState(false);
+  const readAloudBaselineRef = useRef(0);
+  const prevMessageCountRef = useRef(initialCoachMessages.length);
+
+  const {
+    speak,
+    stop: stopSpeech,
+    isLoadingSpeech,
+    isSpeaking,
+    speakingMessageIndex,
+    speechError,
+    clearSpeechError,
+  } = useCoachSpeech();
 
   const { data: chatHistory } = useQuery({
     queryKey: ["chat-history"],
@@ -124,7 +139,7 @@ export function ChatInterface({
 
     historyHydratedRef.current = true;
     setSessionId(chatHistory.session?.id ?? null);
-    setMessages(
+    const nextMessages =
       chatHistory.messages.length > 0
         ? chatHistory.messages.map(({ role, content, images, spotlight, goalSuggestion }) => ({
             role,
@@ -133,8 +148,10 @@ export function ChatInterface({
             spotlight,
             goalSuggestion,
           }))
-        : initialCoachMessages,
-    );
+        : initialCoachMessages;
+    setMessages(nextMessages);
+    readAloudBaselineRef.current = nextMessages.length;
+    prevMessageCountRef.current = nextMessages.length;
   }, [chatHistory]);
 
   useEffect(() => {
@@ -142,6 +159,47 @@ export function ChatInterface({
     setInput(seedPrompt.trim());
     onSeedPromptUsed?.();
   }, [seedPrompt, onSeedPromptUsed]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(READ_ALOUD_STORAGE_KEY);
+    if (stored === "true") {
+      readAloudBaselineRef.current = initialCoachMessages.length;
+      prevMessageCountRef.current = initialCoachMessages.length;
+      setReadAloudEnabled(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!readAloudEnabled) {
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
+
+    if (messages.length > prevMessageCountRef.current) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.role === "assistant" && messages.length > readAloudBaselineRef.current) {
+        void speak(lastMessage.content, { messageIndex: messages.length - 1 });
+      }
+    }
+
+    prevMessageCountRef.current = messages.length;
+  }, [messages, readAloudEnabled, speak]);
+
+  const toggleReadAloud = () => {
+    setReadAloudEnabled((current) => {
+      const next = !current;
+      window.localStorage.setItem(READ_ALOUD_STORAGE_KEY, String(next));
+      readAloudBaselineRef.current = messages.length;
+      prevMessageCountRef.current = messages.length;
+      clearSpeechError();
+
+      if (!next) {
+        stopSpeech();
+      }
+
+      return next;
+    });
+  };
 
   const handleAskAboutAlert = (alert: SpendingAlert) => {
     const label = alert.merchantName ?? alert.name;
@@ -254,6 +312,7 @@ export function ChatInterface({
 
     if ((!userMessage && images.length === 0) || isLoading) return;
 
+    stopSpeech();
     setInput("");
     setPendingImages([]);
 
@@ -363,15 +422,32 @@ export function ChatInterface({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={handleNewChat}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/15 disabled:opacity-60"
-          disabled={isLoading}
-        >
-          <MessageSquarePlus size={16} />
-          New chat
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleReadAloud}
+            className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold ring-1 transition disabled:opacity-60 ${
+              readAloudEnabled
+                ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[var(--accent)] dark:text-[var(--accent-bright)]"
+                : "bg-[var(--card)] text-[var(--ink)] ring-[var(--card-border)] hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]"
+            }`}
+            disabled={isLoading}
+            title={readAloudEnabled ? "Stop reading responses aloud" : "Read coach responses aloud"}
+          >
+            {readAloudEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {readAloudEnabled ? "Read aloud on" : "Read aloud off"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNewChat}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/15 disabled:opacity-60"
+            disabled={isLoading}
+          >
+            <MessageSquarePlus size={16} />
+            New chat
+          </button>
+        </div>
       </div>
 
       {activeCoachTab === "history" ? (
@@ -470,7 +546,42 @@ export function ChatInterface({
                       ))}
                     </div>
                   ) : null}
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                    {m.role === "assistant" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearSpeechError();
+                          if (isSpeaking && speakingMessageIndex === i) {
+                            stopSpeech();
+                            return;
+                          }
+                          void speak(m.content, { messageIndex: i });
+                        }}
+                        disabled={isLoadingSpeech && speakingMessageIndex === i}
+                        className="shrink-0 rounded-lg p-1.5 text-[var(--muted)] transition hover:bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] hover:text-[var(--ink)] disabled:opacity-50"
+                        title={
+                          isSpeaking && speakingMessageIndex === i
+                            ? "Stop reading"
+                            : "Read this message aloud"
+                        }
+                        aria-label={
+                          isSpeaking && speakingMessageIndex === i
+                            ? "Stop reading"
+                            : "Read this message aloud"
+                        }
+                      >
+                        {isLoadingSpeech && speakingMessageIndex === i ? (
+                          <LoaderCircle size={15} className="animate-spin" />
+                        ) : isSpeaking && speakingMessageIndex === i ? (
+                          <VolumeX size={15} />
+                        ) : (
+                          <Volume2 size={15} />
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
                   {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
                   {m.goalSuggestion ? <GoalSuggestionCard suggestion={m.goalSuggestion} /> : null}
                 </div>
@@ -495,6 +606,12 @@ export function ChatInterface({
               </div>
             ) : null}
           </div>
+
+          {speechError ? (
+            <p className="border-t border-[var(--card-border)] px-4 py-2 text-xs text-rose-600 dark:text-rose-300">
+              {speechError}
+            </p>
+          ) : null}
 
           <ChatComposer
             value={input}
