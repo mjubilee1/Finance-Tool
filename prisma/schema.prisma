@@ -67,6 +67,7 @@ model User {
   plaidApiLogs            PlaidApiLog[]
   growthActivities        GrowthActivity[]
   growthContacts          GrowthContact[]
+  growthContactNotes      GrowthContactNote[]
   growthSnapshots         GrowthSnapshot[]
   growthRecommendations   GrowthRecommendation[]
   weeklyGrowthReviews     WeeklyGrowthReview[]
@@ -249,14 +250,33 @@ model GrowthContact {
   lastContactDate        String? // YYYY-MM-DD
   suggestedNextAction    String?
   mutualValue            String?  @db.Text
+  /// Legacy flat notes blob — kept for migration; prefer noteEntries
   notes                  String?  @db.Text
   status                 String   @default("active") // active | fading | dormant
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  noteEntries GrowthContactNote[]
 
   @@index([userId, status])
+}
+
+/// Append-only timestamped notes (text and/or screenshot images) on a contact
+model GrowthContactNote {
+  id        String   @id @default(cuid())
+  contactId String
+  userId    String
+  body      String?  @db.Text
+  /// Data-URL screenshots (same pattern as chat image attachments)
+  images    String[] @default([])
+  createdAt DateTime @default(now())
+
+  contact GrowthContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, createdAt])
+  @@index([userId])
 }
 
 model GrowthSnapshot {

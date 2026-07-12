@@ -12,6 +12,7 @@ The app should:
 - **Celebrate good weeks** — e.g. "You did well this week; it's okay to spend a little extra"
 - **Alert** when spending or habits drift off course
 - Support occasional out-of-the-ordinary purchases without guilt, when the numbers justify it
+- Default variable spend ~**$25/day** most days; allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
 - Future-proof money by tying income and goals to the right accounts
 
 ## Authentication
@@ -28,13 +29,16 @@ Sign-in is **email + 6-digit code** (passcode sent to email), **not** email + pa
 | Account | Role | Income |
 |---------|------|--------|
 | **Chase** (primary) | Main checking; day-to-day and paycheck hub | Direct-deposit paychecks |
-| **Capital One** (secondary) | Goals, plans, side-income bucket | Lyft driving earnings |
+| **Capital One** (secondary) | Goals, plans, side-income bucket | Lyft driving earnings (after weekly Hertz/Lyft program fee) |
 
 When modeling features, allocations, or coach advice:
 
 - Paycheck → Chase
 - Lyft / gig income → Capital One
+- Lyft has a **weekly program/rental fee** that must be covered before the week is profitable
 - Goals and plans should be future-proofed against the account that actually holds that money
+- Daily tradeoff often: drive Lyft today vs higher-leverage career/build/network work
+- Typical schedule: Mon–Wed office (early Lyft ~2hr then commute; desk-only mid-day), Thu–Fri WFH (better for deep work / in-person)
 
 ## Goals & Plans
 

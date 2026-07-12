@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { calculateGoalPace } from "@/lib/cash-flow";
+import { calculateGoalFunding } from "@/lib/goal-funding";
 import { Target, Plus, Trash2, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -15,19 +16,36 @@ type Goal = {
   targetDate?: string | null;
   priority?: number;
   category?: string;
+  createdAt?: string;
 };
 
 export function GoalsView({
   goals,
   netDailyAverage = 0,
+  checkingCash = 0,
 }: {
   goals: Goal[];
   netDailyAverage?: number;
+  checkingCash?: number;
 }) {
   const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", targetAmount: "", targetDate: "", priority: "2", type: "savings" });
+
+  const funding = useMemo(
+    () =>
+      calculateGoalFunding({
+        checkingCash,
+        goals,
+      }),
+    [checkingCash, goals],
+  );
+  const fundingById = useMemo(
+    () => new Map(funding.goals.map((goal) => [goal.id, goal])),
+    [funding.goals],
+  );
 
   const handleAddGoal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +60,7 @@ export function GoalsView({
         setForm({ name: "", targetAmount: "", targetDate: "", priority: "2", type: "savings" });
         setIsAdding(false);
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
       } else {
         alert("Failed to add goal");
       }
@@ -58,9 +77,27 @@ export function GoalsView({
       const res = await fetch(`/api/goals?id=${id}`, { method: "DELETE" });
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
       }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const updateGoalAmount = async (id: string, currentAmount: number) => {
+    setUpdatingId(id);
+    try {
+      const res = await fetch("/api/goals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, currentAmount }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+      }
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -77,6 +114,15 @@ export function GoalsView({
           </button>
         )}
       </div>
+
+      {goals.length > 0 ? (
+        <div className="app-card p-4 text-sm text-slate-600 leading-relaxed">
+          Progress uses your <span className="font-medium text-slate-800">checking cash</span>{" "}
+          ({formatCurrency(funding.checkingCash)}) after a{" "}
+          {formatCurrency(funding.protectedBuffer)} buffer — no separate pot required. High-priority
+          goals get covered first.
+        </div>
+      ) : null}
 
       {isAdding && (
         <form onSubmit={handleAddGoal} className="app-card p-6 mb-6">
@@ -165,7 +211,8 @@ export function GoalsView({
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-2">No goals set</h3>
           <p className="text-slate-500 mb-6 max-w-sm mx-auto leading-relaxed">
-            Set financial goals and your CFO will help optimize spending to reach them.
+            Set goals even if the money already sits in Chase/Capital One checking — we&apos;ll
+            treat that cash as coverage.
           </p>
           <button
             onClick={() => setIsAdding(true)}
@@ -177,10 +224,12 @@ export function GoalsView({
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {goals.map((goal) => {
-            const progress = goal.targetAmount > 0 ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100)) : 0;
+            const funded = fundingById.get(goal.id);
+            const effectiveAmount = funded?.effectiveAmount ?? goal.currentAmount;
+            const progress = funded?.progressPct ?? 0;
             const pace = calculateGoalPace({
               targetAmount: goal.targetAmount,
-              currentAmount: goal.currentAmount,
+              currentAmount: effectiveAmount,
               targetDate: goal.targetDate,
               netDailyAverage,
             });
@@ -216,26 +265,58 @@ export function GoalsView({
                       {goal.targetDate && (
                         <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 px-2 py-0.5 rounded-md ring-1 ring-slate-200/60">Target: {goal.targetDate}</span>
                       )}
+                      {funded?.fullyFunded ? (
+                        <span className="text-[10px] uppercase tracking-wider font-bold bg-teal-50 text-teal-800 px-2 py-0.5 rounded-md ring-1 ring-teal-200/60">
+                          Covered
+                        </span>
+                      ) : funded?.coveredByChecking ? (
+                        <span className="text-[10px] uppercase tracking-wider font-bold bg-sky-50 text-sky-800 px-2 py-0.5 rounded-md ring-1 ring-sky-200/60">
+                          From checking
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-4">
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="font-semibold text-teal-700 tabular-nums">{formatCurrency(goal.currentAmount)}</span>
+                    <span className="font-semibold text-teal-700 tabular-nums">{formatCurrency(effectiveAmount)}</span>
                     <span className="text-slate-500 tabular-nums">of {formatCurrency(goal.targetAmount)}</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                     <div
                       className="bg-teal-500 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${progress}%` }}
+                      style={{ width: `${Math.min(100, progress)}%` }}
                     />
                   </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {Math.round(progress)}% covered
+                    {funded?.coveredByChecking
+                      ? ` · ${formatCurrency(funded.checkingAllocation)} assigned from checking`
+                      : goal.category === "debt_payoff"
+                        ? " · update payoff progress manually"
+                        : ""}
+                  </p>
                 </div>
 
-                <div className={`mt-4 rounded-xl p-3 text-sm ring-1 leading-relaxed ${pace.onTrack ? "bg-teal-50/80 text-teal-900 ring-teal-200/50" : "bg-amber-50/80 text-amber-900 ring-amber-200/50"}`}>
-                  <p>{pace.paceMessage}</p>
-                  {projectedLabel && pace.remaining > 0 && (
+                {goal.category !== "debt_payoff" && !funded?.fullyFunded ? (
+                  <button
+                    type="button"
+                    disabled={updatingId === goal.id}
+                    onClick={() => updateGoalAmount(goal.id, goal.targetAmount)}
+                    className="mt-3 text-xs font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-60"
+                  >
+                    {updatingId === goal.id ? "Saving…" : "Mark as fully covered"}
+                  </button>
+                ) : null}
+
+                <div className={`mt-4 rounded-xl p-3 text-sm ring-1 leading-relaxed ${pace.onTrack || funded?.fullyFunded ? "bg-teal-50/80 text-teal-900 ring-teal-200/50" : "bg-amber-50/80 text-amber-900 ring-amber-200/50"}`}>
+                  <p>
+                    {funded?.fullyFunded
+                      ? "Checking coverage already meets this goal — protect that cash until you spend it on purpose."
+                      : pace.paceMessage}
+                  </p>
+                  {!funded?.fullyFunded && projectedLabel && pace.remaining > 0 && (
                     <p className="text-xs mt-1 opacity-80">
                       {formatCurrency(pace.remaining)} left · ~{pace.monthsToComplete} mo at current pace
                       {pace.tenDollarsFasterDays && pace.tenDollarsFasterDays > 0
