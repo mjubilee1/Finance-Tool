@@ -374,6 +374,34 @@ function isTodayPlanBlockLogged(
   });
 }
 
+function formatActivityDate(iso: string): string {
+  const dt = DateTime.fromISO(iso);
+  if (!dt.isValid) return iso;
+  const today = DateTime.local().toISODate();
+  if (iso === today) return "Today";
+  if (iso === DateTime.local().minus({ days: 1 }).toISODate()) return "Yesterday";
+  return dt.toFormat("LLL d");
+}
+
+function leverageLabel(leverage: string, short = false): string {
+  if (leverage === "immediate_income") return short ? "Cash" : "Immediate income";
+  return short ? "Compound" : "Long-term leverage";
+}
+
+function domainChipClass(domain: string): string {
+  const map: Record<string, string> = {
+    career: "bg-sky-100 text-sky-800 ring-sky-200/80",
+    startup: "bg-violet-100 text-violet-800 ring-violet-200/80",
+    financial: "bg-emerald-100 text-emerald-800 ring-emerald-200/80",
+    social: "bg-amber-100 text-amber-800 ring-amber-200/80",
+    fitness: "bg-teal-100 text-teal-800 ring-teal-200/80",
+    personal: "bg-slate-100 text-slate-700 ring-slate-200/80",
+  };
+  return map[domain] ?? map.personal;
+}
+
+const ACTIVITY_PREVIEW_CHARS = 120;
+
 export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -388,6 +416,8 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [showWeeklyDetails, setShowWeeklyDetails] = useState(false);
   const [showMoveDetails, setShowMoveDetails] = useState(false);
+  const [showMoreInsights, setShowMoreInsights] = useState(false);
+  const [expandedActivityIds, setExpandedActivityIds] = useState<Set<string>>(new Set());
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [showJoyIdeas, setShowJoyIdeas] = useState(false);
   const [chosenJoy, setChosenJoy] = useState<JoyIdea | null>(null);
@@ -842,14 +872,23 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     (a) => a.date === todayIso && a.category === "user_plan",
   );
 
+  const toggleActivityExpanded = (id: string) => {
+    setExpandedActivityIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
-    <div className="space-y-6 min-w-0 w-full max-w-full">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="flex flex-col gap-4 md:gap-6 min-w-0 w-full max-w-full">
+      <div className="order-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl app-display text-slate-900 tracking-tight hidden md:block">
             Growth Intelligence
           </h1>
-          <p className="text-slate-500 mt-1 text-sm">
+          <p className="text-slate-500 mt-1 text-sm hidden sm:block">
             Highest-leverage next moves so life compounds over years — not just days.
           </p>
         </div>
@@ -906,7 +945,26 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="order-2 md:hidden app-card p-3 min-w-0 ring-1 ring-orange-200/60 bg-orange-50/40">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Flame size={16} className="text-orange-600 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-800">
+                Compounding
+              </p>
+              <p className="text-2xl font-bold text-slate-900 leading-none">
+                {Math.round(metrics.compoundingScore)}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-slate-600 text-right leading-snug max-w-[9rem]">
+            {metrics.improving ? "Improving vs recent history" : "Needs attention"}
+          </p>
+        </div>
+      </div>
+
+      <div className="order-7 md:order-2 hidden md:grid sm:grid-cols-3 gap-3">
         <div className="app-card p-4 min-w-0 ring-1 ring-orange-200/60 bg-orange-50/40">
           <div className="flex items-center gap-2 mb-1">
             <Flame size={16} className="text-orange-600" />
@@ -937,7 +995,21 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         </div>
       </div>
 
-      <div className="app-card p-5 min-w-0">
+      <button
+        type="button"
+        onClick={() => setShowMoreInsights((v) => !v)}
+        className="order-7 md:hidden flex items-center justify-between w-full app-card px-4 py-3 text-sm font-semibold text-slate-700"
+      >
+        <span>{showMoreInsights ? "Hide charts & contacts" : "Charts, contacts & profile"}</span>
+        {showMoreInsights ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      </button>
+
+      <div
+        className={`order-8 md:contents flex flex-col gap-4 md:gap-6 ${
+          showMoreInsights ? "flex" : "hidden md:flex"
+        }`}
+      >
+      <div className="app-card p-4 md:p-5 min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <p className="app-label mb-1">Life leverage profile</p>
@@ -1075,8 +1147,9 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           </form>
         ) : null}
       </div>
+      </div>
 
-      <div className="app-card p-5 min-w-0 ring-1 ring-teal-100/80">
+      <div className="order-4 md:order-4 app-card p-4 md:p-5 min-w-0 ring-1 ring-teal-100/80">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
           <div>
             <p className="app-label mb-1">Today planner</p>
@@ -1095,7 +1168,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
             >
               {showAddPlanBlock ? "Cancel" : "+ Add my block"}
             </button>
-            <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200/70">
+            <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200/70 hidden sm:inline-flex">
               Keep Overview money-only
             </span>
           </div>
@@ -1354,7 +1427,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
       {recommendation ? (
         <div
           id="todays-move"
-          className="app-card p-5 ring-1 ring-teal-200/60 bg-teal-50/30 min-w-0"
+          className="order-3 md:order-5 app-card p-4 md:p-5 ring-1 ring-teal-200/60 bg-teal-50/30 min-w-0"
         >
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <p className="app-label text-teal-800">Highest-leverage move today</p>
@@ -1472,7 +1545,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           </div>
         </div>
       ) : (
-        <div className="app-card p-5 text-center">
+        <div className="order-3 md:order-5 app-card p-4 md:p-5 text-center">
           <p className="text-slate-600 mb-3">No recommendation yet for today.</p>
           <button
             type="button"
@@ -1485,6 +1558,11 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         </div>
       )}
 
+      <div
+        className={`order-8 md:contents flex flex-col gap-4 md:gap-6 ${
+          showMoreInsights ? "flex" : "hidden md:flex"
+        }`}
+      >
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="app-card p-4 min-w-0">
           <p className="app-label mb-3">Domain scores</p>
@@ -1728,7 +1806,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                         key={c.id}
                         className="text-sm rounded-xl ring-1 ring-slate-100 min-w-0 overflow-hidden"
                       >
-                        <div className="flex items-start gap-2 p-2.5">
+                        <div className="flex flex-col gap-2 p-2.5 sm:flex-row sm:items-start">
                           <button
                             type="button"
                             onClick={() => toggleContactExpanded(c.id)}
@@ -1744,7 +1822,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                             </div>
                             <p className="text-xs text-slate-500 truncate">
                               {c.status}
-                              {c.lastContactDate ? ` · ${c.lastContactDate}` : ""}
+                              {c.lastContactDate ? ` · ${formatActivityDate(c.lastContactDate)}` : ""}
                               {!latest &&
                               (c.relationshipType ?? "unlabeled") === "family"
                                 ? " · notes optional"
@@ -1756,9 +1834,9 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                               <p className="text-xs text-slate-600 mt-1 line-clamp-1">{latest}</p>
                             ) : null}
                           </button>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
+                          <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:shrink-0">
                             <select
-                              className="app-input text-[11px] font-semibold capitalize px-2 py-1 max-w-[7.5rem]"
+                              className="app-input text-[11px] font-semibold capitalize px-2 py-1.5 w-full sm:w-auto sm:max-w-[7.5rem]"
                               value={(c.relationshipType ?? "unlabeled").toLowerCase()}
                               disabled={busy === `contact-type-${c.id}`}
                               onChange={(e) => void updateContactType(c.id, e.target.value)}
@@ -1778,7 +1856,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                                 </option>
                               ) : null}
                             </select>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1955,8 +2033,9 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           ) : null}
         </div>
       </div>
+      </div>
 
-      <div className="app-card p-4 min-w-0 overflow-hidden">
+      <div className="order-5 md:order-9 app-card p-4 min-w-0 overflow-hidden">
         <div className="flex items-center justify-between mb-3 gap-2">
           <p className="app-label">Recent growth activities</p>
           <button
@@ -2083,41 +2162,76 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
             Log workouts, shipping blocks, networking, learning, and Lyft hours so the score can improve.
           </p>
         ) : (
-          <ul className="space-y-2">
-            {activities.slice(0, 10).map((a) => (
-              <li
-                key={a.id}
-                className="flex items-start justify-between gap-3 text-sm border-b border-slate-50 pb-2 min-w-0"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium text-slate-900 break-words">{a.title}</p>
-                  <p className="text-xs text-slate-500 capitalize break-words">
-                    {a.date} · {a.domain} · {a.leverage.replaceAll("_", " ")}
+          <ul className="space-y-2.5">
+            {activities.slice(0, 10).map((a) => {
+              const isExpanded = expandedActivityIds.has(a.id);
+              const isLong = a.title.length > ACTIVITY_PREVIEW_CHARS;
+              const preview =
+                isLong && !isExpanded
+                  ? `${a.title.slice(0, ACTIVITY_PREVIEW_CHARS).trim()}…`
+                  : a.title;
+
+              return (
+                <li
+                  key={a.id}
+                  className="rounded-xl bg-slate-50/90 ring-1 ring-slate-100 p-3 min-w-0"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ring-1 ${domainChipClass(a.domain)}`}
+                      >
+                        {a.domain}
+                      </span>
+                      <span className="text-[10px] font-medium text-slate-400">
+                        {formatActivityDate(a.date)}
+                      </span>
+                      <span className="text-[10px] font-medium text-slate-400 capitalize">
+                        {leverageLabel(a.leverage, true)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeActivity(a.id)}
+                      disabled={busy !== null}
+                      aria-label={`Remove ${a.title}`}
+                      className="rounded-lg p-1.5 -mr-1 -mt-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 shrink-0"
+                    >
+                      {busy === `remove-activity-${a.id}` ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <X size={14} />
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-slate-900 leading-snug break-words">
+                    {preview}
                   </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-slate-400">Impact {a.impactScore}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeActivity(a.id)}
-                    disabled={busy !== null}
-                    aria-label={`Remove ${a.title}`}
-                    className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60"
-                  >
-                    {busy === `remove-activity-${a.id}` ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <X size={14} />
-                    )}
-                  </button>
-                </div>
-              </li>
-            ))}
+                  {isLong ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleActivityExpanded(a.id)}
+                      className="mt-1 text-xs font-semibold text-teal-700"
+                    >
+                      {isExpanded ? "Show less" : "Show more"}
+                    </button>
+                  ) : null}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200/80">
+                      Impact {a.impactScore}
+                    </span>
+                    {a.minutesSpent ? (
+                      <span className="text-[10px] text-slate-400">{a.minutesSpent} min</span>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
 
-      <div id="weekly-review" className="app-card p-4 scroll-mt-4">
+      <div id="weekly-review" className="order-6 md:order-10 app-card p-4 scroll-mt-4">
         <div className="flex items-center justify-between mb-3">
           <p className="app-label">Weekly review</p>
           <button
