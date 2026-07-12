@@ -1,115 +1,184 @@
-# Local LLM Platform — Architecture Design
+# Local Specialized LLM Platform — Idea Architecture
 
-A simple platform for studying **corporate decisions** with a **local LLM**. Data stays on the machine. Security is the default, not an add-on.
+A platform on top of **Ollama** so non-technical people can run **smaller, task-specific LLMs**, customize them without code, keep **security out of the box**, and get **cheaper “tokens”** (local compute instead of cloud APIs).
 
-## Goals
+---
 
-| Goal | Meaning |
-|------|---------|
-| Local by default | Model and documents run on the user’s machine (or private network) |
-| Secure out of the box | No cloud required; encryption and access controls on day one |
-| Study decisions | Ask questions about past choices, policies, and outcomes |
-| Stay simple | Few moving parts; one clear path from documents → answers |
+## The idea in one line
 
-## What the user does
+**Ollama runs the local models. Your platform makes them easy to customize — like picking a machine, adding your docs and rules, and chatting — without being an engineer.**
 
-1. Install the app (desktop or private server)
-2. Drop in decision docs (memos, board notes, OKRs, postmortems)
-3. Ask: “Why did we choose X?” / “What were the tradeoffs?” / “What did we decide last quarter?”
-4. Get answers grounded in their own files — nothing leaves the box unless they choose
+---
 
-## High-level architecture
+## Why Ollama
 
-```
-┌─────────────────────────────────────────────┐
-│  UI (chat + document library)               │
-├─────────────────────────────────────────────┤
-│  App API (local only)                       │
-│  • auth / session                           │
-│  • document ingest                          │
-│  • query / chat                             │
-├──────────────────┬──────────────────────────┤
-│  Retrieval       │  Local LLM runtime       │
-│  (search index)  │  (e.g. Ollama / llama.cpp)│
-├──────────────────┴──────────────────────────┤
-│  Encrypted storage (docs + index + chats)   │
-└─────────────────────────────────────────────┘
-```
+[Ollama](https://ollama.com) is the simple way to run LLMs on your own machine:
 
-## Core pieces (keep it thin)
+- Download a model once (Llama, Mistral, Phi, etc.)
+- It stays on the computer — no cloud API by default
+- You talk to it locally (chat / API on localhost)
+- You can **customize** a model with a Modelfile (name, system prompt, settings)
 
-1. **UI** — Chat and a simple library of uploaded decisions
-2. **Local API** — Talks only to localhost / private host
-3. **Ingest** — Chunk documents, embed, store in a local index
-4. **Retrieve** — Find relevant decision snippets for a question
-5. **Generate** — Local model answers using those snippets only
-6. **Storage** — Encrypted at rest; no third-party sync by default
+That’s the engine. Most people still won’t touch Modelfiles or the terminal. **Your product is the friendly layer on top of Ollama.**
 
-## Security out of the box
+---
 
-| Control | Default |
-|---------|---------|
-| Network | Localhost only; no outbound LLM calls |
-| Data at rest | Encrypted disk / app vault |
-| Access | Device unlock + optional app PIN / passcode |
-| Telemetry | Off |
-| Model weights | Stored locally; user-chosen model |
-| Exports | Explicit user action only |
+## How customization works (Ollama → your platform)
 
-**Rule:** If a feature needs the internet, it is opt-in and clearly labeled.
+### What Ollama already lets you do
 
-## Decision study workflow
+
+| Ollama piece      | Meaning                                                        |
+| ----------------- | -------------------------------------------------------------- |
+| **Base model**    | Pick a smaller model that fits the job (and the laptop/server) |
+| **Modelfile**     | Recipe that creates a *custom* model from a base               |
+| **System prompt** | “You are a decision analyst for our company…”                  |
+| **Parameters**    | Temperature, context length, etc.                              |
+| **Named model**   | Save as something like `decision-study` and reuse it           |
+
+
+Example idea (what a Modelfile is doing under the hood):
 
 ```
-Upload decision docs
-        ↓
-Index locally (chunks + embeddings)
-        ↓
-User asks a question
-        ↓
-Retrieve related decisions
-        ↓
-Local LLM answers with citations
-        ↓
-User can save notes / tags on that decision thread
+FROM llama3.2
+SYSTEM You help leadership study past corporate decisions. Always cite sources.
+PARAMETER temperature 0.3
 ```
 
-Useful question types:
+Then: `ollama create decision-study -f Modelfile` → they have their own specialized LLM.
 
-- What did we decide and why?
-- What alternatives were rejected?
-- Who owned the outcome?
-- What risks did we accept?
-- How does this compare to a similar past decision?
+### What your platform does for non-technical people
 
-## Suggested stack (simple)
+They never see Modelfiles or CLI. The UI maps to Ollama:
 
-| Layer | Option |
-|-------|--------|
-| Runtime | Ollama or llama.cpp |
-| App | Desktop shell (Tauri/Electron) or local Next.js |
-| Index | Local vector store (e.g. SQLite + embeddings) |
-| Auth | Device session + optional passcode |
-| Crypto | OS keychain + encrypted vault for docs |
 
-Pick one path and ship; avoid multi-cloud adapters early.
+| User does in the UI                    | Platform does with Ollama                                        |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| Pick a “machine” (e.g. Decision Study) | Choose a base model + starter Modelfile                          |
+| Write role / rules in plain English    | Write `SYSTEM` into the Modelfile                                |
+| Upload company docs                    | Store docs locally; search/cite them when chatting (tools + RAG) |
+| Tune “more creative / more precise”    | Set `PARAMETER`s                                                 |
+| Hit Save                               | `ollama create my-company-decisions …`                           |
+| Chat                                   | Call local Ollama API (`localhost`)                              |
 
-## Non-goals (for v1)
 
-- Multi-tenant SaaS
-- Cloud model fallback as the default
-- Complex RBAC / org trees
-- Auto-sync to external drives without consent
+**Product insight:** Ollama = customize + run local LLMs. Platform = make that usable for normal people + add docs/tools.
 
-## v1 success criteria
+---
 
-- User can install, add docs, and ask a decision question offline
-- Answers cite the source document
-- No document content leaves the machine by default
-- Setup takes minutes, not a security project
+## The problem you’re solving
 
-## Open choices (decide later)
+- Cloud models = expensive tokens + data leaves
+- Ollama alone = powerful but technical
+- Companies want specialized assistants (decisions, policy, SOPs) without hiring an AI engineer
 
-- Desktop app vs private-server web UI
-- Which default model size (speed vs quality)
-- How “decision” records are structured (freeform PDFs vs templates)
+**Gap:** Ollama under the hood + a workshop UI on top.
+
+---
+
+## What it looks like
+
+### 1. Install
+
+App installs (or detects) Ollama. Pulls a recommended small model.
+
+### 2. Pick a machine
+
+- Decision Study  
+- Policy Q&A  
+- SOP / How-To bot
+
+Each is a starter Modelfile + tools.
+
+### 3. Customize (no code)
+
+- Add documents  
+- Describe the role  
+- Toggle tools (search docs, cite, export)  
+- Test → Save as *their* named model in Ollama
+
+### 4. Use it
+
+Chat against their custom Ollama model. Trust strip: **“Powered by Ollama on your machine · Data stays here.”**
+
+---
+
+## Architecture (simple)
+
+```
+┌──────────────────────────────────────────────┐
+│  Your platform UI                            │
+│  pick machine · customize · chat             │
+├──────────────────────────────────────────────┤
+│  Platform services                           │
+│  • Modelfile builder  • doc index (RAG)      │
+│  • tools (cite, export)                      │
+├──────────────────────────────────────────────┤
+│  Ollama (local)                              │
+│  • base models  • custom models              │
+│  • local API (no cloud required)             │
+├──────────────────────────────────────────────┤
+│  Their files (encrypted / on device)         │
+└──────────────────────────────────────────────┘
+```
+
+**You don’t replace Ollama — you productize it** for specialized machines and non-technical customization.
+
+---
+
+## Cost angle (for the pitch)
+
+
+| Cloud ChatGPT-style    | Ollama + your platform                                 |
+| ---------------------- | ------------------------------------------------------ |
+| Pay per token forever  | Pay for hardware / time (often much cheaper at volume) |
+| Metered surprise bills | Predictable local runtime                              |
+| One huge general model | Smaller model sized to the job                         |
+
+
+“Cheaper tokens” in practice = **fewer / smaller local generations**, not OpenAI’s price list.
+
+---
+
+## How you’d build it (phases)
+
+### Phase 1 — One machine on Ollama + the workshop
+
+1. Ship UI that creates/updates an Ollama Modelfile from form fields
+2. Decision Study machine: docs + cite + chat via Ollama API
+3. Security defaults: local only, no outbound model calls
+4. Demo cost/privacy vs cloud
+
+**Win:** Non-technical user customizes a model in the UI and sees it appear/run in Ollama.
+
+### Phase 2 — More machines, same Ollama backbone
+
+More starter Modelfiles (policy, SOPs, etc.). Same customize → `ollama create` → chat path.
+
+---
+
+## What to say to your friend
+
+1. **Ollama** is how we run and customize LLMs locally (base model + Modelfile = your own model).
+2. **Our platform** is the non-technical front door: machines, docs, rules, tools.
+3. **Smaller specialized models** keep cost down vs big cloud tokens.
+4. **Security out of the box** because inference stays on their machine.
+5. **First machine:** corporate decision study.
+6. **Your help:** architecture — how the platform, tools, and Ollama fit together cleanly.
+
+---
+
+## What you are *not* building
+
+- A new model training company (you compose and customize with Ollama)
+- A terminal-only tool for ML engineers
+- A cloud wrapper that re-bills OpenAI tokens
+
+---
+
+## Bottom line
+
+**Engine:** Ollama (local models + Modelfile customization).  
+**Product:** platform so anyone can build specialized LLM “machines.”  
+**First machine:** study corporate decisions.  
+**Why it wins:** cheaper local runs + private by default + no-code customize.

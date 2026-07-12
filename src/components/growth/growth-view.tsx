@@ -24,6 +24,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
+import { VoiceToTextButton } from "@/components/voice-to-text-button";
 
 type DomainScores = {
   career: number;
@@ -111,6 +112,7 @@ type GrowthDashboard = {
     trustLevel: number;
     lastContactDate: string | null;
     status: string;
+    notes: string | null;
     suggestedNextAction: string | null;
   }>;
   snapshots: Array<{
@@ -141,6 +143,7 @@ export function GrowthView() {
     relationshipType: "peer",
     trustLevel: "3",
     lastContactDate: DateTime.local().toISODate() ?? "",
+    notes: "",
     suggestedNextAction: "",
     status: "active",
   });
@@ -241,7 +244,7 @@ export function GrowthView() {
       });
       if (res.ok) {
         setShowContactForm(false);
-        setContactForm((prev) => ({ ...prev, name: "", suggestedNextAction: "" }));
+        setContactForm((prev) => ({ ...prev, name: "", notes: "", suggestedNextAction: "" }));
         invalidate();
       }
     } finally {
@@ -563,14 +566,25 @@ export function GrowthView() {
                   }
                 />
               </div>
-              <input
-                className="app-input w-full px-3 py-1.5 text-sm"
-                placeholder="Suggested next action"
-                value={contactForm.suggestedNextAction}
-                onChange={(e) =>
-                  setContactForm({ ...contactForm, suggestedNextAction: e.target.value })
-                }
-              />
+              <div className="space-y-1.5">
+                <div className="flex items-start gap-2">
+                  <textarea
+                    className="app-input w-full px-3 py-2 text-sm min-h-[72px] resize-y"
+                    placeholder="Notes about this person (who they are, last chat, what you owe them…)"
+                    value={contactForm.notes}
+                    onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
+                  />
+                  <VoiceToTextButton
+                    value={contactForm.notes}
+                    onChange={(notes) => setContactForm((prev) => ({ ...prev, notes }))}
+                    disabled={busy === "contact"}
+                    aria-label="Speak contact notes"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Tap the mic, speak, tap again to stop — leave next action blank for now.
+                </p>
+              </div>
               <button type="submit" disabled={busy === "contact"} className="app-btn-primary px-3 py-1.5 text-xs">
                 Save contact
               </button>
@@ -584,12 +598,15 @@ export function GrowthView() {
             <ul className="space-y-2.5">
               {contacts.slice(0, 8).map((c) => (
                 <li key={c.id} className="flex justify-between gap-2 text-sm">
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium text-slate-900">{c.name}</p>
                     <p className="text-xs text-slate-500">
                       {c.relationshipType ?? "contact"} · {c.status}
                       {c.lastContactDate ? ` · last ${c.lastContactDate}` : " · no contact date"}
                     </p>
+                    {c.notes ? (
+                      <p className="text-xs text-slate-600 mt-1 line-clamp-2">{c.notes}</p>
+                    ) : null}
                   </div>
                   <span className="text-xs text-slate-400 shrink-0">Trust {c.trustLevel}/5</span>
                 </li>
