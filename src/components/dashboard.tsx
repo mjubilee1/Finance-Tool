@@ -637,6 +637,7 @@ export function Dashboard() {
                   onOpenGoals={() => setActiveTab('goals')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
+                  userName={session?.user?.name}
                 />
               ) : (
                 <div className="app-card p-8 text-center text-slate-500 leading-relaxed space-y-4">

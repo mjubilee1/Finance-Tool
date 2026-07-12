@@ -4,20 +4,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
+import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
 import type { TodayCashFlow, WeeklyCashFlow } from "@/lib/cash-flow";
 import { TodayCashFlowMeter } from "./today-cash-flow-meter";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronDown, ChevronUp, Flame, MessageSquare, Repeat, Sparkles, Target } from "lucide-react";
-
-function getTimeGreeting(date = DateTime.local()) {
-  const hour = date.hour;
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
+import { ChevronDown, ChevronUp, Flame, Heart, MessageSquare, Repeat, Sparkles, Target } from "lucide-react";
 
 type CfoBrief = {
   status?: string;
@@ -76,6 +70,7 @@ type Props = {
     onTrack: boolean;
   } | null;
   isBriefPending?: boolean;
+  userName?: string | null;
 };
 
 export function OverviewHome({
@@ -97,6 +92,7 @@ export function OverviewHome({
   onOpenGoals,
   priorityGoal,
   isBriefPending = false,
+  userName,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const cfoBrief = aiInsight.cfoBrief;
@@ -105,7 +101,8 @@ export function OverviewHome({
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
   const todayLabel = DateTime.local().toFormat("EEEE, MMMM d");
-  const greeting = getTimeGreeting();
+  const greeting = getPersonalizedGreeting(userName);
+  const dailyAffirmation = getDailyAffirmation();
 
   const { data: growthPreview } = useQuery({
     queryKey: ["growth-overview-preview"],
@@ -142,6 +139,22 @@ export function OverviewHome({
           <span className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${statusStyle.dot}`} />
           {statusLabel}
         </span>
+      </div>
+
+      <div className="rounded-2xl bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-4 md:p-5 ring-1 ring-teal-200/50">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-teal-100 flex items-center justify-center shrink-0 ring-1 ring-teal-200/60">
+            <Heart size={16} className="text-teal-700" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-teal-700/90">
+              {dailyAffirmation.toneLabel}
+            </p>
+            <p className="text-sm md:text-[15px] text-slate-700 mt-1 leading-relaxed">
+              {dailyAffirmation.message}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
