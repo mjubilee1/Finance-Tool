@@ -356,6 +356,24 @@ function buildTodayPlan(
   };
 }
 
+type GrowthActivityRow = GrowthDashboard["activities"][number];
+
+function isTodayPlanBlockLogged(
+  block: TodayPlanBlock,
+  activities: GrowthActivityRow[],
+  todayIso: string,
+  chosenJoy: JoyIdea | null,
+) {
+  return activities.some((activity) => {
+    if (activity.date !== todayIso) return false;
+    if (activity.domain !== block.domain || activity.category !== block.category) return false;
+    if (block.key === "joy" && chosenJoy) {
+      return activity.title === `Joy: ${chosenJoy.label}`;
+    }
+    return true;
+  });
+}
+
 export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -680,8 +698,8 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     }
   };
 
-  const removeMyPlanBlock = async (id: string) => {
-    setBusy(`remove-plan-${id}`);
+  const removeActivity = async (id: string) => {
+    setBusy(`remove-activity-${id}`);
     try {
       const res = await fetch(`/api/growth/activities?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
@@ -690,6 +708,10 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     } finally {
       setBusy(null);
     }
+  };
+
+  const removeMyPlanBlock = async (id: string) => {
+    await removeActivity(id);
   };
 
   const submitContact = async (e: React.FormEvent) => {
@@ -1169,6 +1191,12 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                     : "bg-slate-50 ring-slate-200/80 text-slate-700";
             const isLogging = busy === `today-plan-${block.key}`;
             const isJoy = block.key === "joy";
+            const alreadyLogged = isTodayPlanBlockLogged(
+              block,
+              activities,
+              todayIso,
+              chosenJoy,
+            );
             const displayLabel =
               isJoy && chosenJoy ? `Joy: ${chosenJoy.label}` : block.label;
             const displayWhy =
@@ -1261,10 +1289,22 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                 <button
                   type="button"
                   onClick={() => logTodayPlanBlock(block)}
-                  disabled={busy !== null}
-                  className="mt-3 w-full rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-white/80 hover:bg-white disabled:opacity-60"
+                  disabled={busy !== null || alreadyLogged}
+                  className={`mt-3 w-full rounded-xl px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-60 ${
+                    alreadyLogged
+                      ? "bg-white/90 text-teal-800 ring-teal-200/80"
+                      : "bg-white/80 text-slate-700 ring-white/80 hover:bg-white"
+                  }`}
                 >
-                  {isLogging ? "Logging..." : "Log when done"}
+                  {isLogging ? (
+                    "Logging..."
+                  ) : alreadyLogged ? (
+                    <span className="inline-flex items-center justify-center gap-1">
+                      <CheckCircle2 size={12} /> Logged today
+                    </span>
+                  ) : (
+                    "Log when done"
+                  )}
                 </button>
               </div>
             );
@@ -1300,7 +1340,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                 disabled={busy !== null}
                 className="mt-3 w-full rounded-xl bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-60"
               >
-                {busy === `remove-plan-${block.id}` ? "Removing..." : "Remove"}
+                {busy === `remove-activity-${block.id}` ? "Removing..." : "Remove"}
               </button>
             </div>
           ))}
@@ -2045,14 +2085,32 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         ) : (
           <ul className="space-y-2">
             {activities.slice(0, 10).map((a) => (
-              <li key={a.id} className="flex justify-between gap-3 text-sm border-b border-slate-50 pb-2 min-w-0">
+              <li
+                key={a.id}
+                className="flex items-start justify-between gap-3 text-sm border-b border-slate-50 pb-2 min-w-0"
+              >
                 <div className="min-w-0">
                   <p className="font-medium text-slate-900 break-words">{a.title}</p>
                   <p className="text-xs text-slate-500 capitalize break-words">
                     {a.date} · {a.domain} · {a.leverage.replaceAll("_", " ")}
                   </p>
                 </div>
-                <span className="text-xs text-slate-400 shrink-0">Impact {a.impactScore}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-slate-400">Impact {a.impactScore}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeActivity(a.id)}
+                    disabled={busy !== null}
+                    aria-label={`Remove ${a.title}`}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60"
+                  >
+                    {busy === `remove-activity-${a.id}` ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <X size={14} />
+                    )}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
