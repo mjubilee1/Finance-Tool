@@ -453,6 +453,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       trust: c.trustLevel,
       lastContact: c.lastContactDate,
       status: c.status,
+      notes: c.notes,
       suggestedNext: c.suggestedNextAction,
       mutualValue: c.mutualValue,
     })),
@@ -748,15 +749,24 @@ export async function generateWeeklyGrowthReview(
 
   let reviewData = fallback;
 
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-5",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: GROWTH_AGENT_INSTRUCTIONS },
+  const notedContacts = context.contacts.filter(
+    (c) => typeof c.notes === "string" && c.notes.trim().length > 0,
+  ).length;
+  const sparseWeek =
+    context.recentActivities.length < 2 && notedContacts < 2 && context.goals.length === 0;
+
+  // Sparse weeks: skip the slow model call — fallback already uses live metrics.
+  if (!sparseWeek) {
+    try {
+      const completion = await openai.chat.completions.create(
         {
-          role: "user",
-          content: `Produce a weekly growth retrospective. Ask and answer:
+          model: "gpt-5",
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: GROWTH_AGENT_INSTRUCTIONS },
+            {
+              role: "user",
+              content: `Produce a weekly growth retrospective. Ask and answer:
 What worked? What didn't? Biggest return? Where was time wasted?
 What should I stop / do more? Which relationships improved?
 Which goals are behind? Biggest bottleneck? Recommended adjustments.
@@ -778,37 +788,40 @@ Return JSON:
 
 CONTEXT:
 ${JSON.stringify(context)}`,
+            },
+          ],
         },
-      ],
-    });
+        { timeout: 20_000 },
+      );
 
-    const content = completion.choices[0]?.message?.content;
-    if (content) {
-      const parsed = JSON.parse(content) as Record<string, unknown>;
-      const arr = (value: unknown, fb: string[]) =>
-        Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : fb;
-      const str = (value: unknown, fb: string) =>
-        typeof value === "string" && value.trim() ? value.trim() : fb;
+      const content = completion.choices[0]?.message?.content;
+      if (content) {
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+        const arr = (value: unknown, fb: string[]) =>
+          Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : fb;
+        const str = (value: unknown, fb: string) =>
+          typeof value === "string" && value.trim() ? value.trim() : fb;
 
-      reviewData = {
-        whatWorked: arr(parsed.whatWorked, fallback.whatWorked),
-        whatDidnt: arr(parsed.whatDidnt, fallback.whatDidnt),
-        biggestReturn: str(parsed.biggestReturn, fallback.biggestReturn ?? ""),
-        timeWasted: str(parsed.timeWasted, fallback.timeWasted ?? ""),
-        stopDoing: arr(parsed.stopDoing, fallback.stopDoing),
-        doMore: arr(parsed.doMore, fallback.doMore),
-        relationshipsImproved: arr(parsed.relationshipsImproved, fallback.relationshipsImproved),
-        goalsBehind: arr(parsed.goalsBehind, fallback.goalsBehind),
-        biggestBottleneck: str(parsed.biggestBottleneck, fallback.biggestBottleneck ?? ""),
-        adjustments: arr(parsed.adjustments, fallback.adjustments),
-        compoundingScore:
-          typeof parsed.compoundingScore === "number"
-            ? parsed.compoundingScore
-            : metrics.compoundingScore,
-      };
+        reviewData = {
+          whatWorked: arr(parsed.whatWorked, fallback.whatWorked),
+          whatDidnt: arr(parsed.whatDidnt, fallback.whatDidnt),
+          biggestReturn: str(parsed.biggestReturn, fallback.biggestReturn ?? ""),
+          timeWasted: str(parsed.timeWasted, fallback.timeWasted ?? ""),
+          stopDoing: arr(parsed.stopDoing, fallback.stopDoing),
+          doMore: arr(parsed.doMore, fallback.doMore),
+          relationshipsImproved: arr(parsed.relationshipsImproved, fallback.relationshipsImproved),
+          goalsBehind: arr(parsed.goalsBehind, fallback.goalsBehind),
+          biggestBottleneck: str(parsed.biggestBottleneck, fallback.biggestBottleneck ?? ""),
+          adjustments: arr(parsed.adjustments, fallback.adjustments),
+          compoundingScore:
+            typeof parsed.compoundingScore === "number"
+              ? parsed.compoundingScore
+              : metrics.compoundingScore,
+        };
+      }
+    } catch (error) {
+      console.error("Weekly growth review AI failed; using fallback:", error);
     }
-  } catch (error) {
-    console.error("Weekly growth review AI failed; using fallback:", error);
   }
 
   return prisma.weeklyGrowthReview.upsert({

@@ -128,6 +128,8 @@ export function GrowthView() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState("");
   const [activityForm, setActivityForm] = useState({
     date: DateTime.local().toISODate() ?? "",
     domain: "startup",
@@ -180,12 +182,18 @@ export function GrowthView() {
   const generateWeeklyReview = async (force = false) => {
     setBusy("review");
     try {
-      await fetch("/api/growth/weekly-review", {
+      const res = await fetch("/api/growth/weekly-review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ force }),
       });
+      if (!res.ok) {
+        throw new Error("Weekly review failed");
+      }
       invalidate();
+      requestAnimationFrame(() => {
+        document.getElementById("weekly-review")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } finally {
       setBusy(null);
     }
@@ -252,6 +260,32 @@ export function GrowthView() {
     }
   };
 
+  const openContactNotes = (contact: GrowthDashboard["contacts"][number]) => {
+    setEditingContactId(contact.id);
+    setEditingNotes(contact.notes ?? "");
+    setShowContactForm(false);
+  };
+
+  const saveContactNotes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingContactId) return;
+    setBusy("contact-notes");
+    try {
+      const res = await fetch("/api/growth/contacts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingContactId, notes: editingNotes }),
+      });
+      if (res.ok) {
+        setEditingContactId(null);
+        setEditingNotes("");
+        invalidate();
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center py-20 text-slate-500 gap-2">
@@ -303,12 +337,21 @@ export function GrowthView() {
           </button>
           <button
             type="button"
-            onClick={() => generateWeeklyReview(true)}
+            onClick={() => {
+              if (weeklyReview) {
+                document.getElementById("weekly-review")?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+                return;
+              }
+              void generateWeeklyReview(false);
+            }}
             disabled={busy !== null}
             className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 app-card hover:bg-white disabled:opacity-60"
           >
             {busy === "review" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Weekly review
+            {busy === "review" ? "Writing review…" : "Weekly review"}
           </button>
         </div>
       </div>
@@ -597,18 +640,64 @@ export function GrowthView() {
           ) : (
             <ul className="space-y-2.5">
               {contacts.slice(0, 8).map((c) => (
-                <li key={c.id} className="text-sm">
-                  <p className="font-medium text-slate-900">{c.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {c.relationshipType ?? "contact"} · {c.status}
-                    {c.lastContactDate ? ` · last ${c.lastContactDate}` : " · no contact date"}
-                  </p>
-                  {c.notes ? (
-                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">{c.notes}</p>
+                <li key={c.id} className="text-sm rounded-xl ring-1 ring-slate-100 p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900">{c.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {c.relationshipType ?? "contact"} · {c.status}
+                        {c.lastContactDate ? ` · last ${c.lastContactDate}` : " · no contact date"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        editingContactId === c.id
+                          ? (setEditingContactId(null), setEditingNotes(""))
+                          : openContactNotes(c)
+                      }
+                      className="text-xs font-semibold text-teal-700 shrink-0"
+                    >
+                      {editingContactId === c.id ? "Close" : c.notes ? "Edit notes" : "Add notes"}
+                    </button>
+                  </div>
+
+                  {editingContactId === c.id ? (
+                    <form onSubmit={saveContactNotes} className="mt-2 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <textarea
+                          className="app-input w-full px-3 py-2 text-sm min-h-[80px] resize-y"
+                          placeholder="Who are they, how you met, last conversation…"
+                          value={editingNotes}
+                          onChange={(e) => setEditingNotes(e.target.value)}
+                          autoFocus
+                        />
+                        <VoiceToTextButton
+                          value={editingNotes}
+                          onChange={setEditingNotes}
+                          disabled={busy === "contact-notes"}
+                          aria-label={`Speak notes for ${c.name}`}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="submit"
+                          disabled={busy === "contact-notes"}
+                          className="app-btn-primary px-3 py-1.5 text-xs"
+                        >
+                          {busy === "contact-notes" ? "Saving…" : "Save notes"}
+                        </button>
+                        <p className="text-[11px] text-slate-500">Mic works here too</p>
+                      </div>
+                    </form>
+                  ) : c.notes ? (
+                    <p className="text-xs text-slate-600 mt-1.5 whitespace-pre-wrap">{c.notes}</p>
                   ) : (
-                    <p className="text-xs text-slate-400 mt-1">No notes yet — add context when you can.</p>
+                    <p className="text-xs text-slate-400 mt-1.5">
+                      Nothing saved yet — tap Add notes (or use the mic).
+                    </p>
                   )}
-                  {c.suggestedNextAction ? (
+                  {c.suggestedNextAction && editingContactId !== c.id ? (
                     <p className="text-xs text-teal-700 mt-1">Next: {c.suggestedNextAction}</p>
                   ) : null}
                 </li>
@@ -720,21 +809,21 @@ export function GrowthView() {
         )}
       </div>
 
-      <div className="app-card p-4">
+      <div id="weekly-review" className="app-card p-4 scroll-mt-4">
         <div className="flex items-center justify-between mb-3">
           <p className="app-label">Weekly review</p>
-          {!weeklyReview ? (
-            <button
-              type="button"
-              onClick={() => generateWeeklyReview(false)}
-              disabled={busy !== null}
-              className="text-xs font-semibold text-teal-700"
-            >
-              Generate
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => generateWeeklyReview(Boolean(weeklyReview))}
+            disabled={busy !== null}
+            className="text-xs font-semibold text-teal-700 disabled:opacity-60"
+          >
+            {busy === "review" ? "Writing…" : weeklyReview ? "Regenerate" : "Generate"}
+          </button>
         </div>
-        {!weeklyReview ? (
+        {busy === "review" && !weeklyReview ? (
+          <p className="text-sm text-slate-500">Building this week&apos;s review from your score and notes…</p>
+        ) : !weeklyReview ? (
           <p className="text-sm text-slate-500">
             Run a founder-style weekly retrospective: what worked, what to cut, where leverage is.
           </p>
