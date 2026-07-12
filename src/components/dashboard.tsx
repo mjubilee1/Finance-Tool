@@ -12,7 +12,7 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, Flame, LayoutDashboard, Menu, Radar, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, Cpu, Flame, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,7 +30,7 @@ import { RecurringView } from "./recurring/recurring-view";
 import { ThemeToggle } from "./theme-toggle";
 import { TrendsView } from "./trends/trends-view";
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'trends';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv';
 
 type DashboardAccount = {
   id: string;
@@ -538,7 +538,8 @@ export function Dashboard() {
           {renderNavItem("overview", LayoutDashboard, "Overview")}
           {renderNavItem("chat", BrainCircuit, "Coach")}
           {renderNavItem("growth", Flame, "Growth")}
-          {renderNavItem("trends", Radar, "Trends")}
+          {renderNavItem("tech", Cpu, "Tech")}
+          {renderNavItem("dmv", MapPin, "DMV")}
           {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
@@ -707,10 +708,21 @@ export function Dashboard() {
 
             {/* View: GROWTH */}
             {activeTab === 'growth' && (
-              <GrowthView onOpenTrends={() => setActiveTab("trends")} />
+              <GrowthView onOpenTrends={() => setActiveTab("tech")} />
             )}
-            {activeTab === "trends" && (
-              <TrendsView onOpenGrowth={() => setActiveTab("growth")} />
+            {activeTab === "tech" && (
+              <TrendsView
+                lane="tech"
+                onOpenGrowth={() => setActiveTab("growth")}
+                onOpenOtherLane={() => setActiveTab("dmv")}
+              />
+            )}
+            {activeTab === "dmv" && (
+              <TrendsView
+                lane="dmv"
+                onOpenGrowth={() => setActiveTab("growth")}
+                onOpenOtherLane={() => setActiveTab("tech")}
+              />
             )}
 
             {/* View: ACCOUNTS */}

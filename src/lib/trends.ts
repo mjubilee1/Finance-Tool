@@ -2,16 +2,44 @@ import { DateTime } from "luxon";
 import { prisma } from "@/lib/prisma";
 import { openai } from "@/lib/openai";
 
-export const TREND_THEMES = [
+export const TECH_TREND_THEMES = [
   "ai_models",
   "labs",
   "infra",
   "startup",
   "hardware_software",
-  "markets",
-  "real_estate",
-  "dmv_state",
 ] as const;
+
+/** Housing / rates / markets — not tech. Shown on the DMV page with local life. */
+export const MONEY_TREND_THEMES = ["markets", "real_estate"] as const;
+
+export const DMV_TREND_THEMES = ["dmv_state"] as const;
+
+export const TREND_THEMES = [
+  ...TECH_TREND_THEMES,
+  ...MONEY_TREND_THEMES,
+  ...DMV_TREND_THEMES,
+] as const;
+
+export const MAX_TECH_TREND_ITEMS = 4;
+export const MAX_DMV_TREND_ITEMS = 3;
+
+export function isDmvTrendTheme(theme: string) {
+  return (DMV_TREND_THEMES as readonly string[]).includes(theme);
+}
+
+export function isMoneyTrendTheme(theme: string) {
+  return (MONEY_TREND_THEMES as readonly string[]).includes(theme);
+}
+
+export function isTechTrendTheme(theme: string) {
+  return (TECH_TREND_THEMES as readonly string[]).includes(theme);
+}
+
+/** DMV page = local politics + housing/rates (not AI). */
+export function isDmvPageTheme(theme: string) {
+  return isDmvTrendTheme(theme) || isMoneyTrendTheme(theme);
+}
 
 export type TrendTheme = (typeof TREND_THEMES)[number];
 
@@ -170,31 +198,115 @@ async function fetchTrendSourceSnapshots() {
   );
 }
 
+function parseItemEntry(
+  entry: unknown,
+  allowlistLabels: Set<string>,
+  allowlistByLabel: Map<string, (typeof TREND_SOURCE_ALLOWLIST)[number]>,
+  defaultTheme: TrendTheme,
+): GeneratedItem | null {
+  if (!entry || typeof entry !== "object") return null;
+  const item = entry as Record<string, unknown>;
+  if (typeof item.title !== "string" || !item.title.trim()) return null;
+  if (typeof item.summary !== "string" || !item.summary.trim()) return null;
+  if (typeof item.whyItMatters !== "string" || !item.whyItMatters.trim()) return null;
+
+  const sourceLabelRaw =
+    typeof item.sourceLabel === "string" && item.sourceLabel.trim()
+      ? item.sourceLabel.trim()
+      : defaultTheme === "dmv_state"
+        ? "Maryland Matters"
+        : "OpenAI";
+  const sourceLabelLower = sourceLabelRaw.toLowerCase();
+  const matched =
+    allowlistByLabel.get(sourceLabelLower) ??
+    TREND_SOURCE_ALLOWLIST.find((source) => {
+      const allowedLabel = source.label.toLowerCase();
+      return sourceLabelLower.includes(allowedLabel) || allowedLabel.includes(sourceLabelLower);
+    });
+  const sourceLabel = matched?.label ?? (
+    [...allowlistLabels].some((label) => sourceLabelLower.includes(label) || label.includes(sourceLabelLower))
+      ? sourceLabelRaw.slice(0, 80)
+      : defaultTheme === "dmv_state"
+        ? "Maryland Matters"
+        : "OpenAI"
+  );
+  const fallbackSource = allowlistByLabel.get(sourceLabel.toLowerCase()) ?? (
+    defaultTheme === "dmv_state"
+      ? TREND_SOURCE_ALLOWLIST.find((s) => s.label === "Maryland Matters") ?? TREND_SOURCE_ALLOWLIST[0]
+      : TREND_SOURCE_ALLOWLIST[0]
+  );
+  const sourceUrl =
+    typeof item.sourceUrl === "string" && item.sourceUrl.trim().startsWith("http")
+      ? item.sourceUrl.trim().slice(0, 500)
+      : fallbackSource.url;
+
+  let theme: TrendTheme = isTheme(item.theme) ? item.theme : defaultTheme;
+  if (defaultTheme === "dmv_state" && !isDmvPageTheme(theme)) {
+    theme = "dmv_state";
+  }
+
+  return {
+    title: item.title.trim().slice(0, 160),
+    summary: item.summary.trim().slice(0, 500),
+    whyItMatters: item.whyItMatters.trim().slice(0, 400),
+    theme,
+    sourceLabel,
+    sourceUrl,
+    relevanceScore: clampScore(item.relevanceScore),
+  };
+}
+
+function parseMainThing(
+  raw: unknown,
+  fallback: GeneratedMainThing,
+): GeneratedMainThing {
+  if (!raw || typeof raw !== "object") return fallback;
+  const main = raw as Record<string, unknown>;
+  return {
+    title:
+      typeof main.title === "string" && main.title.trim()
+        ? main.title.trim().slice(0, 160)
+        : fallback.title,
+    why:
+      typeof main.why === "string" && main.why.trim()
+        ? main.why.trim().slice(0, 400)
+        : fallback.why,
+    oneAction:
+      typeof main.oneAction === "string" && main.oneAction.trim()
+        ? main.oneAction.trim().slice(0, 200)
+        : fallback.oneAction,
+  };
+}
+
 function parseGeneratedDigest(raw: unknown): {
   mainThing: GeneratedMainThing;
+  techMain: GeneratedMainThing;
+  dmvMain: GeneratedMainThing;
   focusGuardrail: string;
   items: GeneratedItem[];
 } {
   const data = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const main =
-    data.mainThing && typeof data.mainThing === "object"
-      ? (data.mainThing as Record<string, unknown>)
-      : {};
 
-  const mainThing: GeneratedMainThing = {
-    title:
-      typeof main.title === "string" && main.title.trim()
-        ? main.title.trim().slice(0, 160)
-        : "Stay current without starting something new",
-    why:
-      typeof main.why === "string" && main.why.trim()
-        ? main.why.trim().slice(0, 400)
-        : "Signal beats noise when you protect one focus.",
-    oneAction:
-      typeof main.oneAction === "string" && main.oneAction.trim()
-        ? main.oneAction.trim().slice(0, 200)
-        : "Read one item, note the implication, return to your open leverage block.",
+  const defaultMain: GeneratedMainThing = {
+    title: "Stay current without starting something new",
+    why: "Signal beats noise when you protect one focus.",
+    oneAction: "Read one item, note the implication, return to your open leverage block.",
   };
+
+  const techMain = parseMainThing(
+    data.techMainThing ?? data.mainThing,
+    {
+      title: "Stay sharp on the stack — don't start a new build",
+      why: "Tech signal should inform the work you already have open.",
+      oneAction: "Skim the top tech item and apply one note to an existing task.",
+    },
+  );
+  const dmvMain = parseMainThing(data.dmvMainThing, {
+    title: "Know the DMV pulse — then get back to your day",
+    why: "Local news should help commute, housing, and life logistics — not become a rabbit hole.",
+    oneAction: "Skim the top DMV item; park anything that isn't actionable this week.",
+  });
+  const mainThing = parseMainThing(data.mainThing, techMain);
 
   const focusGuardrail =
     typeof data.focusGuardrail === "string" && data.focusGuardrail.trim()
@@ -208,48 +320,50 @@ function parseGeneratedDigest(raw: unknown): {
     TREND_SOURCE_ALLOWLIST.map((source) => [source.label.toLowerCase(), source]),
   );
 
-  const itemsRaw = Array.isArray(data.items) ? data.items : [];
-  const items: GeneratedItem[] = [];
+  const techRaw = Array.isArray(data.techItems)
+    ? data.techItems
+    : Array.isArray(data.items)
+      ? data.items
+      : [];
+  const dmvRaw = Array.isArray(data.dmvItems) ? data.dmvItems : [];
 
-  for (const entry of itemsRaw.slice(0, 5)) {
-    if (!entry || typeof entry !== "object") continue;
-    const item = entry as Record<string, unknown>;
-    if (typeof item.title !== "string" || !item.title.trim()) continue;
-    if (typeof item.summary !== "string" || !item.summary.trim()) continue;
-    if (typeof item.whyItMatters !== "string" || !item.whyItMatters.trim()) continue;
-
-    const sourceLabelRaw =
-      typeof item.sourceLabel === "string" && item.sourceLabel.trim()
-        ? item.sourceLabel.trim()
-        : "OpenAI";
-    const sourceLabelLower = sourceLabelRaw.toLowerCase();
-    const matched =
-      allowlistByLabel.get(sourceLabelLower) ??
-      TREND_SOURCE_ALLOWLIST.find((source) => {
-        const allowedLabel = source.label.toLowerCase();
-        return sourceLabelLower.includes(allowedLabel) || allowedLabel.includes(sourceLabelLower);
-      });
-    const sourceLabel = matched?.label ?? (
-      [...allowlistLabels].some((label) => sourceLabelLower.includes(label) || label.includes(sourceLabelLower))
-        ? sourceLabelRaw.slice(0, 80)
-        : "OpenAI"
-    );
-    const fallbackSource = allowlistByLabel.get(sourceLabel.toLowerCase()) ?? TREND_SOURCE_ALLOWLIST[0];
-    const sourceUrl =
-      typeof item.sourceUrl === "string" && item.sourceUrl.trim().startsWith("http")
-        ? item.sourceUrl.trim().slice(0, 500)
-        : fallbackSource.url;
-
-    items.push({
-      title: item.title.trim().slice(0, 160),
-      summary: item.summary.trim().slice(0, 500),
-      whyItMatters: item.whyItMatters.trim().slice(0, 400),
-      theme: isTheme(item.theme) ? item.theme : "ai_models",
-      sourceLabel,
-      sourceUrl,
-      relevanceScore: clampScore(item.relevanceScore),
-    });
+  const techItems: GeneratedItem[] = [];
+  for (const entry of techRaw) {
+    if (techItems.length >= MAX_TECH_TREND_ITEMS) break;
+    const parsed = parseItemEntry(entry, allowlistLabels, allowlistByLabel, "ai_models");
+    if (!parsed || !isTechTrendTheme(parsed.theme)) continue;
+    techItems.push(parsed);
   }
+
+  const dmvItems: GeneratedItem[] = [];
+  for (const entry of dmvRaw) {
+    if (dmvItems.length >= MAX_DMV_TREND_ITEMS) break;
+    const parsed = parseItemEntry(entry, allowlistLabels, allowlistByLabel, "dmv_state");
+    if (!parsed || !isDmvPageTheme(parsed.theme)) continue;
+    dmvItems.push(parsed);
+  }
+
+  // Money/housing items wrongly placed in techItems by the model → move to DMV page.
+  if (Array.isArray(data.techItems)) {
+    for (const entry of data.techItems) {
+      if (dmvItems.length >= MAX_DMV_TREND_ITEMS) break;
+      const parsed = parseItemEntry(entry, allowlistLabels, allowlistByLabel, "dmv_state");
+      if (!parsed || !isMoneyTrendTheme(parsed.theme)) continue;
+      if (dmvItems.some((item) => item.title.toLowerCase() === parsed.title.toLowerCase())) continue;
+      dmvItems.push(parsed);
+    }
+  }
+
+  if (dmvItems.length === 0 && Array.isArray(data.items) && !Array.isArray(data.techItems)) {
+    for (const entry of data.items) {
+      if (dmvItems.length >= MAX_DMV_TREND_ITEMS) break;
+      const parsed = parseItemEntry(entry, allowlistLabels, allowlistByLabel, "dmv_state");
+      if (!parsed || !isDmvPageTheme(parsed.theme)) continue;
+      dmvItems.push(parsed);
+    }
+  }
+
+  const items = [...techItems, ...dmvItems];
 
   if (items.length === 0) {
     items.push({
@@ -265,7 +379,7 @@ function parseGeneratedDigest(raw: unknown): {
     });
   }
 
-  return { mainThing, focusGuardrail, items };
+  return { mainThing: mainThing.title ? mainThing : defaultMain, techMain, dmvMain, focusGuardrail, items };
 }
 
 async function gatherTrendsContext(userId: string) {
@@ -339,55 +453,66 @@ export async function generateTrendDigest(
       messages: [
         {
           role: "system",
-          content: `You curate a FOCUSED daily digest for Trell — software developer, homeowner/real-estate investor, and aspiring entrepreneur living in the DMV (Oxon Hill / PG County, MD).
-Keep the main thing the main thing. This is NOT a news firehose.
+          content: `You curate a SPLIT daily digest for Trell — software developer + aspiring entrepreneur in Oxon Hill / DMV.
+Two SEPARATE lanes (never blend):
 
-Themes allowed: ai_models, labs, infra, startup, hardware_software, markets, real_estate, dmv_state.
-
-Balance the digest:
-- Tech/AI signal (models, labs, infra, hardware×software) when it matters for a builder.
-- DMV local signal EVERY day when possible: Maryland politics/policy, DC news, Virginia/Northern Virginia developments, transit, housing, taxes, jobs — theme "dmv_state".
-- Prefer at least 1–2 of the ≤5 items from DMV sources (Maryland Matters, Baltimore Banner, WAMU/DCist, Virginia Mercury, Washington Post Local, GGWash, etc.) unless snapshots are empty.
-- Money/property only when it clearly hits mortgage, rates, housing supply, or Trell's property path.
+1) TECH lane — AI models, labs, infra, startup, hardware×software ONLY
+2) DMV lane — Maryland/DC/Virginia politics AND housing/rates/markets (real_estate, markets) that affect Trell's home path
 
 HARD RULES:
-- Max 5 items.
-- One mainThing only — can be tech OR DMV, whichever is highest leverage today; do not bury local life.
-- Never invent fake breaking news. Prefer durable patterns; if unsure, say "directional / not confirmed headline".
-- Never recommend starting a new side project or product from a trend.
-- Prefer implications for finishing current promotion/build work, protecting cash, DMV life logistics, or real-estate readiness.
-- Local/politics items must connect to Trell's DMV life (commute, housing, taxes, state/local policy, jobs) — not national horse-race noise.
-- Use sourceSnapshots as best-effort live page context. If a page snapshot is empty, do not pretend you read it.
-- Rank the one source Trell most needs to read highest by relevanceScore.
-- sourceLabel must come from the provided allowlist labels when possible.
+- techItems: 3–4 items. Themes ONLY: ai_models | labs | infra | startup | hardware_software
+- NEVER put real_estate, markets, Metro, WMATA, Maryland politics, or Fannie Mae into techItems or techMainThing.
+- dmvItems: 1–3 items. Themes: dmv_state | real_estate | markets
+- techMainThing = pure builder/AI focus. dmvMainThing = local or housing focus.
+- Never invent fake breaking news. If unsure: "directional / not confirmed headline".
+- Never recommend starting a new side project from a trend.
+- Use sourceSnapshots; if empty, do not pretend you read that page.
+- sourceLabel from allowlist when possible.
 - Strings short and scannable.`,
         },
         {
           role: "user",
-          content: `Build today's digest.
+          content: `Build today's SPLIT digest (Tech page + DMV page).
 
 Return JSON exactly:
 {
-  "mainThing": {
-    "title": "one short focus title",
-    "why": "one sentence why it matters for Trell",
-    "oneAction": "one concrete action that does NOT start a new project (read/note/apply to open work)"
+  "techMainThing": {
+    "title": "tech focus title",
+    "why": "why for builder Trell",
+    "oneAction": "one tech action that does NOT start a new project"
   },
-  "focusGuardrail": "one blunt sentence: finish open work; trends inform only",
-  "items": [
+  "dmvMainThing": {
+    "title": "DMV focus title",
+    "why": "why for Oxon Hill / DMV life",
+    "oneAction": "one local skim/note action"
+  },
+  "focusGuardrail": "finish open work; news is context only",
+  "techItems": [
     {
       "title": "...",
       "summary": "2 sentences max",
-      "whyItMatters": "why for Trell as DMV builder/homeowner/entrepreneur",
+      "whyItMatters": "why for Trell as builder",
+      "theme": "ai_models",
+      "sourceLabel": "OpenAI",
+      "sourceUrl": "https://...",
+      "relevanceScore": 8
+    }
+  ],
+  "dmvItems": [
+    {
+      "title": "...",
+      "summary": "2 sentences max",
+      "whyItMatters": "why for Trell's DMV life",
       "theme": "dmv_state",
       "sourceLabel": "Maryland Matters",
       "sourceUrl": "https://...",
-      "relevanceScore": 8
+      "relevanceScore": 7
     }
   ]
 }
 
-Mix tech + DMV in the 5 items when snapshots allow. At least one dmv_state item if any DMV sourceSnapshot has headings/description.
+Fill techItems AND dmvItems. Housing/rates (Fannie, mortgage outlook) go in dmvItems with theme real_estate — NEVER techItems.
+Metro/politics go in dmvItems. Model/lab/infra releases go in techItems only.
 
 CONTEXT:
 ${JSON.stringify(context)}`,
@@ -406,15 +531,25 @@ ${JSON.stringify(context)}`,
     console.error("Trend digest AI failed; using fallback:", error);
   }
 
+  const digestFields = {
+    mainTitle: generated.techMain.title,
+    mainWhy: generated.techMain.why,
+    mainAction: generated.techMain.oneAction,
+    focusGuardrail: generated.focusGuardrail,
+    techMainTitle: generated.techMain.title,
+    techMainWhy: generated.techMain.why,
+    techMainAction: generated.techMain.oneAction,
+    dmvMainTitle: generated.dmvMain.title,
+    dmvMainWhy: generated.dmvMain.why,
+    dmvMainAction: generated.dmvMain.oneAction,
+  };
+
   if (existing) {
     await prisma.trendItem.deleteMany({ where: { digestId: existing.id } });
     const digest = await prisma.trendDigest.update({
       where: { id: existing.id },
       data: {
-        mainTitle: generated.mainThing.title,
-        mainWhy: generated.mainThing.why,
-        mainAction: generated.mainThing.oneAction,
-        focusGuardrail: generated.focusGuardrail,
+        ...digestFields,
         items: {
           create: generated.items.map((item) => ({
             title: item.title,
@@ -437,10 +572,7 @@ ${JSON.stringify(context)}`,
     data: {
       userId,
       date: today,
-      mainTitle: generated.mainThing.title,
-      mainWhy: generated.mainThing.why,
-      mainAction: generated.mainThing.oneAction,
-      focusGuardrail: generated.focusGuardrail,
+      ...digestFields,
       items: {
         create: generated.items.map((item) => ({
           title: item.title,
@@ -463,14 +595,23 @@ ${JSON.stringify(context)}`,
 export function serializeTrendDigest(
   digest: NonNullable<Awaited<ReturnType<typeof getTrendDigestForDate>>>,
 ) {
+  const techMain = {
+    title: digest.techMainTitle ?? digest.mainTitle,
+    why: digest.techMainWhy ?? digest.mainWhy,
+    oneAction: digest.techMainAction ?? digest.mainAction,
+  };
+  const dmvMain = {
+    title: digest.dmvMainTitle ?? "DMV pulse",
+    why: digest.dmvMainWhy ?? "Local signal for commute, housing, and life logistics.",
+    oneAction: digest.dmvMainAction ?? "Skim the top local item, then get back to open work.",
+  };
+
   return {
     id: digest.id,
     date: digest.date,
-    mainThing: {
-      title: digest.mainTitle,
-      why: digest.mainWhy,
-      oneAction: digest.mainAction,
-    },
+    mainThing: techMain,
+    techMain,
+    dmvMain,
     focusGuardrail: digest.focusGuardrail,
     updatedAt: digest.updatedAt.toISOString(),
     createdAt: digest.createdAt.toISOString(),

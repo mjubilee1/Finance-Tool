@@ -4,14 +4,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import {
   BookOpenCheck,
+  Cpu,
   ExternalLink,
   Loader2,
+  MapPin,
   ParkingCircle,
-  Radar,
   RefreshCw,
   Sparkles,
   X,
 } from "lucide-react";
+import { isDmvPageTheme, isTechTrendTheme } from "@/lib/trends";
+
+export type TrendsLane = "tech" | "dmv";
 
 type TrendItem = {
   id: string;
@@ -26,10 +30,14 @@ type TrendItem = {
   loggedActivityId: string | null;
 };
 
+type MainThing = { title: string; why: string; oneAction: string };
+
 type TrendDigest = {
   id: string;
   date: string;
-  mainThing: { title: string; why: string; oneAction: string };
+  mainThing: MainThing;
+  techMain: MainThing;
+  dmvMain: MainThing;
   focusGuardrail: string;
   updatedAt: string;
   createdAt: string;
@@ -57,8 +65,104 @@ function themeLabel(theme: string) {
   return THEME_LABELS[theme] ?? theme.replaceAll("_", " ");
 }
 
-export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
+function topReadId(items: TrendItem[]) {
+  const active = items.filter((item) => item.status !== "dismissed" && item.status !== "parked");
+  if (active.length === 0) return null;
+  return [...active].sort((a, b) => b.relevanceScore - a.relevanceScore)[0]?.id ?? null;
+}
+
+function TrendItemCard({
+  item,
+  readThis,
+  onPatch,
+}: {
+  item: TrendItem;
+  readThis: boolean;
+  onPatch: (id: string, payload: { status?: string; logToGrowth?: boolean }) => void;
+}) {
+  const inactive = item.status === "dismissed" || item.status === "parked";
+
+  return (
+    <article
+      className={`app-card p-5 ${
+        readThis ? "ring-2 ring-orange-300/80 bg-orange-50/30" : ""
+      } ${inactive ? "opacity-60" : ""}`}
+    >
+      <div className="flex flex-wrap gap-2 mb-2">
+        {readThis ? (
+          <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-orange-900 bg-orange-100 px-2 py-0.5 rounded-md">
+            <BookOpenCheck size={11} /> Read this
+          </span>
+        ) : null}
+        <span className="text-[10px] uppercase tracking-wider font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+          {themeLabel(item.theme)}
+        </span>
+        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 px-2 py-0.5 rounded-md ring-1 ring-slate-200/60">
+          {item.sourceLabel}
+        </span>
+        {item.status !== "new" ? (
+          <span className="text-[10px] uppercase tracking-wider font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md">
+            {item.status}
+          </span>
+        ) : null}
+      </div>
+      <h4 className="font-semibold text-slate-900">{item.title}</h4>
+      <p className="text-sm text-slate-600 mt-1.5 leading-relaxed">{item.summary}</p>
+      <p className="text-sm text-slate-800 mt-2 leading-relaxed">
+        <span className="font-medium">For you:</span> {item.whyItMatters}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 mt-4">
+        {item.sourceUrl ? (
+          <a
+            href={item.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+              readThis ? "text-orange-700 hover:text-orange-900" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            {readThis ? "Read source" : "Source"} <ExternalLink size={12} />
+          </a>
+        ) : null}
+        <button
+          type="button"
+          disabled={Boolean(item.loggedActivityId) || item.status === "noted"}
+          onClick={() => onPatch(item.id, { logToGrowth: true })}
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg app-btn-primary disabled:opacity-50"
+        >
+          {item.loggedActivityId || item.status === "noted" ? "Noted in Growth" : "Note in Growth"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onPatch(item.id, { status: "parked" })}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 rounded-lg"
+        >
+          <ParkingCircle size={13} /> Park
+        </button>
+        <button
+          type="button"
+          onClick={() => onPatch(item.id, { status: "dismissed" })}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg"
+        >
+          <X size={13} /> Dismiss
+        </button>
+      </div>
+    </article>
+  );
+}
+
+export function TrendsView({
+  lane,
+  onOpenGrowth,
+  onOpenOtherLane,
+}: {
+  lane: TrendsLane;
+  onOpenGrowth?: () => void;
+  onOpenOtherLane?: () => void;
+}) {
   const queryClient = useQueryClient();
+  const isTech = lane === "tech";
+
   const { data, isLoading, isFetching, error, refetch } = useQuery<TrendsResponse>({
     queryKey: ["trends-digest"],
     queryFn: async () => {
@@ -116,7 +220,7 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
     return (
       <div className="flex items-center justify-center py-24 text-slate-500 gap-2">
         <Loader2 className="animate-spin" size={18} />
-        Curating today&apos;s signal…
+        Curating {isTech ? "tech" : "DMV"} signal…
       </div>
     );
   }
@@ -124,7 +228,7 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
   if (error || !digest) {
     return (
       <div className="app-card p-8 text-center space-y-3">
-        <p className="text-slate-700">Couldn&apos;t load trends.</p>
+        <p className="text-slate-700">Couldn&apos;t load {isTech ? "tech" : "DMV"} trends.</p>
         <button type="button" onClick={() => refetch()} className="app-btn-primary px-4 py-2 text-sm">
           Retry
         </button>
@@ -133,20 +237,56 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
   }
 
   const updatedLabel = DateTime.fromISO(digest.updatedAt).toFormat("MMM d · h:mm a");
-  const readThisItemId =
-    digest.items.find((item) => item.status !== "dismissed" && item.status !== "parked")?.id ?? null;
+  const maxItems = isTech ? 4 : 3;
+  const byImportance = (a: TrendItem, b: TrendItem) => b.relevanceScore - a.relevanceScore;
+  const items = digest.items
+    .filter((item) => (isTech ? isTechTrendTheme(item.theme) : isDmvPageTheme(item.theme)))
+    .sort(byImportance)
+    .slice(0, maxItems);
+  const readThisId = topReadId(items);
+
+  const looksLikeLocalNews = (text: string) =>
+    /\b(metro|wmata|dcist|maryland|virginia|fare|commute|national harbor|pg county|oxon hill)\b/i.test(
+      text,
+    );
+
+  const rawMain = isTech
+    ? (digest.techMain ?? digest.mainThing)
+    : (digest.dmvMain ?? digest.mainThing);
+
+  const topItem = items[0];
+  const main =
+    isTech && looksLikeLocalNews(`${rawMain.title} ${rawMain.why}`) && topItem
+      ? {
+          title: topItem.title,
+          why: topItem.whyItMatters,
+          oneAction: `Skim “${topItem.sourceLabel}” and note one implication for an open build task.`,
+        }
+      : rawMain;
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl app-display text-slate-900 tracking-tight">Trends</h1>
+          <h1 className="text-2xl app-display text-slate-900 tracking-tight">
+            {isTech ? "Tech" : "DMV"}
+          </h1>
           <p className="text-sm text-slate-600 mt-1 leading-relaxed max-w-xl">
-            AI + builder signal, plus Maryland / DC / Virginia news and politics — because you live in
-            the DMV. Tight TLDR only; Source opens the real article.
+            {isTech
+              ? "Builder signal only — AI models, labs, infra, markets. Ranked most → least. Source opens the real article."
+              : "Maryland / DC / Virginia news, plus housing & rates that hit your home path. Ranked most → least."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenOtherLane ? (
+            <button
+              type="button"
+              onClick={onOpenOtherLane}
+              className="px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl ring-1 ring-slate-200/70"
+            >
+              {isTech ? "DMV →" : "Tech →"}
+            </button>
+          ) : null}
           {onOpenGrowth ? (
             <button
               type="button"
@@ -178,104 +318,52 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
       <div className="app-card p-6 ring-1 ring-teal-200/60 bg-teal-50/40">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-9 h-9 rounded-xl bg-white/80 ring-1 ring-teal-200/60 flex items-center justify-center">
-            <Sparkles size={16} className="text-teal-700" />
+            {isTech ? (
+              <Cpu size={16} className="text-teal-700" />
+            ) : (
+              <MapPin size={16} className="text-teal-700" />
+            )}
           </div>
-          <p className="app-label text-teal-800">Main thing today</p>
+          <p className="app-label text-teal-800">
+            {isTech ? "Tech focus today" : "DMV focus today"}
+          </p>
         </div>
-        <h2 className="text-xl font-semibold text-slate-900 leading-snug">
-          {digest.mainThing.title}
-        </h2>
-        <p className="text-sm text-slate-700 mt-2 leading-relaxed">{digest.mainThing.why}</p>
+        <h2 className="text-xl font-semibold text-slate-900 leading-snug">{main.title}</h2>
+        <p className="text-sm text-slate-700 mt-2 leading-relaxed">{main.why}</p>
         <p className="mt-4 text-sm font-medium text-teal-900 leading-relaxed">
-          One action: {digest.mainThing.oneAction}
+          One action: {main.oneAction}
         </p>
-        <p className="mt-2 text-xs font-medium text-teal-800/80">
-          This is the TLDR/action. The one source worth a deeper read is marked “Read this” below.
+        <p className="mt-2 text-xs text-teal-800/80 inline-flex items-center gap-1">
+          <Sparkles size={12} /> TLDR for this page only — other lane is separate.
         </p>
       </div>
 
-      <div className="space-y-3">
+      <section className="space-y-3">
         <div className="flex items-center gap-2">
-          <Radar size={16} className="text-slate-400" />
-          <h3 className="font-semibold text-slate-900">Today&apos;s signal</h3>
-          <span className="text-xs text-slate-500">({digest.items.length} max 5)</span>
+          {isTech ? <Cpu size={16} className="text-slate-500" /> : <MapPin size={16} className="text-slate-500" />}
+          <h3 className="font-semibold text-slate-900">
+            {isTech ? "Today's tech signal" : "Today's DMV signal"}
+          </h3>
+          <span className="text-xs text-slate-500">
+            ({items.length} · up to {maxItems} · most → least)
+          </span>
         </div>
 
-        {digest.items.map((item) => {
-          const inactive = item.status === "dismissed" || item.status === "parked";
-          const readThis = item.id === readThisItemId && !inactive;
-          return (
-            <article
+        {items.length === 0 ? (
+          <div className="app-card p-4 text-sm text-slate-500">
+            No {isTech ? "tech" : "DMV"} items yet — hit Refresh to rebuild.
+          </div>
+        ) : (
+          items.map((item) => (
+            <TrendItemCard
               key={item.id}
-              className={`app-card p-5 ${
-                readThis ? "ring-2 ring-orange-300/80 bg-orange-50/30" : ""
-              } ${inactive ? "opacity-60" : ""}`}
-            >
-              <div className="flex flex-wrap gap-2 mb-2">
-                {readThis ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-orange-900 bg-orange-100 px-2 py-0.5 rounded-md">
-                    <BookOpenCheck size={11} /> Read this
-                  </span>
-                ) : null}
-                <span className="text-[10px] uppercase tracking-wider font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
-                  {themeLabel(item.theme)}
-                </span>
-                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 px-2 py-0.5 rounded-md ring-1 ring-slate-200/60">
-                  {item.sourceLabel}
-                </span>
-                {item.status !== "new" ? (
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md">
-                    {item.status}
-                  </span>
-                ) : null}
-              </div>
-              <h4 className="font-semibold text-slate-900">{item.title}</h4>
-              <p className="text-sm text-slate-600 mt-1.5 leading-relaxed">{item.summary}</p>
-              <p className="text-sm text-slate-800 mt-2 leading-relaxed">
-                <span className="font-medium">For you:</span> {item.whyItMatters}
-              </p>
-              <div className="flex flex-wrap items-center gap-2 mt-4">
-                {item.sourceUrl ? (
-                  <a
-                    href={item.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
-                      readThis ? "text-orange-700 hover:text-orange-900" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {readThis ? "Read source" : "Source"} <ExternalLink size={12} />
-                  </a>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={Boolean(item.loggedActivityId) || item.status === "noted"}
-                  onClick={() => patchItem(item.id, { logToGrowth: true })}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg app-btn-primary disabled:opacity-50"
-                >
-                  {item.loggedActivityId || item.status === "noted"
-                    ? "Noted in Growth"
-                    : "Note in Growth"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => patchItem(item.id, { status: "parked" })}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 rounded-lg"
-                >
-                  <ParkingCircle size={13} /> Park
-                </button>
-                <button
-                  type="button"
-                  onClick={() => patchItem(item.id, { status: "dismissed" })}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg"
-                >
-                  <X size={13} /> Dismiss
-                </button>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+              item={item}
+              readThis={item.id === readThisId}
+              onPatch={patchItem}
+            />
+          ))
+        )}
+      </section>
     </div>
   );
 }

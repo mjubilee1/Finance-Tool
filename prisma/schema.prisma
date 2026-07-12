@@ -401,10 +401,17 @@ model TrendDigest {
   id              String   @id @default(cuid())
   userId          String
   date            String // YYYY-MM-DD
+  /// Legacy / overall focus (prefer tech when building)
   mainTitle       String
   mainWhy         String   @db.Text
   mainAction      String
   focusGuardrail  String   @db.Text
+  techMainTitle   String?
+  techMainWhy     String?  @db.Text
+  techMainAction  String?
+  dmvMainTitle    String?
+  dmvMainWhy      String?  @db.Text
+  dmvMainAction   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
