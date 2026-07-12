@@ -51,6 +51,7 @@ type Props = {
     weekly: WeeklyCashFlow;
   };
   safeSpendToday: number;
+  safeSpendTodayReason?: string;
   protectedCashBuffer: number;
   monthlySafeSpend: number;
   sixMonthSafeSpend: number;
@@ -59,7 +60,7 @@ type Props = {
   briefUpdatedLabel: string | null;
   nextBriefLabel: string | null;
   refreshHours?: number;
-  snapshots: Array<Record<string, unknown>>;
+  dailySpendSeries: Array<{ date: string; totalSpent: number }>;
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
@@ -77,6 +78,7 @@ export function OverviewHome({
   aiInsight,
   cashFlow,
   safeSpendToday,
+  safeSpendTodayReason,
   protectedCashBuffer,
   monthlySafeSpend,
   sixMonthSafeSpend,
@@ -85,7 +87,7 @@ export function OverviewHome({
   briefUpdatedLabel,
   nextBriefLabel,
   refreshHours,
-  snapshots,
+  dailySpendSeries,
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
@@ -122,16 +124,18 @@ export function OverviewHome({
   return (
     <div className="space-y-5">
       {isBriefPending ? (
-        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200/70">
-          Cash flow is ready. Your full CFO brief is generating in the background — use Refresh if it does not appear soon.
+        <div className="rounded-xl bg-amber-500/15 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/35">
+          Cash flow is ready. Your full daily brief is generating in the background — use Refresh if it does not appear soon.
         </div>
       ) : null}
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-teal-700/80">{todayLabel}</p>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight mt-1">{greeting}</h1>
-          <p className="text-slate-500 text-sm mt-1">Your daily cash flow at a glance.</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+            {todayLabel}
+          </p>
+          <h1 className="text-xl md:text-2xl app-display text-[var(--ink)] tracking-tight mt-1">{greeting}</h1>
+          <p className="text-[var(--muted)] text-sm mt-1">Your daily cash flow at a glance.</p>
         </div>
         <span
           className={`inline-flex items-center gap-2 px-3 py-1.5 md:px-3.5 rounded-full text-xs md:text-sm font-semibold ring-1 shrink-0 ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}
@@ -141,16 +145,16 @@ export function OverviewHome({
         </span>
       </div>
 
-      <div className="rounded-2xl bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-4 md:p-5 ring-1 ring-teal-200/50">
+      <div className="rounded-2xl bg-[var(--card-solid)] p-4 md:p-5 ring-1 ring-[var(--card-border)]">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-teal-100 flex items-center justify-center shrink-0 ring-1 ring-teal-200/60">
-            <Heart size={16} className="text-teal-700" />
+          <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center shrink-0 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
+            <Heart size={16} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-teal-700/90">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
               {dailyAffirmation.toneLabel}
             </p>
-            <p className="text-sm md:text-[15px] text-slate-700 mt-1 leading-relaxed">
+            <p className="text-sm md:text-[15px] text-[var(--ink)] mt-1 leading-relaxed">
               {dailyAffirmation.message}
             </p>
           </div>
@@ -161,18 +165,18 @@ export function OverviewHome({
         <button
           type="button"
           onClick={onOpenChat}
-          className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
         >
-          <MessageSquare size={14} className="text-teal-600" />
-          Ask CFO
+          <MessageSquare size={14} className="text-[var(--accent)]" />
+          Ask Coach
         </button>
         {onOpenGrowth ? (
           <button
             type="button"
             onClick={onOpenGrowth}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
           >
-            <Flame size={14} className="text-orange-600" />
+            <Flame size={14} className="text-[var(--ember)]" />
             Growth
           </button>
         ) : null}
@@ -180,9 +184,9 @@ export function OverviewHome({
           <button
             type="button"
             onClick={onOpenGoals}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
           >
-            <Target size={14} className="text-teal-600" />
+            <Target size={14} className="text-[var(--accent)]" />
             Goals
           </button>
         ) : null}
@@ -190,9 +194,9 @@ export function OverviewHome({
           <button
             type="button"
             onClick={onOpenRecurring}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
           >
-            <Repeat size={14} className="text-teal-600" />
+            <Repeat size={14} className="text-[var(--accent)]" />
             Recurring
           </button>
         ) : null}
@@ -201,19 +205,21 @@ export function OverviewHome({
       <TodayCashFlowMeter today={cashFlow.today} status={cfoBrief?.status} />
 
       {(cfoBrief?.todaysMove || primaryRecommendedAction) && (
-        <div className="rounded-2xl bg-teal-600 p-5 text-white shadow-md shadow-teal-600/20">
-          <p className="text-xs font-semibold uppercase tracking-wider text-teal-100 mb-1">Today&apos;s move</p>
-          <p className="text-lg font-semibold leading-snug">
+        <div className="rounded-2xl bg-[var(--accent)] p-5 text-white shadow-md shadow-blue-600/25">
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/90 mb-1">
+            Today&apos;s move
+          </p>
+          <p className="text-lg font-semibold leading-snug text-white">
             {cfoBrief?.todaysMove ?? primaryRecommendedAction?.title}
           </p>
           {(cfoBrief?.debtMove ?? primaryRecommendedAction?.reason) && (
-            <p className="text-sm text-teal-50/90 mt-1.5 leading-relaxed">
+            <p className="text-sm text-white/90 mt-1.5 leading-relaxed">
               {cfoBrief?.debtMove ?? primaryRecommendedAction?.reason}
             </p>
           )}
           {cfoBrief?.systemImpact ? (
-            <p className="text-sm text-teal-100/90 mt-2 leading-relaxed border-t border-teal-500/30 pt-2">
-              <span className="font-semibold text-teal-50">System impact:</span> {cfoBrief.systemImpact}
+            <p className="text-sm text-white/90 mt-2 leading-relaxed border-t border-white/25 pt-2">
+              <span className="font-semibold text-white">System impact:</span> {cfoBrief.systemImpact}
             </p>
           ) : null}
         </div>
@@ -223,28 +229,32 @@ export function OverviewHome({
         <button
           type="button"
           onClick={() => onOpenGrowth?.()}
-          className="w-full text-left app-card p-4 ring-1 ring-orange-200/70 bg-orange-50/40 hover:bg-orange-50 transition-colors"
+          className="w-full text-left app-card p-4 ring-1 ring-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_10%,transparent)] hover:brightness-110 transition"
         >
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <Flame size={16} className="text-orange-600" />
-                <p className="app-label text-orange-800">Growth leverage</p>
+                <Flame size={16} className="text-[var(--ember)]" />
+                <p className="app-label text-[var(--ember-strong)] dark:text-[var(--ember)]">Growth leverage</p>
               </div>
-              <p className="font-semibold text-slate-900">
+              <p className="font-semibold text-[var(--ink)]">
                 Compounding score: {Math.round(growthPreview.metrics.compoundingScore)}
                 {growthPreview.metrics.improving ? " · improving" : " · needs attention"}
               </p>
-              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+              <p className="text-sm text-[var(--ink-soft)] mt-1 leading-relaxed">
                 {growthPreview.recommendation?.action ??
                   growthPreview.opportunities?.[0]?.title ??
                   "Open Growth to generate today’s highest-leverage action."}
               </p>
               {growthPreview.metrics.bottlenecks?.[0] ? (
-                <p className="text-xs text-amber-800 mt-2">Bottleneck: {growthPreview.metrics.bottlenecks[0]}</p>
+                <p className="text-xs text-amber-900 dark:text-amber-200 mt-2">
+                  Bottleneck: {growthPreview.metrics.bottlenecks[0]}
+                </p>
               ) : null}
             </div>
-            <span className="text-xs font-semibold text-orange-700 shrink-0">Open →</span>
+            <span className="text-xs font-semibold text-[var(--ember-strong)] dark:text-[var(--ember)] shrink-0">
+              Open →
+            </span>
           </div>
         </button>
       ) : null}
@@ -252,12 +262,14 @@ export function OverviewHome({
       {priorityGoal && (
         <div
           className={`app-card p-4 ring-1 ${
-            priorityGoal.onTrack ? "ring-teal-200/60 bg-teal-50/30" : "ring-amber-200/60 bg-amber-50/30"
+            priorityGoal.onTrack
+              ? "ring-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-soft)]"
+              : "ring-amber-400/35 bg-amber-500/10"
           }`}
         >
           <p className="app-label mb-1">Focus goal</p>
-          <p className="font-semibold text-slate-900">{priorityGoal.name}</p>
-          <p className="text-sm text-slate-600 mt-1 leading-relaxed">{priorityGoal.paceMessage}</p>
+          <p className="font-semibold text-[var(--ink)]">{priorityGoal.name}</p>
+          <p className="text-sm text-[var(--ink-soft)] mt-1 leading-relaxed">{priorityGoal.paceMessage}</p>
         </div>
       )}
 
@@ -272,27 +284,27 @@ export function OverviewHome({
       <div className="app-card p-6">
         <div className="flex justify-between items-start mb-3 gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-              <Sparkles size={16} className="text-teal-600" />
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent-soft)] flex items-center justify-center">
+              <Sparkles size={16} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
             </div>
-            <h2 className="text-lg font-semibold text-slate-900">CFO brief</h2>
+            <h2 className="text-lg font-semibold text-[var(--ink)]">Daily brief</h2>
           </div>
           {refreshHours ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-medium text-[var(--ink-soft)]">
               {refreshHours}h refresh
             </span>
           ) : null}
         </div>
-        <p className="text-sm sm:text-[15px] leading-relaxed text-slate-600 mb-4">
+        <p className="text-sm sm:text-[15px] leading-relaxed text-[var(--ink-soft)] mb-4">
           {cfoBrief?.cashSafety ?? aiInsight.dailySummary}
         </p>
         {cfoBrief?.spendingWarning && (
-          <p className="text-sm text-amber-900 bg-amber-50 rounded-xl p-3 ring-1 ring-amber-200/60 leading-relaxed">
+          <p className="text-sm text-amber-950 dark:text-amber-100 bg-amber-400/20 dark:bg-amber-400/15 rounded-xl p-3 ring-1 ring-amber-500/30 leading-relaxed">
             {cfoBrief.spendingWarning}
           </p>
         )}
         {briefUpdatedLabel && (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-[var(--muted)]">
             Last brief: {briefUpdatedLabel}
             {nextBriefLabel ? ` · Next refresh around ${nextBriefLabel}` : ""}
           </p>
@@ -300,16 +312,16 @@ export function OverviewHome({
         <button
           type="button"
           onClick={onOpenChat}
-          className="mt-4 text-sm font-semibold text-teal-700 hover:text-teal-800 transition"
+          className="mt-4 text-sm font-semibold text-[var(--accent-bright)] hover:brightness-110 transition"
         >
-          Ask your CFO →
+          Ask your Coach →
         </button>
       </div>
 
       <button
         type="button"
         onClick={() => setShowDetails(!showDetails)}
-        className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-slate-600 hover:text-slate-900 app-card hover:bg-slate-50 transition"
+        className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)] app-card hover:brightness-110 transition"
       >
         {showDetails ? "Hide details" : "Show full plan details"}
         {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -321,42 +333,59 @@ export function OverviewHome({
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="app-label mb-2">Why this daily number</p>
-                <h2 className="text-lg font-semibold text-slate-900 leading-snug">
-                  {formatCurrency(safeSpendToday)}/day connects micro decisions to your macro plan.
+                <h2 className="text-lg font-semibold text-[var(--ink)] leading-snug">
+                  {formatCurrency(safeSpendToday)}/day is the food/fun target — gas and bills sit outside it.
                 </h2>
-                <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
-                  {cfoBrief?.safeSpendTodayReason ??
-                    "Available checking cash, minus a protected buffer, minus what's already spent today."}
+                <p className="text-sm text-[var(--ink-soft)] mt-2 max-w-2xl leading-relaxed">
+                  {safeSpendTodayReason ??
+                    cfoBrief?.safeSpendTodayReason ??
+                    "About $40/day for food and fun. Cash buffer is the protected floor in checking. Gas/Lyft costs do not eat this number."}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 text-right shrink-0">
-                <div className="rounded-xl bg-teal-50/80 p-3 ring-1 ring-teal-200/50">
-                  <p className="app-label text-teal-700">Monthly pace</p>
-                  <p className="text-lg font-bold text-slate-900 tabular-nums">{formatCurrency(monthlySafeSpend)}</p>
+                <div className="rounded-xl bg-[var(--accent-soft)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
+                  <p className="app-label text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+                    Food/fun per month
+                  </p>
+                  <p className="text-lg font-bold text-[var(--ink)] tabular-nums">
+                    {formatCurrency(monthlySafeSpend)}
+                  </p>
+                  <p className="text-[10px] text-[var(--ink-soft)] mt-0.5">$40 × 30 days</p>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/50">
+                <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
                   <p className="app-label">Cash buffer</p>
-                  <p className="text-lg font-bold text-slate-900 tabular-nums">{formatCurrency(protectedCashBuffer)}</p>
+                  <p className="text-lg font-bold text-[var(--ink)] tabular-nums">
+                    {formatCurrency(protectedCashBuffer)}
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3 mt-5">
-              <div className="rounded-xl bg-slate-50/80 p-4 ring-1 ring-slate-200/50">
-                <p className="app-label mb-1">6-month spend</p>
-                <p className="text-2xl font-bold text-slate-900 tabular-nums">{formatCurrency(sixMonthSafeSpend)}</p>
+              <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-4 ring-1 ring-[var(--card-border)]">
+                <p className="app-label mb-1">Food/fun spend over 6 months</p>
+                <p className="text-2xl font-bold text-[var(--ink)] tabular-nums">
+                  {formatCurrency(sixMonthSafeSpend)}
+                </p>
+                <p className="text-xs text-[var(--ink-soft)] mt-1 leading-relaxed">
+                  Rough total you&apos;d <span className="font-medium text-[var(--ink)]">spend</span> on
+                  food/fun if most days stay near $40 — not money saved. Some days over, some under
+                  is fine; judge the week.
+                </p>
               </div>
-              <div className="rounded-xl bg-teal-50/50 p-4 ring-1 ring-teal-200/50">
-                <p className="app-label text-teal-700 mb-2">What raises it</p>
-                <ul className="space-y-2 text-sm text-slate-700 leading-relaxed">
+              <div className="rounded-xl bg-[var(--accent-soft)] p-4 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
+                <p className="app-label text-[var(--accent-strong)] dark:text-[var(--accent-bright)] mb-2">
+                  What raises it
+                </p>
+                <ul className="space-y-2 text-sm text-[var(--ink-soft)] leading-relaxed">
                   {safeSpendRaiseFactors.map((factor) => (
                     <li key={factor}>{factor}</li>
                   ))}
                 </ul>
               </div>
-              <div className="rounded-xl bg-amber-50/50 p-4 ring-1 ring-amber-200/50">
-                <p className="app-label text-amber-700 mb-2">What lowers it</p>
-                <ul className="space-y-2 text-sm text-slate-700 leading-relaxed">
+              <div className="rounded-xl bg-amber-500/10 p-4 ring-1 ring-amber-400/30">
+                <p className="app-label text-amber-800 dark:text-amber-200 mb-2">What lowers it</p>
+                <ul className="space-y-2 text-sm text-[var(--ink-soft)] leading-relaxed">
                   {safeSpendHurtFactors.map((factor) => (
                     <li key={factor}>{factor}</li>
                   ))}
@@ -369,13 +398,14 @@ export function OverviewHome({
             <div className="app-card p-6">
               <div className="flex items-center justify-between gap-4 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="bg-rose-50 p-2.5 rounded-xl ring-1 ring-rose-200/50">
+                  <div className="bg-rose-500/15 p-2.5 rounded-xl ring-1 ring-rose-400/30">
                     <span className="text-lg">✂️</span>
                   </div>
                   <div>
-                    <h2 className="font-semibold text-slate-900 text-lg">Recurring to review</h2>
-                    <p className="text-sm text-slate-500">
-                      {recurringReviews.length} repeating charge{recurringReviews.length === 1 ? "" : "s"} flagged by your CFO.
+                    <h2 className="font-semibold text-[var(--ink)] text-lg">Recurring to review</h2>
+                    <p className="text-sm text-[var(--muted)]">
+                      {recurringReviews.length} repeating charge
+                      {recurringReviews.length === 1 ? "" : "s"} flagged by your Coach.
                     </p>
                   </div>
                 </div>
@@ -383,7 +413,7 @@ export function OverviewHome({
                   <button
                     type="button"
                     onClick={onOpenRecurring}
-                    className="text-sm font-semibold text-teal-700 hover:text-teal-800 transition shrink-0"
+                    className="text-sm font-semibold text-[var(--accent-bright)] hover:brightness-110 transition shrink-0"
                   >
                     Open recurring →
                   </button>
@@ -393,36 +423,55 @@ export function OverviewHome({
                 {recurringReviews.slice(0, 2).map((sub) => (
                   <div
                     key={sub.merchant}
-                    className="rounded-xl bg-rose-50/40 p-5 ring-1 ring-rose-200/50"
+                    className="rounded-xl bg-rose-500/10 p-5 ring-1 ring-rose-400/25"
                   >
                     <div className="flex justify-between items-start mb-2 gap-2">
-                      <p className="font-semibold text-slate-900 truncate">{sub.merchant}</p>
-                      <p className="font-bold text-rose-700 tabular-nums shrink-0">
+                      <p className="font-semibold text-[var(--ink)] truncate">{sub.merchant}</p>
+                      <p className="font-bold text-rose-600 dark:text-rose-400 tabular-nums shrink-0">
                         {formatCurrency(sub.averageAmount)}
                       </p>
                     </div>
-                    <p className="app-label text-rose-500 mb-2">{sub.frequency}</p>
-                    <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{sub.recommendation}</p>
+                    <p className="app-label text-rose-600 dark:text-rose-300 mb-2">{sub.frequency}</p>
+                    <p className="text-sm text-[var(--ink-soft)] leading-relaxed line-clamp-3">
+                      {sub.recommendation}
+                    </p>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {snapshots.length > 0 && (
+          {dailySpendSeries.some((d) => d.totalSpent > 0) && (
             <div className="app-card p-6">
-              <h2 className="font-semibold text-slate-900 mb-6">Daily spending (last 30 days)</h2>
+              <h2 className="font-semibold text-[var(--ink)] mb-6">Daily spending (last 30 days)</h2>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={snapshots}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#64748b" }} tickMargin={10} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(val) => `$${val}`} axisLine={false} tickLine={false} />
+                  <LineChart data={dailySpendSeries}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148,163,184,0.25)" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 12, fill: "var(--muted)" }}
+                      tickMargin={10}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 12, fill: "var(--muted)" }}
+                      tickFormatter={(val) => `$${val}`}
+                      axisLine={false}
+                      tickLine={false}
+                    />
                     <Tooltip
                       formatter={(value) => formatCurrency(Number(value))}
-                      contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" }}
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid var(--card-border)",
+                        background: "var(--card-solid)",
+                        color: "var(--ink)",
+                        boxShadow: "0 4px 12px rgba(15,23,42,0.2)",
+                      }}
                     />
-                    <Line type="monotone" dataKey="totalSpent" stroke="#0d9488" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="totalSpent" stroke="var(--accent)" strokeWidth={2.5} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

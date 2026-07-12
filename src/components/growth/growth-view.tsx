@@ -32,6 +32,7 @@ import { formatCurrency } from "@/lib/format";
 import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
 import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-notes";
+import { dayShapeFor, type JoyIdea } from "@/lib/joy-ideas-shared";
 
 type DomainScores = {
   career: number;
@@ -119,6 +120,7 @@ type GrowthDashboard = {
     domain: string;
     category: string;
     title: string;
+    notes?: string | null;
     leverage: string;
     impactScore: number;
     minutesSpent: number | null;
@@ -228,15 +230,6 @@ type TodayPlanBlock = {
   tone: "teal" | "sky" | "amber" | "slate";
 };
 
-type DayShape = "office" | "wfh" | "weekend";
-
-function dayShapeFor(weekday: number): DayShape {
-  // Luxon: 1=Mon … 7=Sun. Real rhythm: Mon–Wed office, Thu–Fri WFH, Sat–Sun open.
-  if (weekday >= 1 && weekday <= 3) return "office";
-  if (weekday === 4 || weekday === 5) return "wfh";
-  return "weekend";
-}
-
 function buildTodayPlan(
   metrics: GrowthDashboard["metrics"],
   recommendation: GrowthDashboard["recommendation"],
@@ -250,10 +243,9 @@ function buildTodayPlan(
     isOffice ? 60 : isWeekend ? 90 : 75,
     Math.max(45, recommendation?.timeRequiredMinutes ?? (isOffice ? 45 : 60)),
   );
-  const cashTight = metrics.financialSignals.safeSpendToday < 25 || metrics.financialSignals.cashAvailable < 1000;
+  const cashTight = metrics.financialSignals.safeSpendToday < 20 || metrics.financialSignals.cashAvailable < 1000;
   const socialThin = metrics.domains.social < 55 || metrics.activityCounts.social === 0;
   const promotionUpside = profile?.promotionUpsideAnnual ?? 0;
-  const lyftHourlyNet = profile?.lyftHourlyNet ?? 20;
   const promotionDeadline = profile?.promotionDeadline
     ? DateTime.fromISO(profile.promotionDeadline)
     : null;
@@ -272,19 +264,16 @@ function buildTodayPlan(
         ? "Desk leverage block"
         : "Startup leverage";
   const leverageWhy = promotionSoon
-    ? `${profile?.promotionTarget ?? "Promotion work"} could add ${
-        promotionUpside > 0 ? formatCurrency(promotionUpside) : "meaningful salary"
-      }/yr — protect this before chasing ${formatCurrency(lyftHourlyNet)}/hr.${
-        isOffice ? " Keep it desk-compatible during office hours." : ""
+    ? `Career hour toward ${profile?.promotionTarget ?? "your promotion"} (~${
+        promotionUpside > 0 ? formatCurrency(promotionUpside) : "big"
+      }/yr). Ship promo-ready work: visibility, docs, stakeholder updates, or the project that gets you promoted.${
+        isOffice ? " Desk-compatible during office hours." : ""
       }`
     : firstSentence(recommendation?.action, 120) ??
       (isOffice
-        ? "Desk-compatible ship, outreach, or learning that compounds beyond today's cash."
-        : "Ship, outreach, or learn something that can compound beyond today's cash.");
-  // joyOptions are a preference menu — never auto-assign one as today's title.
-  const joyMenu = (profile?.joyOptions ?? []).filter(Boolean).slice(0, 3);
-  const joyMenuHint =
-    joyMenu.length > 0 ? ` Options when it fits: ${joyMenu.join(", ")}.` : "";
+        ? "Desk-compatible ship, outreach, or learning that compounds."
+        : "Ship, outreach, or learn something that compounds.");
+  // Live ideas come from /api/growth/joy-ideas — not a stale profile list.
   const joyLabel = isWeekend
     ? "Intentional joy block"
     : isOffice
@@ -292,26 +281,24 @@ function buildTodayPlan(
       : "Short joy reset";
   const joyTime = isWeekend ? "2-4 hr cap" : isOffice ? "20-40 min" : "30-60 min";
   const joyMinutes = isWeekend ? 150 : isOffice ? 30 : 45;
-  const joyWhy = cashTight
-    ? `Pick a low-cost version so enjoyment doesn't create Monday pressure.${joyMenuHint}`
-    : isWeekend
-      ? `Enjoyment is allowed when chosen on purpose and capped.${joyMenuHint}`
-      : isOffice
-        ? "Office day — joy stays short and evening-sized, not a weekend outing."
-        : "WFH day — protect deep work first; joy stays capped around the job day.";
+  const joyWhy = isWeekend
+    ? "Tap Ideas for live DMV picks based on today."
+    : isOffice
+      ? "Short evening window. Tap Ideas for live picks."
+      : "Capped around work. Tap Ideas for live picks.";
   const lyftWhy = cashTight
     ? isOffice
-      ? "Morning Lyft is already in the rhythm; add evening only if the weekly fee still needs covering."
-      : "Use Lyft to reduce cash pressure, but keep one leverage block protected."
+      ? "Morning Lyft already in rhythm; evening only if the weekly fee still needs covering."
+      : "Cash-pressure block after higher-leverage work."
     : isOffice
-      ? `Morning Lyft is already baked in — evening only if needed; ~${formatCurrency(lyftHourlyNet)}/hr net.`
-      : `Only drive after higher-leverage blocks; estimate ${formatCurrency(lyftHourlyNet)}/hr net.`;
+      ? "Optional evening only — morning Lyft already baked in."
+      : "Optional after body + leverage + joy.";
   const summary =
     shape === "weekend"
       ? "Protect body, one leverage block, and intentional joy. Lyft fills cash gaps, not the whole day."
       : shape === "office"
-        ? "Office day — protect a desk leverage block around work. Joy stays small; Lyft is morning/evening only."
-        : "WFH day — protect a deeper leverage block, keep joy capped, and don't let Lyft eat the deep work.";
+        ? "Office day — desk leverage around work, small evening joy, Lyft morning/evening only."
+        : "WFH day — deeper leverage block, capped joy, Lyft after the deep work.";
 
   return {
     dayLabel: now.toFormat("cccc"),
@@ -384,6 +371,20 @@ export function GrowthView() {
   const [showWeeklyDetails, setShowWeeklyDetails] = useState(false);
   const [showMoveDetails, setShowMoveDetails] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
+  const [showJoyIdeas, setShowJoyIdeas] = useState(false);
+  const [chosenJoy, setChosenJoy] = useState<JoyIdea | null>(null);
+  const [joyIdeas, setJoyIdeas] = useState<JoyIdea[]>([]);
+  const [joyWeather, setJoyWeather] = useState<string | null>(null);
+  const [joyIdeasError, setJoyIdeasError] = useState<string | null>(null);
+  const [loadingJoyIdeas, setLoadingJoyIdeas] = useState(false);
+  const [showAddPlanBlock, setShowAddPlanBlock] = useState(false);
+  const [myBlockForm, setMyBlockForm] = useState({
+    title: "",
+    minutesSpent: "60",
+    domain: "personal",
+    leverage: "long_term_leverage" as "long_term_leverage" | "immediate_income",
+    notes: "",
+  });
   const [activityForm, setActivityForm] = useState({
     date: DateTime.local().toISODate() ?? "",
     domain: "career",
@@ -411,7 +412,6 @@ export function GrowthView() {
     targetWeight: "",
     fitnessGoal: "",
     lyftHourlyNet: "20",
-    joyOptions: "National Harbor walk, local ice cream, DC hop",
     notes: "",
   });
 
@@ -488,9 +488,6 @@ export function GrowthView() {
       targetWeight: profile?.targetWeight?.toString() ?? "",
       fitnessGoal: profile?.fitnessGoal ?? "Gym + cardio to protect energy and body goals",
       lyftHourlyNet: profile?.lyftHourlyNet?.toString() ?? "20",
-      joyOptions: profile?.joyOptions?.length
-        ? profile.joyOptions.join(", ")
-        : "National Harbor walk, local ice cream, DC hop",
       notes: profile?.notes ?? "",
     });
     setShowProfileForm((v) => !v);
@@ -503,7 +500,7 @@ export function GrowthView() {
       const res = await fetch("/api/growth/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileForm),
+        body: JSON.stringify({ ...profileForm, joyOptions: [] }),
       });
       if (res.ok) {
         setShowProfileForm(false);
@@ -511,6 +508,34 @@ export function GrowthView() {
       }
     } finally {
       setBusy(null);
+    }
+  };
+
+  const loadJoyIdeas = async (mode: "toggle" | "refresh" = "toggle") => {
+    if (mode === "toggle" && showJoyIdeas) {
+      setShowJoyIdeas(false);
+      return;
+    }
+    setShowJoyIdeas(true);
+    setLoadingJoyIdeas(true);
+    setJoyIdeasError(null);
+    try {
+      const res = await fetch("/api/growth/joy-ideas", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to load ideas");
+      const payload = (await res.json()) as {
+        ideas?: JoyIdea[];
+        weatherSummary?: string | null;
+      };
+      setJoyIdeas(payload.ideas ?? []);
+      setJoyWeather(payload.weatherSummary ?? null);
+      if (!payload.ideas?.length) {
+        setJoyIdeasError("No ideas came back — try again.");
+      }
+    } catch {
+      setJoyIdeas([]);
+      setJoyIdeasError("Could not load live ideas. Try again.");
+    } finally {
+      setLoadingJoyIdeas(false);
     }
   };
 
@@ -526,9 +551,6 @@ export function GrowthView() {
         throw new Error("Weekly review failed");
       }
       invalidate();
-      requestAnimationFrame(() => {
-        document.getElementById("weekly-review")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
     } finally {
       setBusy(null);
     }
@@ -592,6 +614,10 @@ export function GrowthView() {
 
   const logTodayPlanBlock = async (block: TodayPlanBlock) => {
     setBusy(`today-plan-${block.key}`);
+    const isJoy = block.key === "joy";
+    const title = isJoy && chosenJoy ? `Joy: ${chosenJoy.label}` : block.label;
+    const notes =
+      isJoy && chosenJoy ? `${chosenJoy.detail}. ${block.why}` : block.why;
     try {
       const res = await fetch("/api/growth/activities", {
         method: "POST",
@@ -600,12 +626,65 @@ export function GrowthView() {
           date: DateTime.local().toISODate() ?? "",
           domain: block.domain,
           category: block.category,
-          title: block.label,
+          title,
           leverage: block.leverage,
           minutesSpent: block.minutes,
           impactScore: block.impact,
-          notes: block.why,
+          notes,
         }),
+      });
+      if (res.ok) {
+        if (isJoy) {
+          setChosenJoy(null);
+          setShowJoyIdeas(false);
+        }
+        invalidate();
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addMyPlanBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myBlockForm.title.trim()) return;
+    setBusy("my-plan");
+    try {
+      const res = await fetch("/api/growth/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: DateTime.local().toISODate() ?? "",
+          domain: myBlockForm.domain,
+          category: "user_plan",
+          title: myBlockForm.title.trim(),
+          leverage: myBlockForm.leverage,
+          minutesSpent: myBlockForm.minutesSpent,
+          impactScore: myBlockForm.leverage === "immediate_income" ? 5 : 7,
+          notes: myBlockForm.notes.trim() || "Added by you to today's planner",
+        }),
+      });
+      if (res.ok) {
+        setMyBlockForm({
+          title: "",
+          minutesSpent: "60",
+          domain: "personal",
+          leverage: "long_term_leverage",
+          notes: "",
+        });
+        setShowAddPlanBlock(false);
+        invalidate();
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeMyPlanBlock = async (id: string) => {
+    setBusy(`remove-plan-${id}`);
+    try {
+      const res = await fetch(`/api/growth/activities?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
       });
       if (res.ok) invalidate();
     } finally {
@@ -736,12 +815,16 @@ export function GrowthView() {
   }));
   const weeklyTldr = weeklyReview ? buildWeeklyTldr(weeklyReview) : null;
   const todayPlan = buildTodayPlan(metrics, recommendation, data.lifeLeverageProfile);
+  const todayIso = DateTime.local().toISODate() ?? "";
+  const myPlanBlocks = activities.filter(
+    (a) => a.date === todayIso && a.category === "user_plan",
+  );
 
   return (
     <div className="space-y-6 min-w-0 w-full max-w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block">
+          <h1 className="text-2xl app-display text-slate-900 tracking-tight hidden md:block">
             Growth Intelligence
           </h1>
           <p className="text-slate-500 mt-1 text-sm">
@@ -751,7 +834,16 @@ export function GrowthView() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => generateRecommendation(true)}
+            onClick={() => {
+              if (recommendation) {
+                document.getElementById("todays-move")?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "nearest",
+                });
+                return;
+              }
+              void generateRecommendation(false);
+            }}
             disabled={busy !== null}
             className="inline-flex items-center gap-1.5 app-btn-primary px-3 py-2 text-sm disabled:opacity-60"
           >
@@ -760,7 +852,7 @@ export function GrowthView() {
             ) : (
               <Sparkles size={14} />
             )}
-            Today&apos;s move
+            {recommendation ? "Today's move" : "Generate today's move"}
           </button>
           <button
             type="button"
@@ -768,7 +860,7 @@ export function GrowthView() {
               if (weeklyReview) {
                 document.getElementById("weekly-review")?.scrollIntoView({
                   behavior: "smooth",
-                  block: "start",
+                  block: "nearest",
                 });
                 return;
               }
@@ -853,16 +945,10 @@ export function GrowthView() {
                 ~{formatCurrency(data.lifeLeverageProfile.lyftHourlyNet ?? 20)}/hr net
               </p>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
+            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100 sm:col-span-2">
               <p className="app-label">Body</p>
               <p className="font-semibold text-slate-900">
                 {data.lifeLeverageProfile.fitnessGoal ?? "Not set"}
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
-              <p className="app-label">Joy</p>
-              <p className="font-semibold text-slate-900">
-                {data.lifeLeverageProfile.joyOptions?.slice(0, 2).join(", ") || "Not set"}
               </p>
             </div>
           </div>
@@ -938,15 +1024,6 @@ export function GrowthView() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="app-label block mb-1.5">Joy options</label>
-              <input
-                className="app-input w-full px-3 py-2 text-sm"
-                value={profileForm.joyOptions}
-                onChange={(e) => setProfileForm({ ...profileForm, joyOptions: e.target.value })}
-                placeholder="National Harbor walk, local ice cream, DC hop"
-              />
-            </div>
-            <div className="sm:col-span-2">
               <label className="app-label block mb-1.5">Extra context</label>
               <textarea
                 className="app-input w-full px-3 py-2 text-sm min-h-[72px]"
@@ -979,10 +1056,97 @@ export function GrowthView() {
               {todayPlan.summary}
             </p>
           </div>
-          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200/70 shrink-0">
-            Keep Overview money-only
-          </span>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowAddPlanBlock((v) => !v)}
+              className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+            >
+              {showAddPlanBlock ? "Cancel" : "+ Add my block"}
+            </button>
+            <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200/70">
+              Keep Overview money-only
+            </span>
+          </div>
         </div>
+
+        {showAddPlanBlock ? (
+          <form
+            onSubmit={addMyPlanBlock}
+            className="mb-4 grid sm:grid-cols-2 gap-2 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200/80"
+          >
+            <div className="sm:col-span-2">
+              <label className="app-label block mb-1">What&apos;s on your schedule</label>
+              <input
+                className="app-input w-full px-3 py-2 text-sm"
+                value={myBlockForm.title}
+                onChange={(e) => setMyBlockForm({ ...myBlockForm, title: e.target.value })}
+                placeholder="e.g. Dentist 2pm, church, family dinner, deep work"
+                required
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1">Minutes</label>
+              <input
+                type="number"
+                min={15}
+                className="app-input w-full px-3 py-2 text-sm"
+                value={myBlockForm.minutesSpent}
+                onChange={(e) =>
+                  setMyBlockForm({ ...myBlockForm, minutesSpent: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="app-label block mb-1">Type</label>
+              <select
+                className="app-input w-full px-3 py-2 text-sm"
+                value={myBlockForm.leverage}
+                onChange={(e) =>
+                  setMyBlockForm({
+                    ...myBlockForm,
+                    leverage: e.target.value as "long_term_leverage" | "immediate_income",
+                  })
+                }
+              >
+                <option value="long_term_leverage">Compound</option>
+                <option value="immediate_income">Cash</option>
+              </select>
+            </div>
+            <div>
+              <label className="app-label block mb-1">Domain</label>
+              <select
+                className="app-input w-full px-3 py-2 text-sm"
+                value={myBlockForm.domain}
+                onChange={(e) => setMyBlockForm({ ...myBlockForm, domain: e.target.value })}
+              >
+                {DOMAINS.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="app-label block mb-1">Note (optional)</label>
+              <input
+                className="app-input w-full px-3 py-2 text-sm"
+                value={myBlockForm.notes}
+                onChange={(e) => setMyBlockForm({ ...myBlockForm, notes: e.target.value })}
+                placeholder="Time / place / constraint"
+              />
+            </div>
+            <div className="sm:col-span-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={busy !== null || !myBlockForm.title.trim()}
+                className="app-btn-primary px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {busy === "my-plan" ? "Adding..." : "Add to today"}
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {todayPlan.blocks.map((block) => {
@@ -995,19 +1159,96 @@ export function GrowthView() {
                     ? "bg-amber-50/80 ring-amber-200/70 text-amber-800"
                     : "bg-slate-50 ring-slate-200/80 text-slate-700";
             const isLogging = busy === `today-plan-${block.key}`;
+            const isJoy = block.key === "joy";
+            const displayLabel =
+              isJoy && chosenJoy ? `Joy: ${chosenJoy.label}` : block.label;
+            const displayWhy =
+              isJoy && chosenJoy ? chosenJoy.detail : block.why;
 
             return (
               <div key={block.key} className={`rounded-2xl p-3 ring-1 ${toneClass}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{block.label}</p>
+                    <p className="text-sm font-semibold text-slate-900">{displayLabel}</p>
                     <p className="text-xs font-semibold mt-0.5">{block.time}</p>
                   </div>
                   <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
                     {block.leverage === "immediate_income" ? "cash" : "compound"}
                   </span>
                 </div>
-                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{block.why}</p>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{displayWhy}</p>
+                {isJoy ? (
+                  <div className="mt-3 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadJoyIdeas()}
+                      disabled={loadingJoyIdeas}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200/80 hover:bg-white disabled:opacity-60"
+                    >
+                      {loadingJoyIdeas ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : null}
+                      {loadingJoyIdeas
+                        ? "Finding ideas..."
+                        : showJoyIdeas
+                          ? "Hide ideas"
+                          : "Ideas for today"}
+                    </button>
+                    {showJoyIdeas ? (
+                      <div className="space-y-1.5">
+                        {joyWeather ? (
+                          <p className="text-[11px] text-slate-500 px-0.5">
+                            {joyWeather}
+                          </p>
+                        ) : null}
+                        {joyIdeasError ? (
+                          <p className="text-[11px] text-amber-800 leading-snug rounded-xl bg-white/70 px-2.5 py-2 ring-1 ring-amber-100">
+                            {joyIdeasError}
+                          </p>
+                        ) : null}
+                        {joyIdeas.length > 0 ? (
+                          <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+                            {joyIdeas.map((idea) => {
+                              const selected = chosenJoy?.id === idea.id;
+                              return (
+                                <li key={idea.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setChosenJoy(selected ? null : idea)
+                                    }
+                                    className={`w-full text-left rounded-xl px-2.5 py-2 ring-1 transition ${
+                                      selected
+                                        ? "bg-amber-100 ring-amber-300"
+                                        : "bg-white/70 ring-amber-100 hover:bg-white"
+                                    }`}
+                                  >
+                                    <p className="text-xs font-semibold text-slate-900">
+                                      {idea.label}
+                                    </p>
+                                    <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                                      {idea.detail}
+                                      {idea.timeFit ? ` · ${idea.timeFit}` : ""}
+                                    </p>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : null}
+                        {!loadingJoyIdeas && joyIdeas.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => void loadJoyIdeas("refresh")}
+                            className="w-full text-[11px] font-semibold text-amber-900/80 py-1"
+                          >
+                            Refresh ideas
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => logTodayPlanBlock(block)}
@@ -1019,11 +1260,53 @@ export function GrowthView() {
               </div>
             );
           })}
+
+          {myPlanBlocks.map((block) => (
+            <div
+              key={block.id}
+              className="rounded-2xl p-3 ring-1 bg-white ring-slate-300/80 text-slate-700"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{block.title}</p>
+                  <p className="text-xs font-semibold mt-0.5 text-slate-600">
+                    {block.minutesSpent ? `${block.minutesSpent} min` : "Your block"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                  yours
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                {block.notes?.trim() || "On your real schedule today."}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1 capitalize">
+                {block.domain}
+                {" · "}
+                {block.leverage === "immediate_income" ? "cash" : "compound"}
+              </p>
+              <button
+                type="button"
+                onClick={() => removeMyPlanBlock(block.id)}
+                disabled={busy !== null}
+                className="mt-3 w-full rounded-xl bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-60"
+              >
+                {busy === `remove-plan-${block.id}` ? "Removing..." : "Remove"}
+              </button>
+            </div>
+          ))}
         </div>
+        <p className="text-[11px] text-slate-500 mt-3">
+          System blocks are a default allocation. Add your real appointments and plans with{" "}
+          <span className="font-semibold">+ Add my block</span>.
+        </p>
       </div>
 
       {recommendation ? (
-        <div className="app-card p-5 ring-1 ring-teal-200/60 bg-teal-50/30 min-w-0">
+        <div
+          id="todays-move"
+          className="app-card p-5 ring-1 ring-teal-200/60 bg-teal-50/30 min-w-0"
+        >
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <p className="app-label text-teal-800">Highest-leverage move today</p>
             <span className="text-[11px] font-semibold text-teal-700/90 capitalize rounded-full bg-white/80 px-2 py-0.5 ring-1 ring-teal-200/60">
@@ -1114,9 +1397,21 @@ export function GrowthView() {
                 </button>
               </>
             ) : (
-              <p className="text-xs font-semibold text-slate-500 capitalize">
-                Status: {recommendation.status}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold text-slate-500 capitalize">
+                  Status: {recommendation.status}
+                </p>
+                {recommendation.status === "skipped" ? (
+                  <button
+                    type="button"
+                    onClick={() => generateRecommendation(true)}
+                    disabled={busy !== null}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-800 bg-white ring-1 ring-teal-200"
+                  >
+                    <RefreshCw size={14} /> Different move
+                  </button>
+                ) : null}
+              </div>
             )}
             <button
               type="button"
@@ -1204,7 +1499,12 @@ export function GrowthView() {
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="app-card p-4 min-w-0 overflow-hidden">
           <div className="flex items-center justify-between mb-3">
-            <p className="app-label">Opportunity engine</p>
+            <div>
+              <p className="app-label">Opportunity engine</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Top 3 focused moves — reach out, don’t drown in backlog
+              </p>
+            </div>
           </div>
           {opportunities.length === 0 ? (
             <p className="text-sm text-slate-500">No open opportunities. Log contacts and activities to surface more.</p>

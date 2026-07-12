@@ -48,6 +48,11 @@ function goalTargetSortKey(targetDate?: string | null) {
  * Goals are often funded from checking (Chase + Capital One) without a separate pot.
  * Allocate spendable checking cash across savings-style goals by priority, then date.
  */
+function isMoneySavingsGoal(category?: string | null) {
+  const value = category ?? "savings";
+  return value === "savings" || value === "debt_payoff";
+}
+
 export function calculateGoalFunding(params: {
   checkingCash: number;
   goals: GoalFundingInput[];
@@ -60,10 +65,10 @@ export function calculateGoalFunding(params: {
   const protectedBuffer = roundCurrency(Math.max(bufferFloor, checkingCash * bufferRatio));
   const allocatableCash = roundCurrency(Math.max(0, checkingCash - protectedBuffer));
 
-  const savingsGoals = params.goals.filter(
-    (goal) => (goal.category ?? "savings") !== "debt_payoff",
-  );
+  // Only dollar savings goals get checking allocation. Life goals track % progress.
+  const savingsGoals = params.goals.filter((goal) => (goal.category ?? "savings") === "savings");
   const debtGoals = params.goals.filter((goal) => goal.category === "debt_payoff");
+  const lifeGoals = params.goals.filter((goal) => !isMoneySavingsGoal(goal.category));
 
   const ordered = [...savingsGoals].sort((a, b) => {
     const priorityDiff = (a.priority ?? 3) - (b.priority ?? 3);
@@ -111,6 +116,7 @@ export function calculateGoalFunding(params: {
   const results = [
     ...ordered.map((goal) => toResult(goal, allocationById.get(goal.id) ?? 0)),
     ...debtGoals.map((goal) => toResult(goal, 0)),
+    ...lifeGoals.map((goal) => toResult(goal, 0)),
   ];
 
   // Keep original goal order for UI when possible

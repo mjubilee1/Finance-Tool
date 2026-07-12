@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Mic, MicOff, Send, X } from "lucide-react";
-import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
+import { readImageAsDataUrl } from "@/lib/chat-images";
 
 type Props = {
   value: string;
@@ -164,7 +164,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-3">
+    <div className="p-4 border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] space-y-3">
       {pendingImages.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {pendingImages.map((image, index) => (
@@ -173,12 +173,12 @@ export function ChatComposer({
               <img
                 src={image}
                 alt={`Attachment ${index + 1}`}
-                className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200/80"
+                className="h-16 w-16 rounded-xl object-cover ring-1 ring-[var(--card-border)]"
               />
               <button
                 type="button"
                 onClick={() => removeImage(index)}
-                className="absolute -right-1.5 -top-1.5 rounded-full bg-slate-900 text-white p-0.5"
+                className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--ink)] text-[var(--card-solid)] p-0.5"
                 aria-label="Remove photo"
               >
                 <X size={12} />
@@ -188,7 +188,9 @@ export function ChatComposer({
         </div>
       ) : null}
 
-      {composerError ? <p className="text-xs text-rose-600">{composerError}</p> : null}
+      {composerError ? (
+        <p className="text-xs text-rose-600 dark:text-rose-300">{composerError}</p>
+      ) : null}
 
       <form
         onSubmit={(event) => {
@@ -212,7 +214,7 @@ export function ChatComposer({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || isLoading || isTranscribing || pendingImages.length >= 2}
-          className="shrink-0 w-10 h-10 rounded-full app-card flex items-center justify-center text-slate-600 hover:bg-white disabled:opacity-50"
+          className="shrink-0 w-10 h-10 rounded-full app-card flex items-center justify-center text-[var(--ink-soft)] hover:brightness-110 disabled:opacity-50"
           title="Upload photo"
           aria-label="Upload photo"
         >
@@ -226,7 +228,7 @@ export function ChatComposer({
           className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
             isRecording
               ? "bg-rose-600 text-white animate-pulse"
-              : "app-card text-slate-600 hover:bg-white"
+              : "app-card text-[var(--ink-soft)] hover:brightness-110"
           } disabled:opacity-50`}
           title={isRecording ? "Stop recording" : "Voice input"}
           aria-label={isRecording ? "Stop recording" : "Voice input"}
@@ -248,12 +250,12 @@ export function ChatComposer({
                   : "Ask a question, upload a receipt, or use the mic"
             }
             disabled={disabled || isLoading || isTranscribing}
-            className="w-full pl-4 pr-12 py-3 app-input rounded-full text-sm"
+            className="w-full pl-4 pr-12 py-3 app-input rounded-full text-sm placeholder:text-[var(--muted)]"
           />
           <button
             type="submit"
             disabled={!canSend}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 bg-teal-600 text-white rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-teal-700 transition-colors"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 bg-[var(--accent)] text-white rounded-full flex items-center justify-center disabled:opacity-50 hover:brightness-110 transition-colors"
             aria-label="Send message"
           >
             <Send size={14} className="ml-[-1px]" />
@@ -261,8 +263,9 @@ export function ChatComposer({
         </div>
       </form>
 
-      <p className="text-[11px] text-slate-400 text-center">
-        Photos work for receipts, bills, and bank screenshots. Tap the mic, speak, then send or edit the transcript.
+      <p className="text-[11px] text-[var(--ink-soft)] text-center leading-relaxed">
+        Photos work for receipts, bills, and bank screenshots. Tap the mic, speak, then send or edit the
+        transcript.
       </p>
     </div>
   );

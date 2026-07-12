@@ -8,10 +8,10 @@ type Props = {
 };
 
 const paceStyles = {
-  ahead: "bg-teal-50 text-teal-800 ring-teal-200/60",
-  on_track: "bg-slate-50 text-slate-700 ring-slate-200/60",
-  behind: "bg-amber-50 text-amber-800 ring-amber-200/60",
-  at_risk: "bg-rose-50 text-rose-800 ring-rose-200/60",
+  ahead: "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]",
+  on_track: "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink-soft)] ring-[var(--card-border)]",
+  behind: "bg-amber-500/15 text-amber-900 dark:text-amber-200 ring-amber-400/35",
+  at_risk: "bg-rose-500/15 text-rose-800 dark:text-rose-300 ring-rose-400/35",
 };
 
 export function WeeklyCashFlowStrip({ weekly }: Props) {
@@ -23,7 +23,7 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
         <div>
           <p className="app-label mb-1">This week</p>
-          <h2 className="text-lg font-semibold text-slate-900 tracking-tight">Weekly cash flow</h2>
+          <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">Weekly cash flow</h2>
         </div>
         <div className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 ${paceStyles[paceStatus]}`}>
           {paceMessage}
@@ -36,10 +36,10 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
             key={day.date}
             className={`rounded-xl p-2 sm:p-3 text-center transition-colors ring-1 ${
               day.isToday
-                ? "bg-teal-600 text-white ring-teal-600 shadow-sm"
+                ? "bg-[var(--accent)] text-white ring-[var(--accent)] shadow-sm"
                 : day.isFuture
-                  ? "bg-slate-50 ring-slate-100 text-slate-400"
-                  : "bg-white ring-slate-200/70 text-slate-700"
+                  ? "bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] ring-[var(--card-border)] text-[var(--muted)]"
+                  : "bg-[var(--card-solid)] ring-[var(--card-border)] text-[var(--ink-soft)]"
             }`}
           >
             <p className="text-[10px] sm:text-xs font-medium uppercase opacity-80">{day.label}</p>
@@ -49,7 +49,7 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
             {!day.isFuture && (
               <p
                 className={`text-[10px] sm:text-xs mt-1 font-medium tabular-nums ${
-                  day.isToday ? "text-teal-100" : "text-slate-500"
+                  day.isToday ? "text-white/85" : "text-[var(--muted)]"
                 }`}
               >
                 {day.spent > 0 ? formatCurrency(day.spent) : "—"}
@@ -61,19 +61,19 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Spent", value: weekSpent, className: "text-slate-900" },
-          { label: "Income", value: weekIncome, className: "text-teal-700" },
+          { label: "Spent", value: weekSpent, className: "text-[var(--ink)]" },
+          { label: "Income", value: weekIncome, className: "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" },
           {
             label: "Net",
             value: weekNet,
-            className: weekNet >= 0 ? "text-teal-700" : "text-rose-600",
+            className: weekNet >= 0 ? "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" : "text-rose-500",
           },
-          { label: "Week budget", value: weeklyBudget, className: "text-slate-900", sub: `${Math.round(budgetUsedPercent)}% used` },
+          { label: "Week budget", value: weeklyBudget, className: "text-[var(--ink)]", sub: `${Math.round(budgetUsedPercent)}% used` },
         ].map((stat) => (
-          <div key={stat.label} className="rounded-xl bg-slate-50/80 p-3 ring-1 ring-slate-200/50">
+          <div key={stat.label} className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
             <p className="app-label">{stat.label}</p>
             <p className={`text-lg font-bold tabular-nums ${stat.className}`}>{formatCurrency(stat.value)}</p>
-            {stat.sub && <p className="text-[10px] text-slate-500 mt-0.5">{stat.sub}</p>}
+            {stat.sub && <p className="text-[10px] text-[var(--muted)] mt-0.5">{stat.sub}</p>}
           </div>
         ))}
       </div>

@@ -19,13 +19,13 @@ export function BillCalendar({ upcomingBills = [], incomeExpected = [], onAskCha
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <p className="app-label mb-1">Next 14 days</p>
-          <h2 className="text-lg font-semibold text-slate-900 tracking-tight">Bills & income</h2>
+          <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">Bills & income</h2>
         </div>
         {onAskChat && (
           <button
             type="button"
             onClick={onAskChat}
-            className="flex items-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg ring-1 ring-teal-200/60 transition"
+            className="flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-strong)] bg-[var(--accent-soft)] hover:brightness-110 px-3 py-1.5 rounded-lg ring-1 ring-[color-mix(in_srgb,var(--accent)_30%,transparent)] transition"
           >
             <MessageSquare size={14} />
             Add dates
@@ -39,48 +39,52 @@ export function BillCalendar({ upcomingBills = [], incomeExpected = [], onAskCha
             key={day.date}
             className={`shrink-0 w-11 sm:w-12 text-center rounded-xl py-2 ring-1 ${
               day.isToday
-                ? "bg-teal-600 text-white ring-teal-600"
-                : "bg-slate-50 ring-slate-200/60 text-slate-600"
+                ? "bg-[var(--accent)] text-white ring-[var(--accent)]"
+                : "bg-[var(--card-solid)] ring-[var(--card-border)] text-[var(--ink-soft)]"
             }`}
           >
-            <p className="text-[9px] font-medium uppercase opacity-75">{day.dayLabel}</p>
+            <p className="text-[9px] font-medium uppercase opacity-80">{day.dayLabel}</p>
             <p className="text-sm font-bold tabular-nums">{day.dayNum}</p>
           </div>
         ))}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
-        <div className="rounded-xl bg-rose-50/60 p-4 ring-1 ring-rose-200/50">
-          <p className="app-label text-rose-600 mb-2">Upcoming bills</p>
+        <div className="rounded-xl bg-rose-500/10 p-4 ring-1 ring-rose-400/30 dark:bg-rose-500/15 dark:ring-rose-400/25">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 mb-2">
+            Upcoming bills
+          </p>
           {hasBills ? (
-            <ul className="space-y-2 text-sm text-slate-700">
+            <ul className="space-y-2 text-sm text-[var(--ink)]">
               {upcomingBills.map((bill) => (
                 <li key={bill} className="flex items-start gap-2">
-                  <span className="text-rose-400 mt-1.5 w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-rose-500 dark:bg-rose-400 shrink-0" />
                   {bill}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-slate-500 leading-relaxed">
-              No bills identified yet. Tell your CFO when bills are due for a sharper safe spend number.
+            <p className="text-sm text-[var(--muted)] leading-relaxed">
+              No bills identified yet. Tell your Coach when bills are due for a sharper safe spend number.
             </p>
           )}
         </div>
 
-        <div className="rounded-xl bg-teal-50/60 p-4 ring-1 ring-teal-200/50">
-          <p className="app-label text-teal-700 mb-2">Income expected</p>
+        <div className="rounded-xl bg-blue-500/10 p-4 ring-1 ring-blue-400/30 dark:bg-blue-500/15 dark:ring-blue-400/25">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300 mb-2">
+            Income expected
+          </p>
           {hasIncome ? (
-            <ul className="space-y-2 text-sm text-slate-700">
+            <ul className="space-y-2 text-sm text-[var(--ink)]">
               {incomeExpected.map((item) => (
                 <li key={item} className="flex items-start gap-2">
-                  <span className="text-teal-500 mt-1.5 w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shrink-0" />
                   {item}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-slate-500 leading-relaxed">
+            <p className="text-sm text-[var(--muted)] leading-relaxed">
               No expected income listed. Add paycheck or rent timing in Chat.
             </p>
           )}

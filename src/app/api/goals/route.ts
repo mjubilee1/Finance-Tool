@@ -35,22 +35,38 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, targetAmount, targetDate, currentAmount = 0, priority = 3, type } = body;
 
-    if (!name || !targetAmount) {
+    if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+
+    const category =
+      typeof type === "string" && type.trim() ? type.trim() : "savings";
+    const isLifeGoal = !["savings", "debt_payoff"].includes(category);
+
+    // Life goals track progress 0–100; money goals need a dollar target.
+    if (!isLifeGoal && (targetAmount === undefined || targetAmount === "" || Number(targetAmount) <= 0)) {
+      return NextResponse.json({ error: "Money goals need a target amount" }, { status: 400 });
+    }
+
+    const parsedTarget = isLifeGoal
+      ? 100
+      : parseFloat(String(targetAmount));
+    const parsedCurrent = isLifeGoal
+      ? Math.min(100, Math.max(0, parseFloat(String(currentAmount)) || 0))
+      : parseFloat(String(currentAmount)) || 0;
 
     const goal = await prisma.financialGoal.create({
       data: {
         userId: session.user.id,
-        name,
-        targetAmount: parseFloat(targetAmount),
-        currentAmount: parseFloat(currentAmount),
+        name: name.trim(),
+        targetAmount: parsedTarget,
+        currentAmount: parsedCurrent,
         targetDate:
           typeof targetDate === "string" && targetDate.trim()
             ? targetDate.trim()
             : null,
-        priority: parseInt(priority, 10),
-        category: type,
+        priority: parseInt(String(priority), 10),
+        category,
       },
     });
 

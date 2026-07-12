@@ -4,6 +4,14 @@ import { useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { calculateGoalPace } from "@/lib/cash-flow";
 import { calculateGoalFunding } from "@/lib/goal-funding";
+import {
+  GOAL_TYPE_OPTIONS,
+  LIFE_GOAL_PROGRESS_TARGET,
+  goalTypeLabel,
+  isLifeGoalType,
+  isMoneyGoalType,
+  type GoalType,
+} from "@/lib/goal-types";
 import { Target, Plus, Trash2, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -19,6 +27,14 @@ type Goal = {
   createdAt?: string;
 };
 
+const emptyForm = {
+  name: "",
+  targetAmount: "",
+  targetDate: "",
+  priority: "2",
+  type: "savings" as GoalType,
+};
+
 export function GoalsView({
   goals,
   netDailyAverage = 0,
@@ -32,15 +48,21 @@ export function GoalsView({
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", targetAmount: "", targetDate: "", priority: "2", type: "savings" });
+  const [form, setForm] = useState(emptyForm);
+
+  const isLifeForm = isLifeGoalType(form.type);
+  const moneyGoals = useMemo(
+    () => goals.filter((goal) => isMoneyGoalType(goal.category)),
+    [goals],
+  );
 
   const funding = useMemo(
     () =>
       calculateGoalFunding({
         checkingCash,
-        goals,
+        goals: moneyGoals,
       }),
-    [checkingCash, goals],
+    [checkingCash, moneyGoals],
   );
   const fundingById = useMemo(
     () => new Map(funding.goals.map((goal) => [goal.id, goal])),
@@ -51,18 +73,22 @@ export function GoalsView({
     e.preventDefault();
     setLoading(true);
     try {
+      const payload = isLifeForm
+        ? { ...form, targetAmount: LIFE_GOAL_PROGRESS_TARGET, currentAmount: 0 }
+        : form;
       const res = await fetch("/api/goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setForm({ name: "", targetAmount: "", targetDate: "", priority: "2", type: "savings" });
+        setForm(emptyForm);
         setIsAdding(false);
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
         queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
       } else {
-        alert("Failed to add goal");
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "Failed to add goal");
       }
     } catch (error) {
       console.error(error);
@@ -104,7 +130,7 @@ export function GoalsView({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block">Goals</h1>
+        <h1 className="text-2xl app-display text-slate-900 tracking-tight hidden md:block">Goals</h1>
         {!isAdding && (
           <button
             onClick={() => setIsAdding(true)}
@@ -115,12 +141,12 @@ export function GoalsView({
         )}
       </div>
 
-      {goals.length > 0 ? (
+      {moneyGoals.length > 0 ? (
         <div className="app-card p-4 text-sm text-slate-600 leading-relaxed">
-          Progress uses your <span className="font-medium text-slate-800">checking cash</span>{" "}
+          Money goals use your <span className="font-medium text-slate-800">checking cash</span>{" "}
           ({formatCurrency(funding.checkingCash)}) after a{" "}
-          {formatCurrency(funding.protectedBuffer)} buffer — no separate pot required. High-priority
-          goals get covered first.
+          {formatCurrency(funding.protectedBuffer)} buffer. Life goals (learning, passport, habits)
+          track progress separately — no dollar target required.
         </div>
       ) : null}
 
@@ -128,7 +154,7 @@ export function GoalsView({
         <form onSubmit={handleAddGoal} className="app-card p-6 mb-6">
           <h2 className="font-semibold text-lg text-slate-900 mb-4">Create new goal</h2>
           <div className="grid sm:grid-cols-2 gap-4 mb-4">
-            <div>
+            <div className="sm:col-span-2">
               <label className="app-label block mb-1.5">Goal name</label>
               <input
                 required
@@ -136,31 +162,32 @@ export function GoalsView({
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="app-input w-full px-3 py-2 text-sm"
-                placeholder="Trip to Japan or Pay off Chase Card"
-              />
-            </div>
-            <div>
-              <label className="app-label block mb-1.5">Target amount ($)</label>
-              <input
-                required
-                type="number"
-                min="1"
-                step="0.01"
-                value={form.targetAmount}
-                onChange={(e) => setForm({ ...form, targetAmount: e.target.value })}
-                className="app-input w-full px-3 py-2 text-sm"
-                placeholder="5000"
+                placeholder="Pay off Chase card, finish a book, renew passport…"
               />
             </div>
             <div>
               <label className="app-label block mb-1.5">Goal type</label>
               <select
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, type: e.target.value as GoalType, targetAmount: "" })
+                }
                 className="app-input w-full px-3 py-2 text-sm"
               >
-                <option value="savings">Save money</option>
-                <option value="debt_payoff">Pay down debt</option>
+                <optgroup label="Money">
+                  {GOAL_TYPE_OPTIONS.filter((o) => o.group === "money").map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Life">
+                  {GOAL_TYPE_OPTIONS.filter((o) => o.group === "life").map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
             <div>
@@ -175,7 +202,27 @@ export function GoalsView({
                 <option value="3">Low</option>
               </select>
             </div>
-            <div className="sm:col-span-2">
+            {!isLifeForm ? (
+              <div>
+                <label className="app-label block mb-1.5">Target amount ($)</label>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={form.targetAmount}
+                  onChange={(e) => setForm({ ...form, targetAmount: e.target.value })}
+                  className="app-input w-full px-3 py-2 text-sm"
+                  placeholder="5000"
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl bg-slate-50/80 p-3 ring-1 ring-slate-200/50 text-sm text-slate-600 leading-relaxed">
+                Life goals track progress (0–100%), not dollars. Update progress after you work the
+                goal.
+              </div>
+            )}
+            <div className={isLifeForm ? "sm:col-span-1" : "sm:col-span-1"}>
               <label className="app-label block mb-1.5">Target date (optional)</label>
               <input
                 type="date"
@@ -188,7 +235,10 @@ export function GoalsView({
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setIsAdding(false)}
+              onClick={() => {
+                setIsAdding(false);
+                setForm(emptyForm);
+              }}
               className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 rounded-xl transition"
             >
               Cancel
@@ -211,8 +261,8 @@ export function GoalsView({
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-2">No goals set</h3>
           <p className="text-slate-500 mb-6 max-w-sm mx-auto leading-relaxed">
-            Set goals even if the money already sits in Chase/Capital One checking — we&apos;ll
-            treat that cash as coverage.
+            Money, learning, fitness, career, documents — anything you want to compound. Examples
+            only: debt payoff, a book, a passport renewal.
           </p>
           <button
             onClick={() => setIsAdding(true)}
@@ -224,18 +274,33 @@ export function GoalsView({
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {goals.map((goal) => {
-            const funded = fundingById.get(goal.id);
+            const lifeGoal = isLifeGoalType(goal.category);
+            const funded = lifeGoal ? null : fundingById.get(goal.id);
+            const progress = lifeGoal
+              ? Math.min(
+                  100,
+                  Math.round(
+                    (Math.max(0, goal.currentAmount) /
+                      Math.max(1, goal.targetAmount || LIFE_GOAL_PROGRESS_TARGET)) *
+                      100,
+                  ),
+                )
+              : (funded?.progressPct ?? 0);
             const effectiveAmount = funded?.effectiveAmount ?? goal.currentAmount;
-            const progress = funded?.progressPct ?? 0;
-            const pace = calculateGoalPace({
-              targetAmount: goal.targetAmount,
-              currentAmount: effectiveAmount,
-              targetDate: goal.targetDate,
-              netDailyAverage,
-            });
-            const projectedLabel = pace.projectedDate
+            const pace = !lifeGoal
+              ? calculateGoalPace({
+                  targetAmount: goal.targetAmount,
+                  currentAmount: effectiveAmount,
+                  targetDate: goal.targetDate,
+                  netDailyAverage,
+                })
+              : null;
+            const projectedLabel = pace?.projectedDate
               ? DateTime.fromISO(pace.projectedDate).toFormat("MMM d, yyyy")
               : null;
+            const complete = lifeGoal
+              ? progress >= 100
+              : Boolean(funded?.fullyFunded);
 
             return (
               <div key={goal.id} className="app-card p-6 relative group">
@@ -253,6 +318,9 @@ export function GoalsView({
                   <div>
                     <h3 className="font-semibold text-slate-900 text-lg">{goal.name}</h3>
                     <div className="flex flex-wrap gap-2 mt-1.5">
+                      <span className="text-[10px] uppercase tracking-wider font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                        {goalTypeLabel(goal.category)}
+                      </span>
                       {goal.category === "debt_payoff" && (
                         <span className="text-[10px] uppercase tracking-wider font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md ring-1 ring-rose-200/60">Debt</span>
                       )}
@@ -265,9 +333,9 @@ export function GoalsView({
                       {goal.targetDate && (
                         <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 px-2 py-0.5 rounded-md ring-1 ring-slate-200/60">Target: {goal.targetDate}</span>
                       )}
-                      {funded?.fullyFunded ? (
+                      {complete ? (
                         <span className="text-[10px] uppercase tracking-wider font-bold bg-teal-50 text-teal-800 px-2 py-0.5 rounded-md ring-1 ring-teal-200/60">
-                          Covered
+                          Done
                         </span>
                       ) : funded?.coveredByChecking ? (
                         <span className="text-[10px] uppercase tracking-wider font-bold bg-sky-50 text-sky-800 px-2 py-0.5 rounded-md ring-1 ring-sky-200/60">
@@ -279,27 +347,62 @@ export function GoalsView({
                 </div>
 
                 <div className="mt-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="font-semibold text-teal-700 tabular-nums">{formatCurrency(effectiveAmount)}</span>
-                    <span className="text-slate-500 tabular-nums">of {formatCurrency(goal.targetAmount)}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-teal-500 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, progress)}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-2">
-                    {Math.round(progress)}% covered
-                    {funded?.coveredByChecking
-                      ? ` · ${formatCurrency(funded.checkingAllocation)} assigned from checking`
-                      : goal.category === "debt_payoff"
-                        ? " · update payoff progress manually"
-                        : ""}
-                  </p>
+                  {lifeGoal ? (
+                    <>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="font-semibold text-teal-700 tabular-nums">{progress}%</span>
+                        <span className="text-slate-500">progress</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={progress}
+                        disabled={updatingId === goal.id}
+                        onChange={(e) => updateGoalAmount(goal.id, Number(e.target.value))}
+                        className="w-full accent-teal-600"
+                      />
+                      <p className="text-xs text-slate-500 mt-2">
+                        Drag to update — money is not required for this goal.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="font-semibold text-teal-700 tabular-nums">{formatCurrency(effectiveAmount)}</span>
+                        <span className="text-slate-500 tabular-nums">of {formatCurrency(goal.targetAmount)}</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-teal-500 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, progress)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500 mt-2">
+                        {Math.round(progress)}% covered
+                        {funded?.coveredByChecking
+                          ? ` · ${formatCurrency(funded.checkingAllocation)} assigned from checking`
+                          : goal.category === "debt_payoff"
+                            ? " · update payoff progress manually"
+                            : ""}
+                      </p>
+                    </>
+                  )}
                 </div>
 
-                {goal.category !== "debt_payoff" && !funded?.fullyFunded ? (
+                {lifeGoal && !complete ? (
+                  <button
+                    type="button"
+                    disabled={updatingId === goal.id}
+                    onClick={() => updateGoalAmount(goal.id, LIFE_GOAL_PROGRESS_TARGET)}
+                    className="mt-3 text-xs font-semibold text-teal-700 hover:text-teal-800 disabled:opacity-60"
+                  >
+                    {updatingId === goal.id ? "Saving…" : "Mark complete"}
+                  </button>
+                ) : null}
+
+                {!lifeGoal && goal.category !== "debt_payoff" && !funded?.fullyFunded ? (
                   <button
                     type="button"
                     disabled={updatingId === goal.id}
@@ -310,13 +413,25 @@ export function GoalsView({
                   </button>
                 ) : null}
 
-                <div className={`mt-4 rounded-xl p-3 text-sm ring-1 leading-relaxed ${pace.onTrack || funded?.fullyFunded ? "bg-teal-50/80 text-teal-900 ring-teal-200/50" : "bg-amber-50/80 text-amber-900 ring-amber-200/50"}`}>
+                <div
+                  className={`mt-4 rounded-xl p-3 text-sm ring-1 leading-relaxed ${
+                    complete || pace?.onTrack
+                      ? "bg-teal-50/80 text-teal-900 ring-teal-200/50"
+                      : "bg-amber-50/80 text-amber-900 ring-amber-200/50"
+                  }`}
+                >
                   <p>
-                    {funded?.fullyFunded
-                      ? "Checking coverage already meets this goal — protect that cash until you spend it on purpose."
-                      : pace.paceMessage}
+                    {lifeGoal
+                      ? complete
+                        ? "Done — protect the win and pick the next compounding move."
+                        : goal.targetDate
+                          ? `Life goal in progress — target ${goal.targetDate}. Log work in Growth when you push it forward.`
+                          : "Life goal in progress — update the slider as you move. No cash allocation needed."
+                      : funded?.fullyFunded
+                        ? "Checking coverage already meets this goal — protect that cash until you spend it on purpose."
+                        : pace?.paceMessage}
                   </p>
-                  {!funded?.fullyFunded && projectedLabel && pace.remaining > 0 && (
+                  {!lifeGoal && !funded?.fullyFunded && projectedLabel && pace && pace.remaining > 0 && (
                     <p className="text-xs mt-1 opacity-80">
                       {formatCurrency(pace.remaining)} left · ~{pace.monthsToComplete} mo at current pace
                       {pace.tenDollarsFasterDays && pace.tenDollarsFasterDays > 0

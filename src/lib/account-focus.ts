@@ -29,6 +29,14 @@ export function getFocusDepositoryAccounts(accounts: FocusAccount[]) {
   return getFocusAccounts(accounts).filter((account) => account.type === "depository");
 }
 
+/** What Trell can actually use — prefer available over ledger current. */
+export function spendableBalance(account: FocusAccount) {
+  if (account.type === "credit" || account.type === "loan") {
+    return Math.abs(account.currentBalance ?? 0);
+  }
+  return account.availableBalance ?? account.currentBalance ?? 0;
+}
+
 export function getFocusAccountPlaidIds(accounts: FocusAccount[]): Set<string> | null {
   if (!hasPrimarySelection(accounts)) {
     return null;
@@ -63,7 +71,7 @@ export function filterTransactionsForDailySpend<T extends { accountId: string }>
 
 export function sumDepositoryCash(accounts: FocusAccount[]) {
   return getFocusDepositoryAccounts(accounts).reduce(
-    (sum, account) => sum + (account.availableBalance ?? account.currentBalance ?? 0),
+    (sum, account) => sum + spendableBalance(account),
     0,
   );
 }
@@ -89,11 +97,12 @@ export function summarizeAccountBuckets(accounts: FocusAccount[]) {
   let totalLiabilities = 0;
 
   for (const account of accounts) {
-    const balance = account.currentBalance ?? 0;
     if (account.type === "credit" || account.type === "loan") {
-      totalLiabilities += Math.abs(balance);
+      totalLiabilities += Math.abs(account.currentBalance ?? 0);
+    } else if (account.type === "depository") {
+      totalAssets += spendableBalance(account);
     } else {
-      totalAssets += balance;
+      totalAssets += account.currentBalance ?? 0;
     }
   }
 

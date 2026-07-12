@@ -59,6 +59,45 @@ function isTransfer(transaction: CashFlowTransaction) {
   return transaction.categoryPrimary?.toLowerCase().includes("transfer") ?? false;
 }
 
+export type DailySpendPoint = {
+  date: string;
+  totalSpent: number;
+};
+
+/** Last N days of spending from transactions (not snapshot rows). */
+export function buildDailySpendSeries(
+  transactions: CashFlowTransaction[],
+  days = 30,
+  referenceDate?: string,
+): DailySpendPoint[] {
+  const today = referenceDate
+    ? DateTime.fromISO(referenceDate).startOf("day")
+    : DateTime.local().startOf("day");
+  const start = today.minus({ days: days - 1 });
+  const startKey = start.toISODate() ?? "";
+  const todayKey = today.toISODate() ?? "";
+
+  const byDate = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    const key = start.plus({ days: i }).toISODate();
+    if (key) byDate.set(key, 0);
+  }
+
+  for (const transaction of transactions) {
+    if (isTransfer(transaction) || transaction.amount <= 0) continue;
+    const activityDate = getTransactionActivityDate(transaction);
+    if (activityDate < startKey || activityDate > todayKey) continue;
+    if (!byDate.has(activityDate)) continue;
+    // Include pending on the activity day so recent spend shows up before settle.
+    byDate.set(activityDate, (byDate.get(activityDate) ?? 0) + transaction.amount);
+  }
+
+  return Array.from(byDate.entries()).map(([date, totalSpent]) => ({
+    date,
+    totalSpent: roundCurrency(totalSpent),
+  }));
+}
+
 export function calculateNetDailyAverage(
   transactions: CashFlowTransaction[],
   days = 14,
@@ -79,13 +118,24 @@ export function calculateNetDailyAverage(
 }
 
 export function calculateTodayCashFlow(
-  metrics: Pick<DailyBriefMetrics, "totalSpent" | "totalIncome" | "safeSpendToday">,
+  metrics: Pick<
+    DailyBriefMetrics,
+    | "totalSpent"
+    | "totalIncome"
+    | "safeSpendToday"
+    | "dailyAllowance"
+    | "discretionarySpentToday"
+  >,
 ): TodayCashFlow {
-  const spentToday = metrics.totalSpent;
+  const spentToday = metrics.discretionarySpentToday;
   const remainingToday = Math.max(0, metrics.safeSpendToday);
-  const dailyAllowance = roundCurrency(spentToday + remainingToday);
+  const dailyAllowance = roundCurrency(
+    metrics.dailyAllowance > 0
+      ? metrics.dailyAllowance
+      : spentToday + remainingToday,
+  );
   const spentPercent =
-    dailyAllowance > 0 ? Math.min(100, roundCurrency((spentToday / dailyAllowance) * 100)) : 0;
+    dailyAllowance > 0 ? roundCurrency((spentToday / dailyAllowance) * 100) : 0;
 
   return {
     spentToday,
@@ -300,32 +350,32 @@ export function getStatusStyle(status?: string) {
   const normalized = status?.toLowerCase() ?? "";
   if (normalized.includes("attack")) {
     return {
-      bg: "bg-sky-50",
-      text: "text-sky-800",
+      bg: "bg-sky-500/15",
+      text: "text-sky-800 dark:text-sky-300",
       dot: "bg-sky-500",
-      ring: "ring-sky-200/80",
+      ring: "ring-sky-400/40",
     };
   }
   if (normalized.includes("conservative") || normalized.includes("tight")) {
     return {
-      bg: "bg-amber-50",
-      text: "text-amber-800",
+      bg: "bg-amber-500/15",
+      text: "text-amber-900 dark:text-amber-200",
       dot: "bg-amber-500",
-      ring: "ring-amber-200/80",
+      ring: "ring-amber-400/40",
     };
   }
   if (normalized.includes("stable")) {
     return {
-      bg: "bg-teal-50",
-      text: "text-teal-800",
-      dot: "bg-teal-500",
-      ring: "ring-teal-200/80",
+      bg: "bg-[var(--accent-soft)]",
+      text: "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]",
+      dot: "bg-[var(--accent)]",
+      ring: "ring-[color-mix(in_srgb,var(--accent)_35%,transparent)]",
     };
   }
   return {
-    bg: "bg-slate-100",
-    text: "text-slate-700",
-    dot: "bg-slate-400",
-    ring: "ring-slate-200/80",
+    bg: "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)]",
+    text: "text-[var(--ink-soft)]",
+    dot: "bg-[var(--muted)]",
+    ring: "ring-[var(--card-border)]",
   };
 }

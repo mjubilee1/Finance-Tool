@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateHighLeverageRecommendation } from "@/lib/growth-agent";
+import { storeFinancialMemories } from "@/lib/financial-memory";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
@@ -34,13 +35,41 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Invalid id or status" }, { status: 400 });
     }
 
-    const updated = await prisma.growthRecommendation.updateMany({
+    const existing = await prisma.growthRecommendation.findFirst({
       where: { id, userId: session.user.id },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    await prisma.growthRecommendation.update({
+      where: { id },
       data: { status },
     });
 
-    if (updated.count === 0) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (status === "skipped" || status === "done") {
+      await storeFinancialMemories(
+        session.user.id,
+        [
+          {
+            title:
+              status === "skipped"
+                ? `Skipped move ${existing.date}`
+                : `Completed move ${existing.date}`,
+            content:
+              status === "skipped"
+                ? `User skipped today's growth move: "${existing.action}". Do not recycle this theme today. If it was promotion planning, they may already have boss guidance — prefer executing existing promo work or a different leverage domain.`
+                : `User completed today's growth move: "${existing.action}".`,
+            importanceScore: status === "skipped" ? 0.85 : 0.7,
+          },
+        ],
+        {
+          source: "growth-agent",
+          type: status === "skipped" ? "GROWTH_SKIP" : "GROWTH_DONE",
+          limit: 1,
+          minImportance: 0.5,
+        },
+      );
     }
 
     return NextResponse.json({ success: true });

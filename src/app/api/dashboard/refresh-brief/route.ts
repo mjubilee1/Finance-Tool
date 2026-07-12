@@ -14,7 +14,7 @@ export async function POST() {
 
     return NextResponse.json({ success: true, briefRefresh });
   } catch (error) {
-    console.error("Failed to refresh CFO brief:", error);
-    return NextResponse.json({ error: "Failed to refresh CFO brief." }, { status: 500 });
+    console.error("Failed to refresh daily brief:", error);
+    return NextResponse.json({ error: "Failed to refresh daily brief." }, { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 import { authOptions } from "@/lib/auth";
-import { CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
+import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
 import { storeFinancialMemories } from "@/lib/financial-memory";
@@ -32,6 +32,7 @@ type ProjectionAccount = {
   type: string;
   subtype: string | null;
   currentBalance: number | null;
+  availableBalance: number | null;
 };
 
 type ProjectionTransaction = {
@@ -150,8 +151,13 @@ function buildProjectionSummary(
 
   const daysAnalyzed = Math.max(1, (latestMs - earliestMs) / (24 * 60 * 60 * 1000));
   const currentTotalBalance = includedAccounts.reduce((sum, account) => {
-    const balance = account.currentBalance ?? 0;
-    return account.type === "credit" || account.type === "loan" ? sum - balance : sum + balance;
+    if (account.type === "credit" || account.type === "loan") {
+      return sum - Math.abs(account.currentBalance ?? 0);
+    }
+    if (account.type === "depository") {
+      return sum + (account.availableBalance ?? account.currentBalance ?? 0);
+    }
+    return sum + (account.currentBalance ?? 0);
   }, 0);
 
   return {
@@ -160,7 +166,11 @@ function buildProjectionSummary(
       name: account.name,
       type: account.type,
       subtype: account.subtype,
-      balance: account.currentBalance,
+      spendable:
+        account.type === "depository"
+          ? (account.availableBalance ?? account.currentBalance)
+          : account.currentBalance,
+      ledgerCurrent: account.currentBalance,
     })),
     daysAnalyzed,
     totalSpend,
@@ -292,10 +302,11 @@ export async function POST(req: Request) {
     const systemPrompt = `
 ${CFO_AGENT_INSTRUCTIONS}
 
-You are the user's personal financial CFO for ${session.user.name || "the user"}.
-You have access to their live financial data. Answer questions directly, briefly, and actionably.
+You are the user's Life OS coach for ${session.user.name || "the user"} — money core plus career, body, network, and intentional joy.
+You have access to their live financial data and life context (memories, goals, schedule). Answer questions directly, briefly, and actionably.
+You must distinguish Trell's emotional safety instinct from the financially optimal CFO move: if he wants to hold extra cash because it feels better, respect that, then show whether the math says cash is actually needed or whether paying down high-APR debt is the stronger move.
 When the user asks for a daily brief, use this exact format:
-CFO Brief
+Daily Brief
 Status: stable, tight, conservative mode, or attack mode.
 Cash safety: tell whether bills are covered.
 Upcoming bills: list important items in the next 14 days.
@@ -303,8 +314,8 @@ Income expected: paycheck, tenant rent, Lyft income, or refunds.
 Safe spend today: give one number.
 Debt move: hold cash or pay extra, and which debt to target.
 Spending warning: where money is leaking.
-Today's move: one clear action.
-System impact: one sentence on how that move hardens or grows the bigger financial system.
+Today's move: one clear action (can be money or life leverage).
+System impact: one sentence on how that move hardens cash OR compounds career/body/network.
 
 When answering about any transaction, recurring charge, or tradeoff, assess bigger-picture impact — not just whether money could be saved. Explain what freed cash should do next in the reinforcing loop (buffer → debt → credit → reserves → next property).
 When the user asks where a projection number came from, explain the exact formula and cite the relevant totals/sources from PROJECTION CONTEXT.
@@ -324,13 +335,16 @@ When the user uploads photo(s), read them carefully:
 - Life screenshots (gym schedule, calendar, workout plan, goal boards, travel plans): extract the durable schedule/facts into memoriesToStore so the Today Planner and coach stay current — do not leave that knowledge only in this chat turn.
 Joy preferences mentioned by the user are a menu of options, not an automatic assignment for today.
 
+${buildKnownCashScheduleContext()}
+
 MEMORIES:
 ${memories}
 
 CURRENT ACCOUNTS:
 ${JSON.stringify(accounts.map(a => ({
     name: a.name,
-    balance: a.currentBalance,
+    spendable: a.type === "depository" ? (a.availableBalance ?? a.currentBalance) : a.currentBalance,
+    ledgerCurrent: a.currentBalance,
     availableBalance: a.availableBalance,
     type: a.type,
     subtype: a.subtype,
@@ -418,7 +432,7 @@ If the user is only asking a question and not teaching durable facts, return an 
 
     const savedMemoryTitles = chatResponse.memoriesToStore.length > 0
       ? await storeFinancialMemories(session.user.id, chatResponse.memoriesToStore, {
-          source: "CFO Chat",
+          source: "Life OS Coach",
           type: "USER_INPUT",
           minImportance: 7,
           limit: 3,
@@ -431,7 +445,7 @@ If the user is only asking a question and not teaching durable facts, return an 
         await ensureFreshDailySnapshot(session.user.id, { force: true });
         briefRefreshed = true;
       } catch (refreshError) {
-        console.error("Failed to refresh CFO brief after chat memory update:", refreshError);
+        console.error("Failed to refresh daily brief after chat memory update:", refreshError);
       }
     }
 

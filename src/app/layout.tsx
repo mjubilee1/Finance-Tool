@@ -1,12 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist_Mono, Sora } from "next/font/google";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sora = Sora({
+  variable: "--font-sora",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -15,12 +23,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Financial Tracker",
-  description: "Mobile-friendly personal finance tracker powered by Plaid",
+  title: "Life OS",
+  description: "Personal life OS with a money core — career, body, network, and cash",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Finance",
+    title: "Life OS",
   },
 };
 
@@ -28,8 +36,28 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#f8fafc",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#2563eb" },
+    { media: "(prefers-color-scheme: dark)", color: "#070b14" },
+  ],
 };
+
+const themeInitScript = `
+(function(){
+  try {
+    var stored = localStorage.getItem('cfo-theme');
+    var theme = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
+    var resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme;
+    var root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(resolved);
+    root.dataset.theme = resolved;
+    root.style.colorScheme = resolved;
+  } catch (e) {}
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -39,12 +67,18 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${sora.variable} ${fraunces.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full app-page font-sans text-slate-900">
-        <AuthProvider>
-          <QueryProvider>{children}</QueryProvider>
-        </AuthProvider>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-full app-page font-sans text-[var(--foreground)]">
+        <ThemeProvider>
+          <AuthProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

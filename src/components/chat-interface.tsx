@@ -42,7 +42,7 @@ export function ChatInterface({
     {
       role: "assistant",
       content:
-        "Hi there. I am your personal CFO agent. I connect daily decisions to your bigger financial system — not just savings tips. Ask about today's brief, safe spend, a charge, or upload a receipt. Tap Spending radar below or use the mic instead of typing.",
+        "Hi — I'm your Life OS coach. Money, career, body, and network in one place. Ask about today's brief, safe spend, what to buy, a charge, gym/promo blocks, or upload a screenshot. Tap Spending radar below or use the mic instead of typing.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -160,7 +160,7 @@ export function ChatInterface({
       }
 
       if (data.briefRefreshed) {
-        assistantMessage += "\n\nI refreshed your CFO brief. Check Overview for the updated daily spend limit.";
+        assistantMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
         await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       }
 
@@ -204,7 +204,9 @@ export function ChatInterface({
             <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
               <div
                 className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  m.role === "user" ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-teal-600"
+                  m.role === "user"
+                    ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
+                    : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]"
                 }`}
               >
                 {m.role === "user" ? <User size={16} /> : <BrainCircuit size={16} />}
@@ -212,8 +214,8 @@ export function ChatInterface({
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                   m.role === "user"
-                    ? "bg-teal-600 text-white shadow-sm shadow-teal-600/15"
-                    : "bg-slate-50 text-slate-800 ring-1 ring-slate-200/60"
+                    ? "bg-[var(--accent)] text-white shadow-sm shadow-blue-600/15"
+                    : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink)] ring-1 ring-[var(--card-border)]"
                 }`}
               >
                 {m.images?.length ? (
@@ -236,17 +238,17 @@ export function ChatInterface({
           ))}
           {isLoading ? (
             <div className="flex gap-3 flex-row">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-100 text-teal-600">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]">
                 <BrainCircuit size={16} />
               </div>
-              <div className="bg-slate-50 ring-1 ring-slate-200/60 text-slate-800 rounded-2xl px-4 py-3 flex items-center gap-1">
-                <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
+              <div className="bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] ring-1 ring-[var(--card-border)] text-[var(--ink)] rounded-2xl px-4 py-3 flex items-center gap-1">
+                <div className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce" />
                 <div
-                  className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"
+                  className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
                   style={{ animationDelay: "0.1s" }}
                 />
                 <div
-                  className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"
+                  className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
                   style={{ animationDelay: "0.2s" }}
                 />
               </div>

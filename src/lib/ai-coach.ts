@@ -1,7 +1,7 @@
 import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getCostControlConfig } from "./env";
-import { CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_CONTRACT } from "./cfo-agent";
+import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_CONTRACT } from "./cfo-agent";
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { storeFinancialMemories } from "./financial-memory";
@@ -102,7 +102,7 @@ function buildFallbackCfoInsight(params: {
         ? ["Tenant rent pattern detected recently."]
         : ["No tenant rent, paycheck, Lyft income, or refund pattern detected in the current transaction set."],
       safeSpendToday,
-      safeSpendTodayReason: `This keeps checking above the protected cash buffer while the app is missing bill due dates and debt minimums.`,
+      safeSpendTodayReason: `Default discretionary target is about $40/day for food/fun variable spend — not income and not bill coverage. Gas and Lyft costs sit outside this number. This keeps checking above the protected cash buffer while bill due dates and debt minimums are incomplete.`,
       debtMove,
       spendingWarning: foodSpend > 0
         ? `Food/convenience spending appears in the recent transactions. Keep food tight today and avoid using credit cards for food.`
@@ -111,7 +111,7 @@ function buildFallbackCfoInsight(params: {
         ? `Keep spending under ${safeSpendToday.toFixed(0)} today and hold cash until upcoming bill dates and card minimums are confirmed.`
         : "Hold cash today. Do not make extra debt payments until the buffer and upcoming bills are covered.",
     },
-    dailySummary: `CFO mode is conservative because checking is limited relative to mortgage, credit card debt, and missing bill due-date/minimum-payment data.`,
+    dailySummary: `Conservative mode because checking is limited relative to mortgage, credit card debt, and missing bill due-date/minimum-payment data.`,
     financialHealthScore: checkingBalance > buffer ? 70 : 55,
     scoreReasoning: "Fallback score based on checking buffer, visible credit debt, and incomplete upcoming bill/debt-detail data.",
     spendingTrend: {
@@ -130,7 +130,7 @@ function buildFallbackCfoInsight(params: {
         title: "Hold cash and confirm bill/debt details",
         estimatedSavings: 0,
         difficulty: "easy",
-        reason: "The CFO rules require mortgage, minimum payments, upcoming bills, and the cash buffer to be protected before extra debt payments.",
+        reason: "Coach rules require mortgage, minimum payments, upcoming bills, and the cash buffer to be protected before extra debt payments.",
       },
     ],
     recurringTransactionsToReview: [],
@@ -230,28 +230,31 @@ export async function generateDailyInsight(userId: string) {
   const prompt = `
 ${CFO_AGENT_INSTRUCTIONS}
 
-Analyze the user's data and provide JSON. This is the daily CFO brief, so lead with concrete next actions and only use numbers supported by the supplied data.
+Analyze the user's data and provide JSON. This is the daily brief, so lead with concrete next actions and only use numbers supported by the supplied data.
 Assess impact on the bigger financial system — not just savings tips. Explain how today's move hardens stability or accelerates growth (debt, credit, reserves, rental readiness).
 Crucially, look at Current Accounts, Financial Goals, recent income, recurring obligations, debt accounts, and spending patterns. Look for opportunities to optimize daily transaction costs while protecting mortgage, minimum payments, upcoming bills, and cash buffer first.
+
+${buildKnownCashScheduleContext()}
 
 MEMORIES:
 ${memories}
 
-CURRENT ACCOUNTS (Primary accounts drive cash-flow math when starred. Note debt vs assets.):
+CURRENT ACCOUNTS (For cash decisions use available/spendable, not ledger current. Primary accounts drive cash-flow math when starred.):
 ${JSON.stringify((accounts as PromptAccount[]).map((a) => ({
     name: a.name,
     type: a.type,
     subtype: a.subtype,
-    balance: a.currentBalance,
+    spendable: a.type === "depository" ? (a.availableBalance ?? a.currentBalance) : a.currentBalance,
+    ledgerCurrent: a.currentBalance,
     availableBalance: a.availableBalance,
     isPrimary: a.isPrimary ?? false,
   })))}
 
-PRIMARY CASH-FLOW ACCOUNTS IN USE:
+PRIMARY CASH-FLOW ACCOUNTS IN USE (spendable balances):
 ${JSON.stringify(focusAccounts.map((a) => ({
     name: a.name,
     type: a.type,
-    balance: a.currentBalance,
+    spendable: a.type === "depository" ? (a.availableBalance ?? a.currentBalance) : a.currentBalance,
     availableBalance: a.availableBalance,
   })))}
 
@@ -261,14 +264,19 @@ ${JSON.stringify((goals as PromptGoal[]).map((g) => ({ name: g.name, target: g.t
 SYSTEM-CALCULATED DAILY LIMIT:
 ${JSON.stringify({
     date: dailyMetrics.date,
+    dailyAllowance: dailyMetrics.dailyAllowance,
     safeSpendToday: dailyMetrics.safeSpendToday,
     safeSpendTodayReason: dailyMetrics.safeSpendTodayReason,
     cashAvailable: dailyMetrics.cashAvailable,
-    spentToday: dailyMetrics.totalSpent,
+    discretionarySpentToday: dailyMetrics.discretionarySpentToday,
+    foodSpend: dailyMetrics.foodSpend,
+    transportationSpend: dailyMetrics.transportationSpend,
+    billsSpend: dailyMetrics.billsSpend,
+    totalSpentToday: dailyMetrics.totalSpent,
     incomeToday: dailyMetrics.totalIncome,
     recentDailySpendAverage: dailyMetrics.recentDailySpendAverage,
   })}
-Use this safeSpendToday value unless the supplied debt/bill context clearly requires a lower number. Never raise it above the system-calculated value.
+safeSpendToday is remaining food/fun room today. dailyAllowance is the ~$40/day food/fun target. Gas, Lyft operating costs, and bills do NOT count against it. Never raise safeSpendToday above the system-calculated dailyAllowance.
 
 RECENT TRANSACTIONS (last 30 days, primary accounts when set):
 ${JSON.stringify(focusTransactions.slice(0, 60).map((transaction: {

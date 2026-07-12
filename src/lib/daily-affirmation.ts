@@ -74,7 +74,7 @@ const DAILY_AFFIRMATIONS = [
     tone: "wisdom" as const,
   },
   {
-    message: "You're the CFO of your own life. Act like it for the next decision.",
+    message: "You're the coach of your own life. Act like it for the next decision.",
     tone: "motivation" as const,
   },
   {

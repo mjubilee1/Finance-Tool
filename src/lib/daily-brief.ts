@@ -19,6 +19,11 @@ type BriefAccount = {
   availableBalance?: number | null;
 };
 
+/** Default variable/discretionary spend target most days (not bills/mortgage). */
+export const DEFAULT_DISCRETIONARY_DAILY = 40;
+/** Hard ceiling for the system daily discretionary allowance. */
+export const MAX_DISCRETIONARY_DAILY = 60;
+
 export type DailyBriefMetrics = {
   date: string;
   totalSpent: number;
@@ -27,9 +32,14 @@ export type DailyBriefMetrics = {
   transportationSpend: number;
   billsSpend: number;
   discretionarySpend: number;
+  /** Today's spend that counts against the discretionary daily allowance (excludes bills + gas/transport). */
+  discretionarySpentToday: number;
   recurringSpend: number;
   accountBalanceTotal: number;
   cashAvailable: number;
+  /** Planned discretionary allowance for the day (before subtracting today's discretionary spend). */
+  dailyAllowance: number;
+  /** Remaining discretionary room today (allowance minus today's discretionary spend, floored at 0). */
   safeSpendToday: number;
   safeSpendTodayReason: string;
   recentDailySpendAverage: number;
@@ -56,6 +66,13 @@ function transactionText(transaction: BriefTransaction) {
 
 function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function formatUsd(value: number) {
+  return roundCurrency(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
 /** Date used for daily/weekly cash flow — pending debit charges often only have authorizedDate. */
@@ -107,7 +124,7 @@ export function calculateDailyBriefMetrics(params: {
   let transportationSpend = 0;
   let billsSpend = 0;
   let recurringSpend = 0;
-  let pendingSpendToday = 0;
+  let pendingDiscretionaryToday = 0;
 
   for (const transaction of todaysTransactions) {
     if (transaction.amount < 0) {
@@ -121,35 +138,43 @@ export function calculateDailyBriefMetrics(params: {
     const text = transactionText(transaction);
 
     totalSpent += amount;
-    if (transaction.pending) {
-      pendingSpendToday += amount;
-    }
 
-    if (
-      transaction.isFoodCandidate ||
-      includesAny(text, ["food", "restaurant", "dining", "grocery", "coffee"])
-    ) {
-      foodSpend += amount;
-    }
+    const isFood =
+      Boolean(transaction.isFoodCandidate) ||
+      includesAny(text, ["food", "restaurant", "dining", "grocery", "coffee"]);
+    const isTransport =
+      Boolean(transaction.isTransportationCandidate) ||
+      includesAny(text, ["transport", "gas", "fuel", "parking", "uber", "lyft", "hertz"]);
+    const isBill =
+      Boolean(transaction.isUtilityCandidate) ||
+      includesAny(text, [
+        "rent",
+        "mortgage",
+        "utility",
+        "utilities",
+        "insurance",
+        "loan",
+        "credit card",
+        "irs",
+        "tax",
+        "subscription",
+      ]);
 
-    if (
-      transaction.isTransportationCandidate ||
-      includesAny(text, ["transport", "gas", "fuel", "parking", "uber", "lyft"])
-    ) {
-      transportationSpend += amount;
-    }
+    if (isFood) foodSpend += amount;
+    if (isTransport) transportationSpend += amount;
+    if (isBill) billsSpend += amount;
+    if (transaction.isRecurringCandidate) recurringSpend += amount;
 
-    if (
-      transaction.isUtilityCandidate ||
-      includesAny(text, ["rent", "mortgage", "utility", "utilities", "insurance", "loan", "credit card"])
-    ) {
-      billsSpend += amount;
-    }
-
-    if (transaction.isRecurringCandidate) {
-      recurringSpend += amount;
+    // Discretionary = food/fun/shopping/leak — not bills and not gas/Lyft operating costs.
+    if (transaction.pending && !isTransport && !isBill) {
+      pendingDiscretionaryToday += amount;
     }
   }
+
+  const discretionarySpentToday = Math.max(
+    0,
+    totalSpent - billsSpend - transportationSpend,
+  );
 
   const cashAvailable = accounts
     .filter((account) => account.type === "depository")
@@ -168,23 +193,28 @@ export function calculateDailyBriefMetrics(params: {
     recentExpenseTransactions.reduce((sum, transaction) => sum + transaction.amount, 0) / 14;
   const protectedBuffer = Math.max(500, cashAvailable * 0.25);
   const spendableCash = Math.max(0, cashAvailable - protectedBuffer);
-  const cashBasedAllowance = spendableCash / 14;
-  const trendBasedAllowance = recentDailySpendAverage > 0 ? recentDailySpendAverage * 0.85 : cashBasedAllowance;
-  const dailyLimitBeforeToday = Math.min(cashBasedAllowance, trendBasedAllowance);
-  const safeSpendToday = Math.max(0, dailyLimitBeforeToday - totalSpent);
+  // Cash only tightens the discretionary target — never treat checking÷14 as the budget.
+  // That old formula produced ~$270/day (~$8k/mo) from a normal checking balance.
+  const cashSupportedDaily = spendableCash / 14;
+  const dailyLimitBeforeToday =
+    cashAvailable <= 0
+      ? 0
+      : Math.min(
+          DEFAULT_DISCRETIONARY_DAILY,
+          MAX_DISCRETIONARY_DAILY,
+          cashSupportedDaily,
+        );
+  const dailyAllowance = roundCurrency(dailyLimitBeforeToday);
+  const safeSpendToday = Math.max(0, dailyAllowance - discretionarySpentToday);
 
   const reason =
-    cashAvailable > 0
-      ? pendingSpendToday > 0
-        ? `Includes ${roundCurrency(pendingSpendToday).toLocaleString("en-US", {
-            style: "currency",
-            currency: "USD",
-          })} in pending debit/card charges that may still change when they post.`
-        : `Uses available checking cash, protects a ${roundCurrency(protectedBuffer).toLocaleString("en-US", {
-            style: "currency",
-            currency: "USD",
-          })} buffer, and subtracts today's spending.`
-      : "No depository cash balance is available yet, so the safe daily spend is held at $0 until balances sync.";
+    cashAvailable <= 0
+      ? "No depository cash balance is available yet, so the safe daily spend is held at $0 until balances sync."
+      : pendingDiscretionaryToday > 0
+        ? `About $${DEFAULT_DISCRETIONARY_DAILY}/day is for food/fun/variable spend. Gas, Lyft operating costs, and bills do not eat this number. Includes ${formatUsd(pendingDiscretionaryToday)} in pending discretionary charges.`
+        : cashSupportedDaily < DEFAULT_DISCRETIONARY_DAILY
+          ? `Cash buffer is the protected floor in checking (${formatUsd(protectedBuffer)}). Above that floor, variable spend is tightened to about ${formatUsd(dailyAllowance)}/day until income clears.`
+          : `Cash buffer (${formatUsd(protectedBuffer)}) is money you do not spend — the safety floor so a bill or late rent does not bounce you. The ~$${DEFAULT_DISCRETIONARY_DAILY}/day target is food/fun only; gas and Lyft costs sit outside it.`;
 
   return {
     date,
@@ -193,10 +223,12 @@ export function calculateDailyBriefMetrics(params: {
     foodSpend: roundCurrency(foodSpend),
     transportationSpend: roundCurrency(transportationSpend),
     billsSpend: roundCurrency(billsSpend),
-    discretionarySpend: roundCurrency(Math.max(0, totalSpent - billsSpend)),
+    discretionarySpend: roundCurrency(discretionarySpentToday),
+    discretionarySpentToday: roundCurrency(discretionarySpentToday),
     recurringSpend: roundCurrency(recurringSpend),
     accountBalanceTotal: roundCurrency(accountBalanceTotal),
     cashAvailable: roundCurrency(cashAvailable),
+    dailyAllowance,
     safeSpendToday: roundCurrency(safeSpendToday),
     safeSpendTodayReason: reason,
     recentDailySpendAverage: roundCurrency(recentDailySpendAverage),
@@ -210,11 +242,12 @@ export function applyCalculatedSafeSpend<T extends { cfoBrief?: Record<string, u
   const cfoBrief = insight.cfoBrief ?? {};
   const aiSafeSpend = cfoBrief.safeSpendToday;
   const hasValidAiSafeSpend = typeof aiSafeSpend === "number" && Number.isFinite(aiSafeSpend);
-  const calculatedAllowance = roundCurrency(metrics.totalSpent + metrics.safeSpendToday);
-  const dailyAllowance = hasValidAiSafeSpend
-    ? Math.min(calculatedAllowance, roundCurrency(aiSafeSpend + metrics.totalSpent))
-    : calculatedAllowance;
-  const remainingToday = Math.max(0, roundCurrency(dailyAllowance - metrics.totalSpent));
+  // AI may return remaining room or a full-day allowance; never raise above the system cap.
+  const aiImpliedAllowance = hasValidAiSafeSpend
+    ? roundCurrency(aiSafeSpend + metrics.discretionarySpentToday)
+    : metrics.dailyAllowance;
+  const dailyAllowance = Math.min(metrics.dailyAllowance, aiImpliedAllowance);
+  const remainingToday = Math.max(0, roundCurrency(dailyAllowance - metrics.discretionarySpentToday));
 
   return {
     ...insight,

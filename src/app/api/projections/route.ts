@@ -102,18 +102,28 @@ export async function GET(request: Request) {
     const dailyAverageIncome = totalIncome / effectiveDays;
     const netDailyAverage = dailyAverageIncome - dailyAverageSpend;
 
-    // Current total balance of included accounts
+    // Cash you can actually use (available), not ledger "current" which can include holds.
     const currentTotalBalance = accounts
       .filter((acc) => balanceAccountIdsToInclude.includes(acc.plaidAccountId))
       .reduce((sum, acc) => {
-        // For depository accounts, currentBalance is positive.
-        // For credit accounts, currentBalance is what you owe (so it's a liability).
-        // If we include debt, we should probably subtract it from net worth.
         if (acc.type === "credit" || acc.type === "loan") {
-          return sum - (acc.currentBalance || 0);
+          return sum - Math.abs(acc.currentBalance || 0);
         }
-        return sum + (acc.currentBalance || 0);
+        const spendable = acc.availableBalance ?? acc.currentBalance ?? 0;
+        return sum + spendable;
       }, 0);
+
+    const cashBreakdown = accounts
+      .filter(
+        (acc) =>
+          balanceAccountIdsToInclude.includes(acc.plaidAccountId) &&
+          acc.type === "depository",
+      )
+      .map((acc) => ({
+        name: acc.name,
+        available: acc.availableBalance ?? acc.currentBalance ?? 0,
+        current: acc.currentBalance ?? 0,
+      }));
 
     let latestInsight: CfoSummary | null = null;
     try {
@@ -132,8 +142,11 @@ export async function GET(request: Request) {
     });
     const safeDailySpend =
       typeof latestInsight?.cfoBrief?.safeSpendToday === "number" && Number.isFinite(latestInsight.cfoBrief.safeSpendToday)
-        ? Math.max(0, latestInsight.cfoBrief.safeSpendToday)
-        : dailyBriefMetrics.safeSpendToday;
+        ? Math.min(
+            dailyBriefMetrics.dailyAllowance,
+            Math.max(0, latestInsight.cfoBrief.safeSpendToday + dailyBriefMetrics.discretionarySpentToday),
+          )
+        : dailyBriefMetrics.dailyAllowance;
     const safeSpendReason = latestInsight?.cfoBrief?.safeSpendTodayReason ?? dailyBriefMetrics.safeSpendTodayReason;
     const safeSpendNetDailyAverage = dailyAverageIncome - safeDailySpend;
 
@@ -163,6 +176,7 @@ export async function GET(request: Request) {
         netDailyAverage,
         daysAnalyzed: effectiveDays,
         currentTotalBalance,
+        cashBreakdown,
       },
       safeSpendScenario: {
         safeDailySpend,

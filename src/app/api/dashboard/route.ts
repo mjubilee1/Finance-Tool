@@ -6,7 +6,12 @@ import { getPlaidConfig } from "@/lib/env";
 import { getDailyPlaidEndpointCalls } from "@/lib/plaid-tracker";
 import { getBriefRefreshStatus } from "@/lib/daily-snapshot";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
-import { calculateTodayCashFlow, calculateWeeklyCashFlow, calculateNetDailyAverage } from "@/lib/cash-flow";
+import {
+  buildDailySpendSeries,
+  calculateTodayCashFlow,
+  calculateWeeklyCashFlow,
+  calculateNetDailyAverage,
+} from "@/lib/cash-flow";
 import {
   filterTransactionsByFocus,
   filterTransactionsForDailySpend,
@@ -24,12 +29,14 @@ export async function GET() {
 
     const userId = session.user.id;
     const twoWeeksAgo = DateTime.local().minus({ days: 14 }).toISODate();
+    const thirtyDaysAgo = DateTime.local().minus({ days: 29 }).toISODate();
     const { dailyBalanceCallLimit } = getPlaidConfig();
 
     const [
       briefRefresh,
       transactions,
       recentTransactions,
+      chartTransactions,
       snapshots,
       rawAccounts,
       plaidItems,
@@ -48,6 +55,16 @@ export async function GET() {
           OR: [
             { date: { gte: twoWeeksAgo ?? undefined } },
             { authorizedDate: { gte: twoWeeksAgo ?? undefined } },
+          ],
+        },
+        orderBy: { date: "desc" },
+      }),
+      prisma.transaction.findMany({
+        where: {
+          userId,
+          OR: [
+            { date: { gte: thirtyDaysAgo ?? undefined } },
+            { authorizedDate: { gte: thirtyDaysAgo ?? undefined } },
           ],
         },
         orderBy: { date: "desc" },
@@ -88,6 +105,7 @@ export async function GET() {
     const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
     const focusTransactionsAll = filterTransactionsByFocus(transactions, accounts);
     const spendingTransactions = filterTransactionsForDailySpend(recentTransactions, accounts);
+    const chartSpendTransactions = filterTransactionsForDailySpend(chartTransactions, accounts);
 
     const todayKey = DateTime.local().toISODate() ?? "";
     const briefMetrics = calculateDailyBriefMetrics({
@@ -100,6 +118,8 @@ export async function GET() {
       totalSpent: briefMetrics.totalSpent,
       totalIncome: briefMetrics.totalIncome,
       safeSpendToday: briefMetrics.safeSpendToday,
+      dailyAllowance: briefMetrics.dailyAllowance,
+      discretionarySpentToday: briefMetrics.discretionarySpentToday,
     });
 
     const weeklyCashFlow = calculateWeeklyCashFlow({
@@ -108,12 +128,15 @@ export async function GET() {
       referenceDate: todayKey,
     });
 
+    const dailySpendSeries = buildDailySpendSeries(chartSpendTransactions, 30, todayKey);
+
     return NextResponse.json({
       transactions:
         focusTransactionsAll.length > 0 || !accounts.some((a) => a.isPrimary)
           ? focusTransactionsAll
           : transactions,
       snapshots: snapshots.reverse(),
+      dailySpendSeries,
       aiInsight,
       accounts,
       goals,
@@ -123,6 +146,7 @@ export async function GET() {
         weekly: weeklyCashFlow,
         netDailyAverage: calculateNetDailyAverage(focusTransactions),
         safeDailySpend: todayCashFlow.dailyAllowance,
+        safeSpendTodayReason: briefMetrics.safeSpendTodayReason,
         primaryCash: sumDepositoryCash(accounts),
         usingPrimaryAccounts: accounts.some((account) => account.isPrimary),
       },

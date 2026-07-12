@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { AppVersion } from "@/components/app-version";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,13 +53,17 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100dvh] p-4 bg-zinc-50">
-      <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl border border-zinc-200">
-        <h1 className="text-2xl font-bold mb-2 text-zinc-900">
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] p-4 app-page">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle compact />
+      </div>
+      <div className="w-full max-w-sm app-card-elevated p-8">
+        <p className="app-label text-blue-700 mb-2">Life OS</p>
+        <h1 className="text-2xl app-display mb-2 text-slate-900">
           {isLogin ? "Welcome back" : "Create account"}
         </h1>
-        <p className="text-zinc-500 mb-8 text-sm">
-          Enter your details to continue to Financial Tracker.
+        <p className="text-slate-500 mb-8 text-sm">
+          Enter your details to continue to your life OS.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -25,11 +25,13 @@ export function summarizeAccounts(accounts: AccountSummary[]): DashboardSummary 
   let totalLiabilities = 0;
 
   for (const account of accounts) {
-    const balance = account.currentBalance ?? 0;
     if (account.type === "credit" || account.type === "loan") {
-      totalLiabilities += Math.abs(balance);
+      totalLiabilities += Math.abs(account.currentBalance ?? 0);
+    } else if (account.type === "depository") {
+      // Prefer spendable/available — ledger "current" is not how Trell decides.
+      totalAssets += account.availableBalance ?? account.currentBalance ?? 0;
     } else {
-      totalAssets += balance;
+      totalAssets += account.currentBalance ?? 0;
     }
   }
 

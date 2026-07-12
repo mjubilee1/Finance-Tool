@@ -57,10 +57,14 @@ function displayAccountBalance(account: FocusAccount) {
   const current = account.currentBalance ?? 0;
   const available = account.availableBalance;
 
-  if (account.type === "depository" && available != null && available !== current) {
+  if (account.type === "depository") {
+    const spendable = available ?? current;
     return {
-      amount: available,
-      sublabel: `${formatCurrency(current)} current`,
+      amount: spendable,
+      sublabel:
+        available != null && Math.abs(available - current) > 0.5
+          ? `${formatCurrency(current)} ledger (ignore for decisions)`
+          : "Spendable",
     };
   }
 
@@ -195,11 +199,11 @@ export function AccountsView({
         <div className="app-card p-4 ring-2 ring-teal-200/50">
           <div className="flex items-center gap-2 mb-1">
             <Wallet size={16} className="text-teal-600" />
-            <p className="app-label text-teal-700">Primary cash</p>
+            <p className="app-label text-teal-700">Spendable cash</p>
           </div>
           <p className="text-2xl font-bold text-slate-900 tabular-nums">{formatCurrency(summary.primaryCash)}</p>
           <p className="text-xs text-slate-500 mt-1">
-            {summary.primaryDepositoryCount} account{summary.primaryDepositoryCount === 1 ? "" : "s"} for safe spend
+            Available balance — not ledger/current
           </p>
         </div>
         <div className="app-card p-4">

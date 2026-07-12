@@ -1,107 +1,481 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light;
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-border: rgba(148, 163, 184, 0.35);
+  /* Signal Blue + ember orange on cool paper */
+  --background: #eef2f8;
+  --foreground: #0b1220;
+  --card: rgba(255, 255, 255, 0.88);
+  --card-solid: #ffffff;
+  --card-border: rgba(30, 58, 138, 0.12);
   --muted: #64748b;
-  --accent: #0d9488;
-  --accent-soft: #f0fdfa;
-  --accent-muted: #ccfbf1;
-  --ring: rgba(13, 148, 136, 0.25);
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-bright: #3b82f6;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --accent-muted: #dbeafe;
+  --ember: #f97316;
+  --ember-strong: #ea580c;
+  --ink: #0b1220;
+  --ink-soft: #1e293b;
+  --ring: rgba(37, 99, 235, 0.28);
+  --sidebar: rgba(252, 253, 255, 0.92);
+  --header: rgba(252, 253, 255, 0.78);
+  --danger: #e11d48;
+  --warn: #f59e0b;
+  --page-spot-a: rgba(37, 99, 235, 0.16);
+  --page-spot-b: rgba(249, 115, 22, 0.1);
+  --page-spot-c: rgba(59, 130, 246, 0.1);
+  --page-base: linear-gradient(165deg, #eef2f8 0%, #f4f6fb 45%, #edf0f7 100%);
+}
+
+html.dark {
+  color-scheme: dark;
+  --background: #070b14;
+  --foreground: #e8eefc;
+  --card: rgba(15, 23, 42, 0.92);
+  --card-solid: #111827;
+  --card-border: rgba(147, 197, 253, 0.14);
+  --muted: #a8b4c8;
+  --accent: #60a5fa;
+  --accent-strong: #3b82f6;
+  --accent-bright: #93c5fd;
+  --accent-soft: rgba(96, 165, 250, 0.14);
+  --accent-muted: rgba(37, 99, 235, 0.28);
+  --ember: #fb923c;
+  --ember-strong: #f97316;
+  --ink: #e8eefc;
+  --ink-soft: #cbd5e1;
+  --ring: rgba(96, 165, 250, 0.32);
+  --sidebar: rgba(8, 12, 22, 0.94);
+  --header: rgba(8, 12, 22, 0.82);
+  --danger: #fb7185;
+  --warn: #fbbf24;
+  --page-spot-a: rgba(59, 130, 246, 0.18);
+  --page-spot-b: rgba(249, 115, 22, 0.12);
+  --page-spot-c: rgba(37, 99, 235, 0.12);
+  --page-base: linear-gradient(165deg, #05080f 0%, #0a1020 48%, #070b14 100%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sora);
+  --font-display: var(--font-fraunces);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-sora), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Shared surfaces */
 .app-page {
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 80% 50% at 8% -8%, var(--page-spot-a), transparent 55%),
+    radial-gradient(ellipse 55% 40% at 92% 4%, var(--page-spot-b), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 70% 100%, var(--page-spot-c), transparent 55%),
+    var(--page-base);
+  background-attachment: fixed;
+}
+
+.app-page::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  mix-blend-mode: soft-light;
+  animation: atmosphere-drift 28s ease-in-out infinite alternate;
+}
+
+html.dark .app-page::before {
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+}
+
+@keyframes atmosphere-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-1.5%, 1%, 0);
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.app-shell-sidebar {
+  background: var(--sidebar);
+  border-right: 1px solid var(--card-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.app-shell-header {
+  background: var(--header);
+  border-bottom: 1px solid var(--card-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.app-brand-mark {
+  background: linear-gradient(145deg, #3b82f6 0%, #2563eb 45%, #ea580c 120%);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+html.dark .app-brand-mark {
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.28);
+}
+
+.app-nav-active {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.16), rgba(37, 99, 235, 0.04));
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--accent-bright);
+}
+
+html.dark .app-nav-active {
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.2), rgba(96, 165, 250, 0.04));
 }
 
 .app-card {
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: 1.25rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 2px rgba(11, 18, 32, 0.04);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+html.dark .app-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .app-card-elevated {
-  background: var(--card);
+  background: var(--card-solid);
   border: 1px solid var(--card-border);
   border-radius: 1.25rem;
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 8px 24px rgba(15, 23, 42, 0.06);
+    0 1px 2px rgba(11, 18, 32, 0.04),
+    0 12px 28px rgba(11, 18, 32, 0.06);
+}
+
+html.dark .app-card-elevated {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 28px rgba(0, 0, 0, 0.45);
 }
 
 .app-label {
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.app-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 
 .app-stat-value {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #0f172a;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-sora), system-ui, sans-serif;
 }
 
 .app-hero-gradient {
-  background: linear-gradient(135deg, #ffffff 0%, #f0fdfa 48%, #ecfeff 100%);
-  border: 1px solid rgba(13, 148, 136, 0.15);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--card-solid) 95%, transparent) 0%,
+    color-mix(in srgb, var(--accent-muted) 55%, var(--card-solid)) 50%,
+    color-mix(in srgb, var(--ember) 12%, var(--card-solid)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .app-input {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: color-mix(in srgb, var(--card-solid) 92%, transparent);
+  border: 1px solid var(--card-border);
   border-radius: 0.75rem;
+  color: var(--foreground);
   transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.app-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .app-input:focus {
   outline: none;
-  border-color: #5eead4;
+  border-color: var(--accent-bright);
   box-shadow: 0 0 0 3px var(--ring);
 }
 
 .app-btn-primary {
-  background: #0d9488;
+  background: linear-gradient(180deg, var(--ember) 0%, var(--ember-strong) 100%);
   color: #ffffff;
   font-weight: 600;
   border-radius: 0.75rem;
-  transition: background 0.15s;
+  transition: filter 0.15s, transform 0.15s;
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.28);
+}
+
+html.dark .app-btn-primary {
+  background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.28);
 }
 
 .app-btn-primary:hover {
-  background: #0f766e;
+  filter: brightness(1.05);
+}
+
+.app-btn-primary:active {
+  transform: translateY(1px);
 }
 
 .app-btn-primary:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
-/* Range slider */
-input[type="range"] {
-  accent-color: #0d9488;
+.app-live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--ember);
+  animation: live-pulse 2.4s ease-out infinite;
 }
+
+/* Remap leftover teal utilities → new accent (keep readable in both modes) */
+.text-teal-600,
+.text-teal-700,
+.text-teal-800,
+.text-teal-900 {
+  color: var(--accent-strong) !important;
+}
+
+html.dark .text-teal-400,
+html.dark .text-teal-500,
+html.dark .text-teal-600,
+html.dark .text-teal-700,
+html.dark .text-teal-800,
+html.dark .text-teal-900,
+html.dark .text-teal-50,
+html.dark .text-teal-100,
+html.dark .text-teal-50\/90,
+html.dark .text-teal-100\/90 {
+  color: var(--accent-bright) !important;
+}
+
+.bg-teal-500,
+.bg-teal-600,
+.bg-teal-700 {
+  background-color: var(--accent) !important;
+}
+
+.ring-teal-200,
+.ring-teal-200\/60,
+.ring-teal-200\/70,
+.ring-teal-200\/80 {
+  --tw-ring-color: color-mix(in srgb, var(--accent) 35%, transparent) !important;
+}
+
+.border-teal-200,
+.border-teal-200\/60 {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+}
+
+.shadow-teal-600\/25,
+.shadow-teal-600\/20 {
+  --tw-shadow-color: color-mix(in srgb, var(--accent) 25%, transparent) !important;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+/*
+  Dark mode: remaps hard-coded light Tailwind utilities used across pages.
+  Keeps backgrounds and text paired so contrast stays readable.
+*/
+html.dark .bg-white,
+html.dark .bg-white\/70,
+html.dark .bg-white\/80,
+html.dark .bg-white\/90,
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/70,
+html.dark .bg-slate-50\/80,
+html.dark .bg-slate-100,
+html.dark .bg-zinc-50 {
+  background-color: color-mix(in srgb, var(--card-solid) 92%, var(--accent-muted)) !important;
+}
+
+html.dark .bg-teal-50,
+html.dark .bg-teal-50\/30,
+html.dark .bg-teal-50\/40,
+html.dark .bg-teal-50\/50,
+html.dark .bg-teal-50\/80,
+html.dark .bg-teal-100,
+html.dark .bg-sky-50,
+html.dark .bg-sky-50\/80 {
+  background-color: var(--accent-soft) !important;
+}
+
+html.dark .bg-rose-50,
+html.dark .bg-rose-50\/40,
+html.dark .bg-rose-50\/80 {
+  background-color: rgba(244, 63, 94, 0.14) !important;
+}
+
+html.dark .bg-amber-50,
+html.dark .bg-amber-50\/50,
+html.dark .bg-amber-50\/80,
+html.dark .bg-yellow-50 {
+  background-color: rgba(245, 158, 11, 0.14) !important;
+}
+
+html.dark .bg-orange-50,
+html.dark .bg-orange-50\/40 {
+  background-color: color-mix(in srgb, var(--ember) 14%, transparent) !important;
+}
+
+html.dark .bg-violet-50,
+html.dark .bg-fuchsia-50 {
+  background-color: rgba(167, 139, 250, 0.14) !important;
+}
+
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-zinc-900 {
+  color: var(--ink) !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: var(--ink-soft) !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-zinc-500 {
+  color: var(--muted) !important;
+}
+
+html.dark .text-slate-300 {
+  color: color-mix(in srgb, var(--muted) 70%, transparent) !important;
+}
+
+html.dark .text-rose-600,
+html.dark .text-rose-700,
+html.dark .text-rose-800,
+html.dark .text-rose-900 {
+  color: #fda4af !important;
+}
+
+html.dark .text-amber-700,
+html.dark .text-amber-800,
+html.dark .text-amber-900 {
+  color: #fcd34d !important;
+}
+
+html.dark .text-orange-600,
+html.dark .text-orange-700,
+html.dark .text-orange-800 {
+  color: var(--ember) !important;
+}
+
+html.dark .text-sky-700,
+html.dark .text-sky-800,
+html.dark .text-violet-700,
+html.dark .text-violet-800,
+html.dark .text-fuchsia-700 {
+  color: #c4b5fd !important;
+}
+
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-200\/60,
+html.dark .border-slate-200\/80,
+html.dark .border-zinc-200 {
+  border-color: var(--card-border) !important;
+}
+
+html.dark .ring-slate-100,
+html.dark .ring-slate-200,
+html.dark .ring-slate-200\/60,
+html.dark .ring-slate-200\/70,
+html.dark .ring-slate-200\/80,
+html.dark .ring-white\/80 {
+  --tw-ring-color: var(--card-border) !important;
+}
+
+html.dark .ring-rose-200\/60,
+html.dark .ring-rose-200\/70,
+html.dark .ring-rose-200\/50 {
+  --tw-ring-color: rgba(251, 113, 133, 0.35) !important;
+}
+
+html.dark .ring-amber-200\/60,
+html.dark .ring-amber-200\/70,
+html.dark .ring-amber-200\/50,
+html.dark .ring-amber-100 {
+  --tw-ring-color: rgba(251, 191, 36, 0.35) !important;
+}
+
+html.dark .ring-orange-200\/70 {
+  --tw-ring-color: color-mix(in srgb, var(--ember) 35%, transparent) !important;
+}
+
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+html.dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+}
+
+html.dark .bg-rose-100 {
+  background-color: rgba(244, 63, 94, 0.18) !important;
+}
+
+html.dark .text-emerald-700,
+html.dark .text-emerald-800,
+html.dark .text-emerald-900 {
+  color: #6ee7b7 !important;
+}
+
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--card-border) !important;
+}
+

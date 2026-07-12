@@ -2,6 +2,7 @@
 
 import { sumDepositoryCash } from "@/lib/account-focus";
 import { calculateGoalPace } from "@/lib/cash-flow";
+import { isLifeGoalType } from "@/lib/goal-types";
 import { formatCurrency } from "@/lib/format";
 import {
     getOldestAccountUpdate,
@@ -26,6 +27,7 @@ import { OverviewHome } from "./overview/overview-home";
 import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
 import { RecurringView } from "./recurring/recurring-view";
+import { ThemeToggle } from "./theme-toggle";
 
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth';
 
@@ -126,6 +128,7 @@ type CashFlowData = {
   };
   netDailyAverage: number;
   safeDailySpend: number;
+  safeSpendTodayReason?: string;
   primaryCash?: number;
   usingPrimaryAccounts?: boolean;
 };
@@ -143,6 +146,7 @@ type DashboardGoal = {
 type DashboardData = {
   transactions: DashboardTransaction[];
   snapshots: Array<Record<string, unknown>>;
+  dailySpendSeries?: Array<{ date: string; totalSpent: number }>;
   aiInsight: DashboardInsight | null;
   accounts: DashboardAccount[];
   goals: DashboardGoal[];
@@ -290,11 +294,20 @@ export function Dashboard() {
     }
   }, [activeTab, data?.accounts]);
 
-  const { transactions = [], snapshots = [], aiInsight = null, accounts = [], goals = [], plaidUsage, briefRefresh, cashFlow } = data || {};
+  const {
+    transactions = [],
+    dailySpendSeries = [],
+    aiInsight = null,
+    accounts = [],
+    goals = [],
+    plaidUsage,
+    briefRefresh,
+    cashFlow,
+  } = data || {};
   const displayInsight: DashboardInsight = aiInsight ?? {
     dailySummary:
       transactions.length > 0
-        ? "Your cash flow is ready. Tap Refresh to generate your full CFO brief."
+        ? "Your cash flow is ready. Tap Refresh to generate your full daily brief."
         : "Link a bank account and sync transactions to get started.",
     cfoBrief: cashFlow
       ? {
@@ -319,9 +332,7 @@ export function Dashboard() {
         minute: "2-digit",
       })
     : null;
-  const fallbackSafeSpendToday = Math.max(0,
-    (sumDepositoryCash(accounts) * 0.4) / 14
-  );
+  const fallbackSafeSpendToday = 40;
   const safeSpendToday = cashFlow?.today?.dailyAllowance
     ?? cashFlow?.safeDailySpend
     ?? fallbackSafeSpendToday;
@@ -332,7 +343,7 @@ export function Dashboard() {
   const safeSpendRaiseFactors = [
     "Paycheck, tenant rent, Lyft profit, or refunds clear in checking.",
     "Mortgage, utilities, IRS, insurance, subscriptions, and card minimums are covered.",
-    "Food, convenience, travel, house repairs, and fun spending stay under the daily cap.",
+    "Food, convenience, travel, house repairs, and fun spending stay under the daily discretionary cap.",
   ];
   const safeSpendHurtFactors = [
     "Rent is late, expected income misses, or checking drops near the cash buffer.",
@@ -343,7 +354,24 @@ export function Dashboard() {
   const priorityGoal = useMemo(() => {
     const sorted = [...goals].sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
     const top = sorted[0];
-    if (!top || !cashFlow) return null;
+    if (!top) return null;
+    if (isLifeGoalType(top.category)) {
+      const progress = Math.min(
+        100,
+        Math.round((Math.max(0, top.currentAmount) / Math.max(1, top.targetAmount || 100)) * 100),
+      );
+      return {
+        name: top.name,
+        paceMessage:
+          progress >= 100
+            ? "Complete — pick the next compounding move."
+            : top.targetDate
+              ? `${progress}% in progress · target ${top.targetDate}`
+              : `${progress}% in progress — update from Goals when you push it.`,
+        onTrack: progress > 0,
+      };
+    }
+    if (!cashFlow) return null;
     const pace = calculateGoalPace({
       targetAmount: top.targetAmount,
       currentAmount: top.currentAmount,
@@ -434,12 +462,12 @@ export function Dashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 app-page">
         <div className="app-card-elevated p-8 max-w-sm w-full text-center">
-          <div className="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center mx-auto mb-4 ring-1 ring-teal-200/60">
-            <BrainCircuit className="text-teal-600" size={24} />
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4 ring-1 ring-blue-200/60">
+            <BrainCircuit className="text-blue-600" size={24} />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Personal CFO</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Life OS</h1>
           <p className="text-slate-500 mb-8 leading-relaxed">
-            Connect your banks, get a daily CFO brief, and turn transactions into clear next actions.
+            Connect your banks, get a daily brief, and turn money + life decisions into clear next actions.
           </p>
           <button
             onClick={() => router.push("/login")}
@@ -459,11 +487,11 @@ export function Dashboard() {
       onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
       className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-sm ${
         activeTab === tab
-          ? "bg-teal-50 text-teal-900 font-semibold ring-1 ring-teal-200/60"
-          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+          ? "app-nav-active"
+          : "text-slate-600 hover:bg-blue-50/60 hover:text-slate-900"
       }`}
     >
-      <Icon size={18} className={activeTab === tab ? "text-teal-600" : "text-slate-400"} />
+      <Icon size={18} className={activeTab === tab ? "text-blue-600" : "text-slate-400"} />
       {label}
     </button>
   );
@@ -475,28 +503,34 @@ export function Dashboard() {
       {/* Mobile Menu Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-slate-900/25 backdrop-blur-sm z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200/80 transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:flex flex-col shadow-sm ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 app-shell-sidebar transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5 px-2">
-            <div className="w-9 h-9 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm shadow-teal-600/25">
-              <BrainCircuit className="text-white" size={18} />
+            <div className="relative w-9 h-9 app-brand-mark rounded-xl flex items-center justify-center">
+              <span className="absolute top-1 right-1 app-live-dot" aria-hidden />
+              <BrainCircuit className="text-white relative z-[1]" size={18} />
             </div>
-            <span className="font-bold text-base tracking-tight text-slate-900">CFO Agent</span>
+            <div className="leading-tight">
+              <span className="app-display block text-[1.05rem] text-slate-900">Life OS</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700/80">
+                Money + life
+              </span>
+            </div>
           </div>
-          <button className="md:hidden p-2 text-slate-400 hover:bg-slate-50 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
+          <button className="md:hidden p-2 text-slate-400 hover:bg-blue-50/60 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
             <X size={20} />
           </button>
         </div>
 
         <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
           {renderNavItem("overview", LayoutDashboard, "Overview")}
-          {renderNavItem("chat", BrainCircuit, "CFO Chat")}
+          {renderNavItem("chat", BrainCircuit, "Coach")}
           {renderNavItem("growth", Flame, "Growth")}
           {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
@@ -505,12 +539,12 @@ export function Dashboard() {
           {renderNavItem("recurring", Repeat, "Recurring")}
         </nav>
 
-        <div className="p-4 border-t border-slate-200/80">
+        <div className="p-4 border-t border-[var(--card-border)]">
           <div className="app-card p-3 mb-4 text-center text-sm">
              {accounts.length > 0 ? (
                <>
                  <p className="font-medium text-slate-900 mb-2">{accounts.length} accounts linked</p>
-                 <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-slate-50 text-slate-800 hover:bg-slate-100 border-none py-1.5 px-3 text-xs shadow-none ring-1 ring-slate-200/60" />
+                 <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-white/70 text-slate-800 hover:bg-white border-none py-1.5 px-3 text-xs shadow-none ring-1 ring-[var(--card-border)]" />
                  <button
                    type="button"
                    onClick={() => handleSyncTransactions({ bypassCooldown: true })}
@@ -533,11 +567,16 @@ export function Dashboard() {
           <button
             type="button"
             onClick={handleReloadApp}
-            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200/60 transition-colors"
+            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 bg-white/60 hover:bg-white ring-1 ring-[var(--card-border)] transition-colors"
           >
             <RotateCcw size={16} />
             Reload app
           </button>
+
+          <div className="mb-3">
+            <p className="app-label mb-1.5 px-1">Theme</p>
+            <ThemeToggle />
+          </div>
 
           <div className="flex items-center justify-between px-2">
             <span className="text-sm font-medium text-slate-700 truncate pr-2">
@@ -553,9 +592,9 @@ export function Dashboard() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full min-w-0 bg-transparent">
-        <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-30">
+        <header className="flex items-center justify-between px-4 py-3 app-shell-header sticky top-0 z-30">
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 -ml-2 text-slate-600 hover:bg-blue-50/70 rounded-lg">
               <Menu size={22} />
             </button>
             <span className="md:hidden font-semibold text-base capitalize text-slate-900">{activeTab}</span>
@@ -573,6 +612,7 @@ export function Dashboard() {
                 {error instanceof Error ? error.message : "Failed to load"}
               </span>
             ) : null}
+            <ThemeToggle compact />
             <button
               type="button"
               onClick={handleReloadApp}
@@ -588,7 +628,7 @@ export function Dashboard() {
               onClick={handleRefreshAll}
               disabled={isRefreshing || isLoading || isFetching}
               className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors sm:px-3"
-              title="Sync transactions and refresh your CFO brief"
+              title="Sync transactions and refresh your daily brief"
             >
               <RefreshCw size={16} className={isRefreshing || isFetching ? "animate-spin" : ""} />
               Sync
@@ -597,14 +637,19 @@ export function Dashboard() {
         </header>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
-          <div className="max-w-4xl mx-auto w-full min-w-0 h-full flex flex-col">
+          {/* h-full only for chat — on other tabs it pads the scroll area and leaves a huge empty gap under the last card */}
+          <div
+            className={`max-w-4xl mx-auto w-full min-w-0 flex flex-col ${
+              activeTab === "chat" ? "h-full" : ""
+            }`}
+          >
             
             {/* View: CHAT */}
             {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col">
+              <div className="flex-1 flex flex-col h-full min-h-0">
                 <div className="mb-6 hidden md:block">
-                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">CFO Chat</h1>
-                  <p className="text-slate-500 mt-1">Ask what to do today, whether to hold cash, or which debt to attack next.</p>
+                  <h1 className="text-2xl app-display text-slate-900 tracking-tight">Coach</h1>
+                  <p className="text-slate-500 mt-1">Ask about money, career, body, what to buy, or what to protect today.</p>
                 </div>
                 <div className="flex-1 h-full min-h-[640px]">
                   <ChatInterface
@@ -624,6 +669,10 @@ export function Dashboard() {
                   aiInsight={displayInsight}
                   cashFlow={cashFlow}
                   safeSpendToday={safeSpendToday}
+                  safeSpendTodayReason={
+                    cashFlow.safeSpendTodayReason ??
+                    displayInsight.cfoBrief?.safeSpendTodayReason
+                  }
                   protectedCashBuffer={protectedCashBuffer}
                   monthlySafeSpend={monthlySafeSpend}
                   sixMonthSafeSpend={sixMonthSafeSpend}
@@ -632,7 +681,7 @@ export function Dashboard() {
                   briefUpdatedLabel={briefUpdatedLabel}
                   nextBriefLabel={nextBriefLabel}
                   refreshHours={briefRefreshInfo?.refreshHours}
-                  snapshots={snapshots}
+                  dailySpendSeries={dailySpendSeries}
                   onOpenChat={() => setActiveTab('chat')}
                   onOpenRecurring={() => setActiveTab('recurring')}
                   onOpenGrowth={() => setActiveTab('growth')}
@@ -765,13 +814,13 @@ export function Dashboard() {
                                 </span>
                               ) : null}
                               {t.isTenantPaymentCandidate && (
-                                <span className="text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ring-1 ring-teal-200/60">
+                                <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ring-1 ring-blue-200/60">
                                   Rent
                                 </span>
                               )}
                             </p>
                           </div>
-                          <p className={`font-semibold text-lg tabular-nums ${t.amount > 0 ? "text-slate-900" : "text-teal-600"}`}>
+                          <p className={`font-semibold text-lg tabular-nums ${t.amount > 0 ? "text-slate-900" : "text-blue-600"}`}>
                             {formatCurrency(Math.abs(t.amount))}
                           </p>
                         </li>

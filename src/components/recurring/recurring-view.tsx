@@ -68,7 +68,7 @@ const DISPOSITION_OPTIONS: Array<{
   { value: "expected", label: "Expected bill", description: "I know what this is — keep tracking it." },
   { value: "one_time", label: "One-time", description: "Not actually recurring." },
   { value: "not_concern", label: "Not a concern", description: "Reviewed and fine to keep." },
-  { value: "will_cancel", label: "Will cancel", description: "Remind the CFO I'm cutting this." },
+  { value: "will_cancel", label: "Will cancel", description: "Remind the Coach I'm cutting this." },
 ];
 
 function fetchRecurring() {
@@ -214,7 +214,7 @@ export function RecurringView({ onAskCfo, onViewTransactions }: Props) {
         <div className="app-card p-5 ring-1 ring-amber-200/60 bg-amber-50/40">
           <p className="app-label text-amber-700 mb-1">Needs review</p>
           <p className="text-2xl font-bold text-slate-900 tabular-nums">{summary?.needsReviewCount ?? 0}</p>
-          <p className="text-xs text-slate-500 mt-1">Unreviewed or flagged by CFO</p>
+          <p className="text-xs text-slate-500 mt-1">Unreviewed or flagged by Coach</p>
         </div>
       </div>
 
@@ -320,7 +320,7 @@ export function RecurringView({ onAskCfo, onViewTransactions }: Props) {
 
                   {pattern.cfoRecommendation ? (
                     <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200/60 leading-relaxed">
-                      <span className="font-semibold">CFO note:</span> {pattern.cfoRecommendation}
+                      <span className="font-semibold">Coach note:</span> {pattern.cfoRecommendation}
                     </p>
                   ) : null}
 
@@ -335,7 +335,7 @@ export function RecurringView({ onAskCfo, onViewTransactions }: Props) {
                       className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 ring-1 ring-teal-200/60 transition-colors"
                     >
                       <HelpCircle size={15} />
-                      Ask CFO
+                      Ask Coach
                     </button>
                     <button
                       type="button"
@@ -372,7 +372,7 @@ export function RecurringView({ onAskCfo, onViewTransactions }: Props) {
                 {reviewing && latest ? (
                   <div className="px-5 pb-5 border-t border-slate-100 bg-slate-50/70">
                     <p className="pt-4 text-sm font-semibold text-slate-900 mb-3">
-                      How should your CFO treat {pattern.merchantName}?
+                      How should your Coach treat {pattern.merchantName}?
                     </p>
                     <div className="grid sm:grid-cols-2 gap-2 mb-3">
                       {DISPOSITION_OPTIONS.map((option) => (

@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       memoryTitle,
-      message: "Saved — this charge won't show in Spending radar and your CFO will remember the context.",
+      message: "Saved — this charge won't show in Spending radar and your Coach will remember the context.",
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

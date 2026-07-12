@@ -14,18 +14,20 @@ The app should:
 - **Celebrate good weeks** — e.g. "You did well this week; it's okay to spend a little extra"
 - **Alert** when spending or habits drift off course (including thin network / ignored follow-ups)
 - Support occasional out-of-the-ordinary purchases without guilt, when the numbers justify it
-- Default variable spend ~**$25/day** most days; allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
+- Default variable spend ~**$40/day** most days (food/fun; gas and Lyft ops sit outside); allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
+- Separate Trell's emotional safety instinct from CFO math: Trell may want to stack cash because it feels comfortable, while the financially stronger move may be paying down high-APR cards once mortgage, minimums, bills, buffer, and near-term income are protected
 - Future-proof money by tying income and goals to the right accounts
 - Call out low-leverage traps plainly: e.g. "You don't need 6 hours of Lyft for ~$100 — protect a networking / promotion block too"
 
 ### Daily loop (logging flywheel)
 
 1. **Open Today Planner** — what to protect today (body, leverage, joy, optional Lyft)
-2. **Log as life happens** — gym, outreach, Lyft, spend, contact notes, screenshots
-3. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
-4. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
+2. **One highest-leverage move** — generate once per day; Skip/Done stick. Don't spam regenerate.
+3. **Log as life happens** — gym, outreach, Lyft, spend, contact notes, screenshots
+4. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
+5. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
 
-The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real Lyft-vs-leverage tradeoffs.
+The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real Lyft-vs-leverage tradeoffs. Skipped moves are remembered so the same promo-one-pager advice doesn't keep coming back when he already has boss guidance.
 
 ## Planning Philosophy
 
@@ -47,9 +49,10 @@ The planner is only useful if today's blocks fit the day shape — never suggest
 | **Weekend** | Sat–Sun | Open for longer intentional joy, longer leverage, recovery, and Lyft. |
 
 Rules:
-- `joyOptions` are a **preference menu**, not today's assignment. Never auto-label a block "Joy: [first option]" just because it is listed.
+- **Ideas for today** uses the LLM with live context: date, day shape (office / WFH / weekend), Oxon Hill–area weather, and profile notes. No stale joy-options list.
 - Name *when* a block fits (desk at lunch, evening after office, Thu deep block, Sat morning).
 - Weekend can hold a longer intentional joy block; weekdays shrink joy to what the calendar can actually hold.
+- System planner blocks are defaults. Trell can **add his own blocks** for real schedule items (appointments, family, church, etc.) — his calendar wins when he knows it.
 
 ## Life + money (not finance-only)
 
@@ -59,6 +62,7 @@ This product is becoming a **personal life OS with a CFO core** — money, caree
 - **Life goals** (promotion, gym/weight, startup leverage, network) are first-class too — tracked via growth profile, activities, and memories, not only dollar targets.
 - Agent advice should mix domains: a promotion block can beat an extra Lyft hour; a gym block protects tomorrow's work energy; cash decisions still protect the floor.
 - Weekly review judges whether the *week* compounded across life + money, not only whether spending was low.
+- **Promotion path:** Trell already has a list from his boss on how to get promoted. Do not keep suggesting "draft a promo one-pager" from scratch — help execute the next concrete item from that existing path, or pick different leverage when that theme is skipped.
 
 ### Screenshots as fast life updates
 
@@ -95,12 +99,15 @@ Sign-in is **email + 6-digit code** (passcode sent to email), **not** email + pa
 
 | Account | Role | Income |
 |---------|------|--------|
-| **Chase** (primary) | Main checking; day-to-day and paycheck hub | Direct-deposit paychecks |
+| **Chase** (primary) | Main checking; day-to-day and paycheck hub | W2 direct-deposit paychecks every Friday |
 | **Capital One** (secondary) | Goals, plans, side-income bucket | Lyft driving earnings (after weekly Hertz/Lyft program fee) |
 
 When modeling features, allocations, or coach advice:
 
+- Prefer **spendable/available** checking balances for cash decisions — not ledger "current" (pending holds make current feel fake)
 - Paycheck → Chase
+- W2 paycheck cadence: **every Friday**
+- Mortgage cadence: due around the **1st of each month** (roughly $2,659; e.g. in mid-July the next mortgage date is Aug 1)
 - Lyft / gig income → Capital One
 - Lyft has a **weekly program/rental fee** that must be covered before the week is profitable
 - Goals and plans should be future-proofed against the account that actually holds that money
@@ -131,6 +138,7 @@ The CFO should treat money as a **tool being hardened and assembled** — not ju
 - Assess decisions by impact on: cash buffer, debt velocity, tenant stability, credit access, real estate readiness, and income engines (W2, rental, Lyft, startup).
 - Prefer recommendations that create positive feedback loops: less leakage → more debt paydown → lower utilization → better credit → more optionality.
 - When goals compete, say which choice hardens the floor vs which bets on upside without a stable base.
+- When cash is available but Trell feels nervous spending it on debt, explicitly name both layers: the emotional brain wants comfort/cash, while the CFO checks the protected floor and may recommend an extra high-APR card payment anyway.
 
 ## What Not to Assume
 

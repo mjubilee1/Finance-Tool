@@ -45,7 +45,7 @@ const REASON_COPY: Record<
 > = {
   cryptic_name: {
     label: "Unknown merchant",
-    hint: "Cryptic charge — ask the CFO what it is, or cancel if you don't recognize it.",
+    hint: "Cryptic charge — ask the Coach what it is, or cancel if you don't recognize it.",
     score: 45,
   },
   uncategorized: {

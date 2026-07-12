@@ -98,13 +98,16 @@ Active-context rules:
 - Name when an action fits (desk lunch message, Thu deep block, evening/weekend Lyft or meet).
 - Often weigh: drive Lyft today (cover weekly Hertz/Lyft fee → Capital One surplus) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost — e.g. "skip grinding 6 Lyft hours for ~$100 if a network/promotion block compounds more; cover the fee floor first, then protect leverage."
 - Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
-- Default discretionary target ~$25 most days; celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
+- Default discretionary target ~$40 most days (food/fun; gas/Lyft outside); celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
 - Family/personal contacts can exist unlabeled or as "family" without notes — do not nag for notes or treat them as compounding bottlenecks. Prioritize notes on mentors, founders, peers, investors, dating-with-intent.
 - Mix money + life: career/promotion, fitness/body, startup leverage, relationships, and cash are one reinforcing system — not a finance-only coach.
-- joyOptions are a preference menu only. Never prescribe a specific joy outing as today's required block just because it appears in the profile.
 - When the user shares screenshots (gym schedule, calendar, plans), treat extracted facts as durable context for recommendations — prefer schedule-feasible moves.
-- Home base is Oxon Hill / DMV. Suggest nearby leisure (National Harbor, local PG/DC) for breaks after logged effort; save longer trips for weekends or open days. Rest and local enjoyment are allowed when intentional.
+- Home base is Oxon Hill / DMV. Suggest nearby leisure for breaks after logged effort; save longer trips for weekends or open days. Rest and local enjoyment are allowed when intentional.
+- Joy ideas are generated live (weather + day shape + date) — do not rely on a stale joyOptions list.
+- One highest-leverage move per day. Do not regenerate the same theme if it was skipped or done.
+- If memories/context say the user already has a boss promotion list / existing promo plan, do NOT suggest drafting a promo one-pager — suggest executing the next concrete item from their existing path, or a different leverage domain.
+- When CONTEXT includes avoidedMoves / skippedMoves, propose something meaningfully different.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block instead of low-ROI Lyft")
@@ -246,8 +249,9 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     .slice(0, 8);
 
   const goalsBehind = (() => {
+    // Match Goals tab: use full checking/depository cash, not primary-only focus cash.
     const funding = calculateGoalFunding({
-      checkingCash: brief.cashAvailable,
+      checkingCash: depository,
       goals,
     });
     const fundedById = new Map(funding.goals.map((g) => [g.id, g]));
@@ -255,9 +259,11 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     return goals
       .map((g) => {
         const funded = fundedById.get(g.id);
-        const progressPct = funded?.progressPct ?? (g.targetAmount > 0
-          ? clamp((g.currentAmount / g.targetAmount) * 100)
-          : 0);
+        const progressPct =
+          funded?.progressPct ??
+          (g.targetAmount > 0 ? clamp((g.currentAmount / g.targetAmount) * 100) : 0);
+        // Match Goals UI: checking coverage counts — don't nag fully funded goals.
+        if (funded?.fullyFunded || progressPct >= 100) return null;
         const daysLeft = daysBetween(today, g.targetDate);
         const behind =
           Boolean(g.targetDate) &&
@@ -488,35 +494,51 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 }
 
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
-  const [memories, goals, contacts, recentActivities, snapshots, profile] = await Promise.all([
-    prisma.financialMemory.findMany({
-      where: { userId },
-      orderBy: { importanceScore: "desc" },
-      take: 12,
-    }),
-    prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
-    prisma.growthContact.findMany({
-      where: { userId },
-      take: 25,
-      include: {
-        noteEntries: {
-          orderBy: { createdAt: "asc" },
-          select: { id: true, body: true, images: true, createdAt: true },
+  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves] =
+    await Promise.all([
+      prisma.financialMemory.findMany({
+        where: { userId },
+        orderBy: { importanceScore: "desc" },
+        take: 12,
+      }),
+      prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
+      prisma.growthContact.findMany({
+        where: { userId },
+        take: 25,
+        include: {
+          noteEntries: {
+            orderBy: { createdAt: "asc" },
+            select: { id: true, body: true, images: true, createdAt: true },
+          },
         },
-      },
-    }),
-    prisma.growthActivity.findMany({
-      where: { userId },
-      orderBy: { date: "desc" },
-      take: 30,
-    }),
-    prisma.growthSnapshot.findMany({
-      where: { userId },
-      orderBy: { date: "desc" },
-      take: 14,
-    }),
-    prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
-  ]);
+      }),
+      prisma.growthActivity.findMany({
+        where: { userId },
+        orderBy: { date: "desc" },
+        take: 30,
+      }),
+      prisma.growthSnapshot.findMany({
+        where: { userId },
+        orderBy: { date: "desc" },
+        take: 14,
+      }),
+      prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
+      prisma.growthRecommendation.findMany({
+        where: { userId, date: { gte: fourteenDaysAgo } },
+        orderBy: { date: "desc" },
+        take: 14,
+      }),
+    ]);
+
+  const skippedOrDoneMoves = recentMoves
+    .filter((m) => m.status === "skipped" || m.status === "done")
+    .map((m) => ({
+      date: m.date,
+      status: m.status,
+      action: m.action,
+      domain: m.domain,
+    }));
 
   return {
     lifeLeverageProfile: profile,
@@ -551,6 +573,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       score: s.compoundingScore,
       bottlenecks: s.bottlenecks,
     })),
+    avoidedMoves: skippedOrDoneMoves,
     metrics,
   };
 }
@@ -601,11 +624,13 @@ export async function generateHighLeverageRecommendation(
   options?: { force?: boolean },
 ) {
   const today = DateTime.local().toISODate()!;
-  if (!options?.force) {
-    const existing = await prisma.growthRecommendation.findUnique({
-      where: { userId_date: { userId, date: today } },
-    });
-    if (existing) return existing;
+  const existing = await prisma.growthRecommendation.findUnique({
+    where: { userId_date: { userId, date: today } },
+  });
+
+  // One move per day unless explicitly forcing a replacement.
+  if (existing && !options?.force) {
+    return existing;
   }
 
   const metrics = await calculateGrowthMetrics(userId);
@@ -617,6 +642,9 @@ export async function generateHighLeverageRecommendation(
 
   try {
     const context = await gatherGrowthContext(userId, metrics);
+    const avoidNote = existing
+      ? `\nUser is replacing today's move. Previous action was "${existing.action}" (status: ${existing.status}). Propose something meaningfully different — do not rephrase the same task.`
+      : "";
     const completion = await openai.chat.completions.create({
       model: "gpt-5",
       response_format: { type: "json_object" },
@@ -626,6 +654,12 @@ export async function generateHighLeverageRecommendation(
           role: "user",
           content: `Given goals, finances, relationships, workload signals, health context, and available time, answer:
 What is the highest-leverage thing I can do TODAY?
+
+Rules for this response:
+- One move for today only.
+- Respect avoidedMoves (skipped/done recently) — do not recycle them.
+- If memories say the user already has a boss promotion checklist / existing promo plan, do not invent a "draft promo one-pager" — either point at executing one concrete next step from their existing path, or pick a different domain.
+${avoidNote}
 
 Return JSON exactly (keep every string SHORT — scannable mobile UI):
 {
@@ -691,7 +725,8 @@ ${JSON.stringify(context)}`,
 }
 
 async function upsertDetectedOpportunities(userId: string, raw: unknown[]) {
-  for (const item of raw.slice(0, 5)) {
+  // Keep AI suggestions tiny — syncOpportunities hard-caps open list to 3.
+  for (const item of raw.slice(0, 2)) {
     if (!item || typeof item !== "object") continue;
     const opp = item as Record<string, unknown>;
     if (typeof opp.title !== "string" || !opp.title.trim()) continue;
@@ -741,28 +776,33 @@ function isStaleOpportunityCopy(text: string) {
 }
 
 export async function syncOpportunities(userId: string, metrics: GrowthMetrics) {
+  const MAX_OPEN = 3;
+  const urgencyRank = { high: 3, medium: 2, low: 1 } as const;
+
   const candidates: Array<{
     title: string;
     description: string;
     domain: string;
     urgency: "low" | "medium" | "high";
     relatedPeople: string[];
+    score: number;
   }> = [];
 
-  for (const contact of metrics.contactsNeedingAttention.slice(0, 3)) {
+  // Prefer real outreach over admin-y "add notes" chores — humans can only do a few.
+  for (const contact of metrics.contactsNeedingAttention.slice(0, 2)) {
     candidates.push({
       title: `Reconnect with ${contact.name}`,
       description:
         contact.daysSinceContact === null
-          ? `${contact.name} has no recent contact logged. A short follow-up protects relationship compounding.`
-          : `${contact.name} hasn't been contacted in ${contact.daysSinceContact} days.`,
+          ? `${contact.name} has no recent contact logged. One short follow-up protects compounding.`
+          : `${contact.name} — ${contact.daysSinceContact} days since last contact. Send one focused message.`,
       domain: "social",
       urgency: (contact.daysSinceContact ?? 30) >= 30 ? "high" : "medium",
       relatedPeople: [contact.name],
+      score: 40 + ((contact.daysSinceContact ?? 30) >= 30 ? 20 : 10),
     });
   }
 
-  // Always surface network growth when the graph is thin — not only when someone is "stale".
   const contacts = await prisma.growthContact.findMany({
     where: { userId, status: "active" },
     orderBy: { updatedAt: "desc" },
@@ -771,72 +811,167 @@ export async function syncOpportunities(userId: string, metrics: GrowthMetrics) 
   });
   const withoutNotes = contacts.filter((c) => {
     const type = (c.relationshipType ?? "").toLowerCase();
-    // Family / personal aren't compounding targets — don't nag for notes.
     if (["family", "personal", "roommate", "tenant"].includes(type)) return false;
     return !contactHasNotes(c);
   });
+
   if (contacts.length === 0) {
     candidates.push({
       title: "Add 3 high-leverage people to your network map",
       description:
-        "Growth compounds through relationships. Start with mentors, founders, and warm intros — not your whole phone book.",
+        "Start with mentors, founders, and warm intros — not the whole phone book.",
       domain: "social",
       urgency: "high",
       relatedPeople: [],
+      score: 50,
     });
-  } else if (withoutNotes.length > 0) {
+  } else if (metrics.activityCounts.social === 0) {
+    candidates.push({
+      title: "One networking move this week",
+      description:
+        "Message, intro ask, or 15-min call with someone already on your map.",
+      domain: "social",
+      urgency: "high",
+      relatedPeople: contacts.slice(0, 2).map((c) => c.name),
+      score: 45,
+    });
+  } else if (withoutNotes.length > 0 && candidates.length === 0) {
+    // Only nudge notes when there isn't already a stronger outreach candidate.
     const focus = withoutNotes[0];
     candidates.push({
       title: `Capture notes on ${focus.name}`,
       description:
-        "Name-only contacts don't compound. Add who they are, mutual value, and one next conversation so networking advice can get specific.",
+        "One line on who they are, mutual value, and a next conversation.",
       domain: "social",
-      urgency: "medium",
+      urgency: "low",
       relatedPeople: [focus.name],
-    });
-  }
-  if (contacts.length > 0 && metrics.activityCounts.social === 0) {
-    candidates.push({
-      title: "Log one networking move this week",
-      description:
-        "You have people on the map but no social activity logged. One message, intro ask, or coffee compounds more than another low-signal scroll.",
-      domain: "social",
-      urgency: "high",
-      relatedPeople: contacts.slice(0, 2).map((c) => c.name),
+      score: 15,
     });
   }
 
   if (metrics.leverageMix.longTermLeverage === 0) {
     candidates.push({
-      title: "Schedule a long-term leverage block this week",
+      title: "Protect one leverage block this week",
       description:
-        "Recent logged time leans toward immediate income. Protect one block for building, learning, or networking.",
+        "Recent time leans immediate income. Block 45–90 min for build, promo, or network.",
       domain: "startup",
       urgency: "high",
       relatedPeople: [],
+      score: 48,
     });
   }
 
-  // Only nudge goals that are still underfunded after checking allocation.
-  for (const goal of metrics.goalsBehind.slice(0, 2)) {
+  for (const goal of metrics.goalsBehind.slice(0, 1)) {
     if (goal.progressPct >= 80) continue;
     candidates.push({
       title: `Unstick goal: ${goal.name}`,
-      description: `${goal.name} is behind (${Math.round(goal.progressPct)}% covered by checking/savings). Decide the next smallest high-leverage action.`,
+      description: `${goal.name} is behind (${Math.round(goal.progressPct)}% covered). Next smallest cash or income move.`,
       domain: "financial",
       urgency: "medium",
       relatedPeople: [],
+      score: 30 + Math.max(0, 50 - goal.progressPct) / 5,
     });
   }
 
-  for (const candidate of candidates) {
+  // Drop stale funded-goal cards using the same checking-coverage math as Goals.
+  const openGoalNudges = await prisma.growthOpportunity.findMany({
+    where: {
+      userId,
+      status: "open",
+      title: { startsWith: "Unstick goal:" },
+    },
+  });
+  if (openGoalNudges.length > 0) {
+    const accounts = await prisma.financialAccount.findMany({ where: { userId } });
+    const goals = await prisma.financialGoal.findMany({
+      where: { userId, status: "active" },
+    });
+    const checkingCash = accounts
+      .filter((a) => a.type === "depository")
+      .reduce((sum, a) => sum + (a.availableBalance ?? a.currentBalance ?? 0), 0);
+    const funding = calculateGoalFunding({ checkingCash, goals });
+    const fundedByName = new Map(funding.goals.map((g) => [g.name, g]));
+    const behindNames = new Set(metrics.goalsBehind.map((g) => g.name));
+
+    for (const nudge of openGoalNudges) {
+      const goalName = nudge.title.replace(/^Unstick goal:\s*/i, "").trim();
+      const funded = fundedByName.get(goalName);
+      const behind = metrics.goalsBehind.find((g) => g.name === goalName);
+      const stillNeeded =
+        Boolean(funded) &&
+        !funded!.fullyFunded &&
+        funded!.progressPct < 80 &&
+        behindNames.has(goalName) &&
+        (behind?.progressPct ?? 100) < 80;
+      if (!stillNeeded) {
+        await prisma.growthOpportunity.update({
+          where: { id: nudge.id },
+          data: { status: "dismissed" },
+        });
+      }
+    }
+  }
+
+  // Drop generic note-capture spam — keep at most one open "Capture notes" card.
+  const openNoteNudges = await prisma.growthOpportunity.findMany({
+    where: {
+      userId,
+      status: "open",
+      title: { startsWith: "Capture notes on " },
+    },
+    orderBy: { detectedAt: "desc" },
+  });
+  for (const nudge of openNoteNudges.slice(1)) {
+    await prisma.growthOpportunity.update({
+      where: { id: nudge.id },
+      data: { status: "dismissed" },
+    });
+  }
+
+  const topCandidates = [...candidates]
+    .sort((a, b) => b.score - a.score || urgencyRank[b.urgency] - urgencyRank[a.urgency])
+    .slice(0, MAX_OPEN);
+
+  for (const candidate of topCandidates) {
     const existing = await prisma.growthOpportunity.findFirst({
       where: { userId, title: candidate.title, status: "open" },
     });
     if (existing) continue;
     await prisma.growthOpportunity.create({
-      data: { userId, ...candidate },
+      data: {
+        userId,
+        title: candidate.title,
+        description: candidate.description,
+        domain: candidate.domain,
+        urgency: candidate.urgency,
+        relatedPeople: candidate.relatedPeople,
+      },
     });
+  }
+
+  // Hard cap: humans get a small focused list, not a backlog wall.
+  const open = await prisma.growthOpportunity.findMany({
+    where: { userId, status: "open" },
+    orderBy: [{ urgency: "desc" }, { detectedAt: "desc" }],
+  });
+  const keepIds = new Set(
+    [...open]
+      .sort(
+        (a, b) =>
+          urgencyRank[(b.urgency as "low" | "medium" | "high") ?? "medium"] -
+            urgencyRank[(a.urgency as "low" | "medium" | "high") ?? "medium"] ||
+          b.detectedAt.getTime() - a.detectedAt.getTime(),
+      )
+      .slice(0, MAX_OPEN)
+      .map((o) => o.id),
+  );
+  for (const opp of open) {
+    if (!keepIds.has(opp.id)) {
+      await prisma.growthOpportunity.update({
+        where: { id: opp.id },
+        data: { status: "dismissed" },
+      });
+    }
   }
 }
 
@@ -1031,7 +1166,7 @@ export async function getGrowthDashboard(userId: string) {
   const today = metrics.date;
   const weekStart = weekStartIso();
 
-  const [recommendation, weeklyReview, opportunities, activities, contacts, snapshots, profile] =
+  const [recommendation, weeklyReview, rawOpportunities, activities, contacts, snapshots, profile] =
     await Promise.all([
       prisma.growthRecommendation.findUnique({
         where: { userId_date: { userId, date: today } },
@@ -1041,7 +1176,7 @@ export async function getGrowthDashboard(userId: string) {
       }),
       prisma.growthOpportunity.findMany({
         where: { userId, status: "open" },
-        orderBy: [{ urgency: "desc" }, { detectedAt: "desc" }],
+        orderBy: { detectedAt: "desc" },
         take: 12,
       }),
       prisma.growthActivity.findMany({
@@ -1067,6 +1202,16 @@ export async function getGrowthDashboard(userId: string) {
       }),
       prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
     ]);
+
+  const urgencyRank = { high: 3, medium: 2, low: 1 } as const;
+  const opportunities = [...rawOpportunities]
+    .sort(
+      (a, b) =>
+        (urgencyRank[(b.urgency as keyof typeof urgencyRank) ?? "medium"] ?? 2) -
+          (urgencyRank[(a.urgency as keyof typeof urgencyRank) ?? "medium"] ?? 2) ||
+        b.detectedAt.getTime() - a.detectedAt.getTime(),
+    )
+    .slice(0, 3);
 
   return {
     metrics,
