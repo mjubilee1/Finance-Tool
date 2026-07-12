@@ -11,7 +11,7 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, LayoutDashboard, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, Flame, LayoutDashboard, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -21,12 +21,13 @@ import { ChatInterface } from "./chat-interface";
 import { ConnectBankButton } from "./connect-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
+import { GrowthView } from "./growth/growth-view";
 import { OverviewHome } from "./overview/overview-home";
 import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
 import { RecurringView } from "./recurring/recurring-view";
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth';
 
 type DashboardAccount = {
   id: string;
@@ -494,6 +495,7 @@ export function Dashboard() {
         <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
           {renderNavItem("overview", LayoutDashboard, "Overview")}
           {renderNavItem("chat", BrainCircuit, "CFO Chat")}
+          {renderNavItem("growth", Flame, "Growth")}
           {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
@@ -631,6 +633,7 @@ export function Dashboard() {
                   snapshots={snapshots}
                   onOpenChat={() => setActiveTab('chat')}
                   onOpenRecurring={() => setActiveTab('recurring')}
+                  onOpenGrowth={() => setActiveTab('growth')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                 />
@@ -641,6 +644,9 @@ export function Dashboard() {
                 </div>
               )
             )}
+
+            {/* View: GROWTH */}
+            {activeTab === 'growth' && <GrowthView />}
 
             {/* View: ACCOUNTS */}
             {activeTab === 'accounts' && (

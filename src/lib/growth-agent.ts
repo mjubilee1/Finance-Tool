@@ -94,8 +94,8 @@ function weekStartIso(date = DateTime.local()) {
   return date.startOf("week").toISODate()!;
 }
 
-function daysBetween(from: string | null | undefined, to: string) {
-  if (!from) return null;
+function daysBetween(from: string | null | undefined, to: string | null | undefined) {
+  if (!from || !to) return null;
   const a = DateTime.fromISO(from);
   const b = DateTime.fromISO(to);
   if (!a.isValid || !b.isValid) return null;

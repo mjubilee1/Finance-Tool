@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateHighLeverageRecommendation } from "@/lib/growth-agent";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
@@ -33,7 +34,6 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Invalid id or status" }, { status: 400 });
     }
 
-    const { prisma } = await import("@/lib/prisma");
     const updated = await prisma.growthRecommendation.updateMany({
       where: { id, userId: session.user.id },
       data: { status },
