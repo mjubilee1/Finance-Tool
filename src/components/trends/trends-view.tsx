@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import {
+  BookOpenCheck,
   ExternalLink,
   Loader2,
   ParkingCircle,
@@ -47,6 +48,9 @@ const THEME_LABELS: Record<string, string> = {
   infra: "Infra",
   startup: "Startup",
   hardware_software: "Hardware × software",
+  markets: "Markets",
+  real_estate: "Real estate",
+  dmv_state: "DMV · politics",
 };
 
 function themeLabel(theme: string) {
@@ -129,6 +133,8 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
   }
 
   const updatedLabel = DateTime.fromISO(digest.updatedAt).toFormat("MMM d · h:mm a");
+  const readThisItemId =
+    digest.items.find((item) => item.status !== "dismissed" && item.status !== "parked")?.id ?? null;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -136,8 +142,8 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
         <div>
           <h1 className="text-2xl app-display text-slate-900 tracking-tight">Trends</h1>
           <p className="text-sm text-slate-600 mt-1 leading-relaxed max-w-xl">
-            Signal for a builder — AI models, labs, infra, and how hardware + software connect.
-            Not a firehose. Not a reason to start something new.
+            AI + builder signal, plus Maryland / DC / Virginia news and politics — because you live in
+            the DMV. Tight TLDR only; Source opens the real article.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -183,6 +189,9 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
         <p className="mt-4 text-sm font-medium text-teal-900 leading-relaxed">
           One action: {digest.mainThing.oneAction}
         </p>
+        <p className="mt-2 text-xs font-medium text-teal-800/80">
+          This is the TLDR/action. The one source worth a deeper read is marked “Read this” below.
+        </p>
       </div>
 
       <div className="space-y-3">
@@ -194,12 +203,20 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
 
         {digest.items.map((item) => {
           const inactive = item.status === "dismissed" || item.status === "parked";
+          const readThis = item.id === readThisItemId && !inactive;
           return (
             <article
               key={item.id}
-              className={`app-card p-5 ${inactive ? "opacity-60" : ""}`}
+              className={`app-card p-5 ${
+                readThis ? "ring-2 ring-orange-300/80 bg-orange-50/30" : ""
+              } ${inactive ? "opacity-60" : ""}`}
             >
               <div className="flex flex-wrap gap-2 mb-2">
+                {readThis ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-orange-900 bg-orange-100 px-2 py-0.5 rounded-md">
+                    <BookOpenCheck size={11} /> Read this
+                  </span>
+                ) : null}
                 <span className="text-[10px] uppercase tracking-wider font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
                   {themeLabel(item.theme)}
                 </span>
@@ -223,9 +240,11 @@ export function TrendsView({ onOpenGrowth }: { onOpenGrowth?: () => void }) {
                     href={item.sourceUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                      readThis ? "text-orange-700 hover:text-orange-900" : "text-slate-600 hover:text-slate-900"
+                    }`}
                   >
-                    Source <ExternalLink size={12} />
+                    {readThis ? "Read source" : "Source"} <ExternalLink size={12} />
                   </a>
                 ) : null}
                 <button

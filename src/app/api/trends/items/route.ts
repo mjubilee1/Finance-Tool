@@ -5,8 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { TREND_ITEM_STATUSES, type TrendItemStatus } from "@/lib/trends";
 import { DateTime } from "luxon";
 
-function themeToDomain(theme: string): "startup" | "career" {
+function themeToDomain(theme: string): "startup" | "career" | "personal" | "financial" {
   if (theme === "startup" || theme === "labs") return "startup";
+  if (theme === "real_estate" || theme === "markets") return "financial";
+  if (theme === "dmv_state") return "personal";
   return "career";
 }
 
