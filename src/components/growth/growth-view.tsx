@@ -597,18 +597,20 @@ export function GrowthView() {
           ) : (
             <ul className="space-y-2.5">
               {contacts.slice(0, 8).map((c) => (
-                <li key={c.id} className="flex justify-between gap-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-900">{c.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {c.relationshipType ?? "contact"} · {c.status}
-                      {c.lastContactDate ? ` · last ${c.lastContactDate}` : " · no contact date"}
-                    </p>
-                    {c.notes ? (
-                      <p className="text-xs text-slate-600 mt-1 line-clamp-2">{c.notes}</p>
-                    ) : null}
-                  </div>
-                  <span className="text-xs text-slate-400 shrink-0">Trust {c.trustLevel}/5</span>
+                <li key={c.id} className="text-sm">
+                  <p className="font-medium text-slate-900">{c.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {c.relationshipType ?? "contact"} · {c.status}
+                    {c.lastContactDate ? ` · last ${c.lastContactDate}` : " · no contact date"}
+                  </p>
+                  {c.notes ? (
+                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">{c.notes}</p>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-1">No notes yet — add context when you can.</p>
+                  )}
+                  {c.suggestedNextAction ? (
+                    <p className="text-xs text-teal-700 mt-1">Next: {c.suggestedNextAction}</p>
+                  ) : null}
                 </li>
               ))}
             </ul>
