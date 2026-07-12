@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/format";
 import { getStatusStyle } from "@/lib/cash-flow";
 import type { TodayCashFlow, WeeklyCashFlow } from "@/lib/cash-flow";
@@ -8,7 +9,7 @@ import { TodayCashFlowMeter } from "./today-cash-flow-meter";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Flame, Sparkles } from "lucide-react";
 
 type CfoBrief = {
   status?: string;
@@ -59,6 +60,7 @@ type Props = {
   snapshots: Array<Record<string, unknown>>;
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
+  onOpenGrowth?: () => void;
   priorityGoal?: {
     name: string;
     paceMessage: string;
@@ -82,6 +84,7 @@ export function OverviewHome({
   snapshots,
   onOpenChat,
   onOpenRecurring,
+  onOpenGrowth,
   priorityGoal,
   isBriefPending = false,
 }: Props) {
@@ -91,6 +94,21 @@ export function OverviewHome({
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
+
+  const { data: growthPreview } = useQuery({
+    queryKey: ["growth-overview-preview"],
+    queryFn: async () => {
+      const res = await fetch("/api/growth");
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        metrics: { compoundingScore: number; bottlenecks: string[]; improving: boolean };
+        recommendation: { action: string; whyItMatters: string; timeRequiredMinutes: number } | null;
+        opportunities: Array<{ title: string }>;
+      }>;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
 
   return (
     <div className="space-y-5">
@@ -143,6 +161,36 @@ export function OverviewHome({
           ) : null}
         </div>
       )}
+
+      {growthPreview?.metrics ? (
+        <button
+          type="button"
+          onClick={() => onOpenGrowth?.()}
+          className="w-full text-left app-card p-4 ring-1 ring-orange-200/70 bg-orange-50/40 hover:bg-orange-50 transition-colors"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Flame size={16} className="text-orange-600" />
+                <p className="app-label text-orange-800">Growth leverage</p>
+              </div>
+              <p className="font-semibold text-slate-900">
+                Compounding score: {Math.round(growthPreview.metrics.compoundingScore)}
+                {growthPreview.metrics.improving ? " · improving" : " · needs attention"}
+              </p>
+              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                {growthPreview.recommendation?.action ??
+                  growthPreview.opportunities?.[0]?.title ??
+                  "Open Growth to generate today’s highest-leverage action."}
+              </p>
+              {growthPreview.metrics.bottlenecks?.[0] ? (
+                <p className="text-xs text-amber-800 mt-2">Bottleneck: {growthPreview.metrics.bottlenecks[0]}</p>
+              ) : null}
+            </div>
+            <span className="text-xs font-semibold text-orange-700 shrink-0">Open →</span>
+          </div>
+        </button>
+      ) : null}
 
       {priorityGoal && (
         <div

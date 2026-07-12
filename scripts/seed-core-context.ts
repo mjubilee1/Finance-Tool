@@ -1,8 +1,8 @@
+import crypto from "crypto";
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma";
 import { getEmbedding } from "../src/lib/openai";
 import { getPineconeIndex } from "../src/lib/pinecone";
-import crypto from "crypto";
+import { prisma } from "../src/lib/prisma";
 
 const shouldUpdate = process.argv.includes("--update");
 const pineconeEnabled =

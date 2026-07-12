@@ -1,31 +1,30 @@
 "use client";
 
+import { sumDepositoryCash } from "@/lib/account-focus";
+import { calculateGoalPace } from "@/lib/cash-flow";
 import { formatCurrency } from "@/lib/format";
+import {
+    getOldestAccountUpdate,
+    isBalanceStale,
+    refreshPlaidBalances,
+    type BalanceRefreshMeta,
+} from "@/lib/plaid-balances";
+import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, Search, BrainCircuit, LayoutDashboard, Wallet, Receipt, TrendingUp, Menu, X, RefreshCw, RotateCcw, Repeat, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, LayoutDashboard, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ConnectBankButton } from "./connect-bank-button";
-import { PlaidOAuthHandler } from "./plaid-oauth-handler";
-import { Projections } from "./projections";
+import { AccountsView } from "./accounts-view";
+import { AppVersion } from "./app-version";
 import { ChatInterface } from "./chat-interface";
+import { ConnectBankButton } from "./connect-bank-button";
+import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
 import { OverviewHome } from "./overview/overview-home";
-import { AccountsView } from "./accounts-view";
-import { DashboardSkeleton } from "./dashboard-skeleton";
-import { calculateGoalPace } from "@/lib/cash-flow";
-import { sumDepositoryCash } from "@/lib/account-focus";
-import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
-import {
-  getOldestAccountUpdate,
-  isBalanceStale,
-  refreshPlaidBalances,
-  type BalanceRefreshMeta,
-} from "@/lib/plaid-balances";
-import { Target } from "lucide-react";
+import { PlaidOAuthHandler } from "./plaid-oauth-handler";
+import { Projections } from "./projections";
 import { RecurringView } from "./recurring/recurring-view";
-import { AppVersion } from "./app-version";
 
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals';
 
