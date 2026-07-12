@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
+import { handlePlaidWebhook, verifyPlaidWebhook } from "@/lib/plaid-webhook";
 
 export async function POST(request: Request) {
+  const body = await request.text();
+
   try {
-    const body = await request.json();
-    const { webhook_type, webhook_code, item_id } = body;
+    const verified = await verifyPlaidWebhook(body, request.headers.get("plaid-verification"));
+    if (!verified) {
+      return NextResponse.json({ error: "Invalid webhook signature." }, { status: 401 });
+    }
 
-    console.log(`[Plaid Webhook] Ignored: ${webhook_type} - ${webhook_code} for item: ${item_id}`);
+    const payload = JSON.parse(body) as Parameters<typeof handlePlaidWebhook>[0];
+    await handlePlaidWebhook(payload);
 
-    // Always respond with a 200 to acknowledge receipt of the webhook
     return NextResponse.json({ status: "ok" });
   } catch (error) {
     console.error("[Plaid Webhook] Error processing webhook:", error);
-    // Still return 200 so Plaid doesn't retry endlessly for invalid payloads
+    // Acknowledge so Plaid does not retry endlessly on transient failures.
     return NextResponse.json({ status: "error" }, { status: 200 });
   }
 }

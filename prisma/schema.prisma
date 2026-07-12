@@ -79,16 +79,21 @@ model User {
 }
 
 model PlaidItem {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   userId               String
   institutionName      String?
   institutionId        String?
-  plaidItemId          String   @unique
+  plaidItemId          String    @unique
   encryptedAccessToken String
   cursor               String?
-  status               String   @default("active")
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  /// active | login_required | pending_expiration | revoked | error
+  status               String    @default("active")
+  errorCode            String?
+  errorMessage         String?
+  lastSyncedAt         DateTime?
+  statusUpdatedAt      DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -154,6 +154,18 @@ export async function GET() {
         balanceRefreshesToday,
         dailyBalanceCallLimit,
       },
+      plaidConnections: plaidItems.map((item) => ({
+        itemId: item.plaidItemId,
+        institutionName: item.institutionName,
+        status: item.status,
+        errorCode: item.errorCode,
+        errorMessage: item.errorMessage,
+        lastSyncedAt: item.lastSyncedAt,
+        needsReauth:
+          item.status === "login_required" ||
+          item.status === "pending_expiration" ||
+          item.status === "revoked",
+      })),
     });
   } catch (error) {
     console.error("Failed to fetch dashboard data:", error);

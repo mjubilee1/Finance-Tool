@@ -15,6 +15,10 @@ export async function GET() {
       select: {
         plaidItemId: true,
         institutionName: true,
+        status: true,
+        errorCode: true,
+        errorMessage: true,
+        lastSyncedAt: true,
         createdAt: true,
       },
     });
@@ -23,7 +27,15 @@ export async function GET() {
       items: items.map((item) => ({
         itemId: item.plaidItemId,
         institutionName: item.institutionName,
+        status: item.status,
+        errorCode: item.errorCode,
+        errorMessage: item.errorMessage,
+        lastSyncedAt: item.lastSyncedAt,
         linkedAt: item.createdAt,
+        needsReauth:
+          item.status === "login_required" ||
+          item.status === "pending_expiration" ||
+          item.status === "revoked",
       })),
     });
   } catch (error) {

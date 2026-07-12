@@ -20,6 +20,7 @@ import { AccountsView } from "./accounts-view";
 import { AppVersion } from "./app-version";
 import { ChatInterface } from "./chat-interface";
 import { ConnectBankButton } from "./connect-bank-button";
+import { ReauthBankButton } from "./reauth-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
 import { GrowthView } from "./growth/growth-view";
@@ -149,6 +150,16 @@ type DashboardGoal = {
   category?: string;
 };
 
+type PlaidConnection = {
+  itemId: string;
+  institutionName: string | null;
+  status: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  lastSyncedAt?: string | null;
+  needsReauth: boolean;
+};
+
 type DashboardData = {
   transactions: DashboardTransaction[];
   snapshots: Array<Record<string, unknown>>;
@@ -162,6 +173,7 @@ type DashboardData = {
     balanceRefreshesToday: number;
     dailyBalanceCallLimit: number;
   };
+  plaidConnections?: PlaidConnection[];
 };
 
 function fetchDashboard() {
@@ -307,9 +319,15 @@ export function Dashboard() {
     accounts = [],
     goals = [],
     plaidUsage,
+    plaidConnections = [],
     briefRefresh,
     cashFlow,
   } = data || {};
+
+  const banksNeedingReauth = useMemo(
+    () => plaidConnections.filter((connection) => connection.needsReauth),
+    [plaidConnections],
+  );
   const displayInsight: DashboardInsight = aiInsight ?? {
     dailySummary:
       transactions.length > 0
@@ -423,6 +441,12 @@ export function Dashboard() {
   const handleBankLinked = async () => {
     await handleRefreshBalances({ silent: true });
     await handleSyncTransactions({ silent: true });
+  };
+
+  const handleBankReauthComplete = async () => {
+    await handleRefreshBalances({ silent: true });
+    await handleSyncTransactions({ silent: true });
+    await handleRefreshData();
   };
 
   const handleSyncTransactions = async (options?: { silent?: boolean; bypassCooldown?: boolean }) => {
@@ -552,6 +576,26 @@ export function Dashboard() {
              {accounts.length > 0 ? (
                <>
                  <p className="font-medium text-slate-900 mb-2">{accounts.length} accounts linked</p>
+                 {banksNeedingReauth.length > 0 ? (
+                   <div className="mb-3 space-y-2 rounded-lg bg-amber-50 px-3 py-2 text-left ring-1 ring-amber-200/80">
+                     <p className="text-xs font-semibold text-amber-900">
+                       {banksNeedingReauth.length} bank{banksNeedingReauth.length === 1 ? "" : "s"} need{banksNeedingReauth.length === 1 ? "s" : ""} sign-in
+                     </p>
+                     <p className="text-[11px] leading-relaxed text-amber-800">
+                       Reconnect to restore live balances and transaction sync without adding duplicate accounts.
+                     </p>
+                     <div className="space-y-2">
+                       {banksNeedingReauth.map((connection) => (
+                         <ReauthBankButton
+                           key={connection.itemId}
+                           plaidItemId={connection.itemId}
+                           institutionName={connection.institutionName}
+                           onReauthComplete={handleBankReauthComplete}
+                         />
+                       ))}
+                     </div>
+                   </div>
+                 ) : null}
                  <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-white/70 text-slate-800 hover:bg-white border-none py-1.5 px-3 text-xs shadow-none ring-1 ring-[var(--card-border)]" />
                  <button
                    type="button"
