@@ -49,7 +49,7 @@ const initialCoachMessages: ChatMessage[] = [
   {
     role: "assistant",
     content:
-      "Hi — I'm your Life OS coach. Money, career, body, and network in one place. Ask about today's brief, safe spend, a charge, gym/promo blocks, or upload a screenshot. If we find a smart money move (like a canceled sub → card payoff), I may suggest one goal for you to confirm — never a pile of them.",
+      "Hi — I'm your Life OS coach. Try “good morning” or “what should I do today” for your schedule, money headline, and today's move. Tell me when you skip Lyft or change the plan — I'll update Growth and pivot the rest of your day. Money questions, charges, and screenshots still work here.",
   },
 ];
 
@@ -358,6 +358,16 @@ export function ChatInterface({
       if (data.briefRefreshed) {
         assistantMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
         await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      }
+
+      if (data.todayUpdated) {
+        if (Array.isArray(data.todayApplied) && data.todayApplied.length > 0) {
+          assistantMessage += `\n\nUpdated today: ${data.todayApplied.join("; ")}.`;
+        }
+        if (typeof data.refreshedMoveAction === "string" && data.refreshedMoveAction.trim()) {
+          assistantMessage += `\n\nNew move for the rest of today: ${data.refreshedMoveAction}`;
+        }
+        await queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
       }
 
       setMessages((prev) => [
