@@ -7,39 +7,41 @@ type SpeakOptions = {
   messageIndex?: number;
 };
 
+function pickVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+
+  const voices = window.speechSynthesis.getVoices();
+  return (
+    voices.find((voice) => voice.lang.startsWith("en") && voice.localService) ??
+    voices.find((voice) => voice.lang.startsWith("en")) ??
+    null
+  );
+}
+
 export function useCoachSpeech() {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const requestIdRef = useRef(0);
 
   const [isLoadingSpeech, setIsLoadingSpeech] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const [speechError, setSpeechError] = useState<string | null>(null);
-
-  const cleanupAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
-
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-  }, []);
+  const supported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
 
   const stop = useCallback(() => {
     requestIdRef.current += 1;
-    cleanupAudio();
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    utteranceRef.current = null;
     setIsLoadingSpeech(false);
     setIsSpeaking(false);
     setSpeakingMessageIndex(null);
-  }, [cleanupAudio]);
+  }, []);
 
   const speak = useCallback(
-    async (text: string, options: SpeakOptions = {}) => {
+    (text: string, options: SpeakOptions = {}) => {
       const prepared = prepareSpeechText(text);
       if (!prepared) return;
 
@@ -48,64 +50,68 @@ export function useCoachSpeech() {
 
       stop();
       requestIdRef.current = requestId;
-      setIsLoadingSpeech(true);
       setSpeechError(null);
       setSpeakingMessageIndex(options.messageIndex ?? null);
 
-      try {
-        const response = await fetch("/api/chat/speak", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        setSpeechError("Read aloud isn't supported in this browser.");
+        return;
+      }
 
-        if (!response.ok) {
-          const data = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(data?.error ?? "Could not read the response aloud.");
-        }
+      setIsLoadingSpeech(true);
 
+      const utterance = new SpeechSynthesisUtterance(prepared);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+
+      const voice = pickVoice();
+      if (voice) utterance.voice = voice;
+
+      utterance.onstart = () => {
         if (requestIdRef.current !== requestId) return;
-
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = objectUrl;
-
-        const audio = new Audio(objectUrl);
-        audioRef.current = audio;
-
-        audio.onended = () => {
-          if (requestIdRef.current !== requestId) return;
-          cleanupAudio();
-          setIsSpeaking(false);
-          setSpeakingMessageIndex(null);
-        };
-
-        audio.onerror = () => {
-          if (requestIdRef.current !== requestId) return;
-          cleanupAudio();
-          setIsSpeaking(false);
-          setSpeakingMessageIndex(null);
-          setSpeechError("Playback failed.");
-        };
-
-        await audio.play();
-        if (requestIdRef.current !== requestId) return;
-
         setIsLoadingSpeech(false);
         setIsSpeaking(true);
-      } catch (error) {
+      };
+
+      utterance.onend = () => {
         if (requestIdRef.current !== requestId) return;
-        cleanupAudio();
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+        setSpeakingMessageIndex(null);
+      };
+
+      utterance.onerror = (event) => {
+        if (requestIdRef.current !== requestId) return;
+        if (event.error === "canceled") return;
+        utteranceRef.current = null;
         setIsLoadingSpeech(false);
         setIsSpeaking(false);
         setSpeakingMessageIndex(null);
-        setSpeechError(error instanceof Error ? error.message : "Read aloud failed.");
-      }
+        setSpeechError("Playback failed. Try tapping read aloud again.");
+      };
+
+      utteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
     },
-    [cleanupAudio, stop],
+    [stop],
   );
 
-  useEffect(() => stop, [stop]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    const warmVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+
+    warmVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", warmVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", warmVoices);
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  useEffect(() => () => stop(), [stop]);
 
   return {
     speak,
@@ -114,6 +120,7 @@ export function useCoachSpeech() {
     isSpeaking,
     speakingMessageIndex,
     speechError,
+    supported,
     clearSpeechError: () => setSpeechError(null),
   };
 }

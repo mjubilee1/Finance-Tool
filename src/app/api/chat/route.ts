@@ -1,11 +1,18 @@
 import { authOptions } from "@/lib/auth";
-import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
+import { buildKnownCashScheduleContext } from "@/lib/cfo-agent";
+import { buildCoachSystemPrompt } from "@/lib/coach-chat-prompt";
+import { classifyCoachIntent } from "@/lib/coach-intent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
 import { storeFinancialMemories } from "@/lib/financial-memory";
-import { parseGoalSuggestion, GOAL_SUGGESTION_RULES, type GoalSuggestion } from "@/lib/goal-suggestion";
+import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
+import {
+  applyTodayUpdates,
+  buildTodayBriefContext,
+  type TodayUpdatesPayload,
+} from "@/lib/today-brief";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -55,6 +62,7 @@ type ChatResponsePayload = {
   message: string;
   memoriesToStore: ChatMemory[];
   shouldRefreshBrief: boolean;
+  todayUpdates?: TodayUpdatesPayload | null;
   spotlight?: {
     transactionId?: string;
     merchant: string;
@@ -116,7 +124,13 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
   const content = response.choices[0]?.message.content;
 
   if (typeof content !== "string" || !content.trim()) {
-    return { message: "", memoriesToStore: [], shouldRefreshBrief: false, goalSuggestion: null };
+    return {
+      message: "",
+      memoriesToStore: [],
+      shouldRefreshBrief: false,
+      todayUpdates: null,
+      goalSuggestion: null,
+    };
   }
 
   try {
@@ -130,10 +144,16 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
         )
       : [];
 
+    const todayUpdates =
+      parsed.todayUpdates && typeof parsed.todayUpdates === "object"
+        ? (parsed.todayUpdates as TodayUpdatesPayload)
+        : null;
+
     return {
       message,
       memoriesToStore,
       shouldRefreshBrief: parsed.shouldRefreshBrief === true,
+      todayUpdates,
       spotlight:
         parsed.spotlight &&
         typeof parsed.spotlight === "object" &&
@@ -148,6 +168,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       message: content.trim(),
       memoriesToStore: [],
       shouldRefreshBrief: false,
+      todayUpdates: null,
       goalSuggestion: null,
     };
   }
@@ -467,144 +488,70 @@ export async function POST(req: Request) {
       return payroll ? Math.abs(payroll.amount) : null;
     })();
 
-    const systemPrompt = `
-${CFO_AGENT_INSTRUCTIONS}
+    const coachIntent = classifyCoachIntent(latestUserMessage.content);
+    const todayBrief = await buildTodayBriefContext(session.user.id);
 
-You are the user's Life OS coach for ${session.user.name || "the user"} — money core plus career, body, network, and intentional joy.
-You have access to their live financial data and life context (memories, goals, schedule). Answer questions directly, briefly, and actionably.
-You must distinguish Trell's emotional safety instinct from the financially optimal CFO move: if he wants to hold extra cash because it feels better, respect that, then show whether the math says cash is actually needed or whether paying down high-APR debt is the stronger move.
-When the user asks for a daily brief, use this exact format:
-Daily Brief
-Status: stable, tight, conservative mode, or attack mode.
-Cash safety: tell whether bills are covered.
-Upcoming bills: list important items in the next 14 days.
-Income expected: paycheck, tenant rent, Lyft income, or refunds.
-Safe spend today: give one number.
-Debt move: hold cash or pay extra, and which debt to target.
-Spending warning: where money is leaking.
-Today's move: one clear action (can be money or life leverage).
-System impact: one sentence on how that move hardens cash OR compounds career/body/network.
-
-When answering about any transaction, recurring charge, or tradeoff, assess bigger-picture impact — not just whether money could be saved. Explain what freed cash should do next in the reinforcing loop (buffer → debt → credit → reserves → next property).
-When the user asks where a projection number came from, explain the exact formula and cite the relevant totals/sources from PROJECTION CONTEXT.
-When the user teaches durable facts — money OR life — store them in memoriesToStore so future briefs, planner, and coaching can use them.
-Examples to remember: bill due dates, payment habits, bills already paid this month, income timing, debt APRs, minimum payments, credit limits, mortgage details, tenant rent timing, cash-buffer preferences, gym schedule, workout plan, promotion deadline/target, WFH vs office changes, travel dates, and body/weight targets.
-If MEMORIES include "Charge reviewed:" entries, the user already explained those merchants in Spending radar — respect that context and do not re-flag them as leaks unless asked.
-Use short stable titles like "Credit card payment habit", "Gym schedule", or "Promotion target".
-Set shouldRefreshBrief to true when new or updated memories would materially change safe spend, upcoming bills, debt move, cash safety, or today's life allocation.
-Crucially, look at Current Accounts, Financial Goals, memories, recurring obligations, recent income, and recent spending patterns.
-- Treat listed active goals as important context — money goals and life/career goals both count.
-- If multiple goals compete, weigh target date, remaining amount, domain (cash vs career vs body), and goal category before recommending tradeoffs.
-- Proactively look for opportunities to optimize daily costs to hit high-priority money goals faster without starving career/body leverage.
-- Do not recommend extra debt payments unless mortgage, upcoming bills, minimum payments, and emergency buffer appear covered.
-- If debt APR, credit limit, minimum payment, due date, or statement date is missing, say it is missing instead of inventing it.
-When the user uploads photo(s), read them carefully:
-- Money screenshots (receipts, bills, bank/credit alerts, statements): extract amounts, merchants, due dates; flag expected vs wasteful vs urgent; tie to goals and safe spend.
-- Life screenshots (gym schedule, calendar, workout plan, goal boards, travel plans): extract the durable schedule/facts into memoriesToStore so the Today Planner and coach stay current — do not leave that knowledge only in this chat turn.
-Joy preferences mentioned by the user are a menu of options, not an automatic assignment for today.
-
-${GOAL_SUGGESTION_RULES}
-
-${buildKnownCashScheduleContext(DateTime.local(), { typicalPaycheck })}
-
-MEMORIES:
-${memories}
-
-CURRENT ACCOUNTS:
-${JSON.stringify(accounts.map(a => ({
-    name: a.name,
-    spendable: a.type === "depository" ? (a.availableBalance ?? a.currentBalance) : a.currentBalance,
-    ledgerCurrent: a.currentBalance,
-    availableBalance: a.availableBalance,
-    type: a.type,
-    subtype: a.subtype,
-    creditLimit: a.creditLimit,
-    aprPercent: a.aprPercent,
-    minimumPayment: a.minimumPayment,
-    dueDay: a.dueDay,
-    statementDay: a.statementDay,
-    utilizationPct:
-      a.type === "credit" && a.creditLimit && a.creditLimit > 0
-        ? Math.round(((a.currentBalance ?? 0) / a.creditLimit) * 1000) / 10
-        : null,
-  })))}
-
-FINANCIAL GOALS:
-${JSON.stringify(goals.map(g => ({ name: g.name, target: g.targetAmount, current: g.currentAmount, targetDate: g.targetDate, type: g.category, status: g.status })))}
-
-RECENT TRANSACTIONS:
-${JSON.stringify(recentTransactions.map(t => ({
-    id: t.id,
-    name: t.name,
-    merchant: t.merchantName,
-    amount: t.amount,
-    date: t.date,
-    category: t.customCategory ?? t.categoryPrimary,
-    detailedCategory: t.categoryDetailed,
-    flags: {
-      possibleTenantRent: t.isTenantPaymentCandidate,
-      food: t.isFoodCandidate,
-      transportation: t.isTransportationCandidate,
-      utility: t.isUtilityCandidate,
-    },
-  })))}
-
-RECURRING PATTERNS:
-${JSON.stringify(recurringPatterns.map(pattern => ({
-    merchant: pattern.merchantName,
-    amount: pattern.averageAmount,
-    frequency: pattern.frequency,
-    direction: pattern.direction,
-    category: pattern.category,
-    lastSeen: pattern.lastSeen,
-    confidence: pattern.confidenceScore,
-  })))}
-
-PROJECTION CONTEXT:
-${JSON.stringify(projectionContext)}
-
-Return JSON only with this exact shape:
-{
-  "message": "Your conversational reply to the user.",
-  "spotlight": {
-    "transactionId": "optional id from RECENT TRANSACTIONS if known",
-    "merchant": "Merchant or charge label",
-    "amount": 29.99,
-    "date": "2026-06-17",
-    "headline": "One sentence explaining what this charge likely is.",
-    "categoryGuess": "Optional short category label",
-    "savingsTip": "Optional one-line savings action",
-    "severity": "review"
-  },
-  "goalSuggestion": {
-    "action": "create | update",
-    "goalId": "optional existing id when action is update",
-    "matchName": "optional name match when id unknown",
-    "name": "Extra to highest-APR card from canceled Canva",
-    "type": "debt_payoff",
-    "reason": "You freed ~$15/mo. Buffer and near-term trip look covered — point that surplus at high-APR debt instead of a new trip goal.",
-    "targetAmount": 500,
-    "monthlyRedirect": 15,
-    "addAmount": 15,
-    "priority": 1,
-    "targetDate": null
-  },
-  "memoriesToStore": [
-    {
-      "title": "Short stable title",
-      "content": "Durable fact in plain English that future briefs should trust.",
-      "importanceScore": 9
-    }
-  ],
-  "shouldRefreshBrief": true
-}
-Use spotlight null when the user is not asking about a specific transaction.
-Use goalSuggestion null unless one high-value tracked goal clearly helps (see GOAL SUGGESTIONS rules). Never invent many goals.
-When the user asks about a specific transaction, merchant, or charge they do not recognize, explain what it likely is using RECENT TRANSACTIONS and RECURRING PATTERNS.
-If you can identify the charge, include a spotlight card with merchant, amount, date, a short headline, categoryGuess, savingsTip, and severity ("review", "watch", or "ok").
-If it still looks suspicious or wasteful, set severity to "review" and suggest a concrete savings action.
-If the user is only asking a question and not teaching durable facts, return an empty memoriesToStore array and shouldRefreshBrief false.
-`;
+    const systemPrompt = buildCoachSystemPrompt({
+      intent: coachIntent,
+      userName: session.user.name ?? null,
+      todayBrief,
+      financePack: {
+        accounts: accounts.map((a) => ({
+          name: a.name,
+          spendable:
+            a.type === "depository" ? (a.availableBalance ?? a.currentBalance) : a.currentBalance,
+          ledgerCurrent: a.currentBalance,
+          availableBalance: a.availableBalance,
+          type: a.type,
+          subtype: a.subtype,
+          creditLimit: a.creditLimit,
+          aprPercent: a.aprPercent,
+          minimumPayment: a.minimumPayment,
+          dueDay: a.dueDay,
+          statementDay: a.statementDay,
+          utilizationPct:
+            a.type === "credit" && a.creditLimit && a.creditLimit > 0
+              ? Math.round(((a.currentBalance ?? 0) / a.creditLimit) * 1000) / 10
+              : null,
+        })),
+        goals: goals.map((g) => ({
+          name: g.name,
+          target: g.targetAmount,
+          current: g.currentAmount,
+          targetDate: g.targetDate,
+          type: g.category,
+          status: g.status,
+        })),
+        recentTransactions: recentTransactions.map((t) => ({
+          id: t.id,
+          name: t.name,
+          merchant: t.merchantName,
+          amount: t.amount,
+          date: t.date,
+          category: t.customCategory ?? t.categoryPrimary,
+          detailedCategory: t.categoryDetailed,
+          flags: {
+            possibleTenantRent: t.isTenantPaymentCandidate,
+            food: t.isFoodCandidate,
+            transportation: t.isTransportationCandidate,
+            utility: t.isUtilityCandidate,
+          },
+        })),
+        recurringPatterns: recurringPatterns.map((pattern) => ({
+          merchant: pattern.merchantName,
+          amount: pattern.averageAmount,
+          frequency: pattern.frequency,
+          direction: pattern.direction,
+          category: pattern.category,
+          lastSeen: pattern.lastSeen,
+          confidence: pattern.confidenceScore,
+        })),
+        projectionContext,
+        memories,
+        cashSchedule: buildKnownCashScheduleContext(DateTime.local(), { typicalPaycheck }),
+        typicalPaycheck,
+      },
+    });
 
     const response = await openai.chat.completions.create({
       model: "gpt-5",
@@ -642,12 +589,35 @@ If the user is only asking a question and not teaching durable facts, return an 
       }
     }
 
+    const todayUpdates = chatResponse.todayUpdates;
+    const hasTodayChanges = Boolean(
+      todayUpdates &&
+        (todayUpdates.skipPlanBlock ||
+          todayUpdates.markMoveStatus ||
+          todayUpdates.regenerateTodaysMove ||
+          todayUpdates.logActivity?.title),
+    );
+
+    let todayApplied: string[] = [];
+    let refreshedMoveAction: string | null = null;
+    if (hasTodayChanges && todayUpdates) {
+      const result = await applyTodayUpdates(session.user.id, todayUpdates, todayBrief);
+      todayApplied = result.applied;
+      refreshedMoveAction = result.refreshedMove?.action ?? null;
+    }
+
     let assistantHistoryMessage = chatResponse.message;
     if (savedMemoryTitles.length > 0) {
       assistantHistoryMessage += `\n\nSaved for your financial overview: ${savedMemoryTitles.join(", ")}.`;
     }
     if (briefRefreshed) {
       assistantHistoryMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
+    }
+    if (todayApplied.length > 0) {
+      assistantHistoryMessage += `\n\nUpdated today: ${todayApplied.join("; ")}.`;
+      if (refreshedMoveAction) {
+        assistantHistoryMessage += `\nNew move for the rest of today: ${refreshedMoveAction}`;
+      }
     }
 
     await prisma.$transaction([
@@ -682,10 +652,14 @@ If the user is only asking a question and not teaching durable facts, return an 
     return NextResponse.json({
       sessionId: coachSession.id,
       message: chatResponse.message,
+      intent: coachIntent,
       spotlight: chatResponse.spotlight ?? null,
       goalSuggestion: chatResponse.goalSuggestion ?? null,
       memoriesSaved: savedMemoryTitles,
       briefRefreshed,
+      todayUpdated: todayApplied.length > 0,
+      todayApplied,
+      refreshedMoveAction,
     });
   } catch (error) {
     console.error("Chat error:", error);
