@@ -1,152 +1,146 @@
 import { DateTime } from "luxon";
 
-const DAILY_AFFIRMATIONS = [
+const QUOTES_OF_THE_DAY = [
   {
-    message: "Every dollar you direct today strengthens the system you're building.",
-    tone: "affirmation" as const,
+    message: "Keep the main thing the main thing — leverage first, noise later.",
+    attribution: "Stephen R. Covey, adapted",
   },
   {
-    message: "Discipline is not deprivation — it's choosing what your future self will thank you for.",
-    tone: "wisdom" as const,
-  },
-  {
-    message: "You don't need to be perfect this week. You need to be intentional.",
-    tone: "encouragement" as const,
+    message: "You don't need to be perfect today. You need to be intentional.",
+    attribution: null,
   },
   {
     message: "Small consistent moves compound faster than occasional big swings.",
-    tone: "wisdom" as const,
+    attribution: null,
   },
   {
-    message: "You're not behind — you're assembling pieces that reinforce each other.",
-    tone: "affirmation" as const,
+    message: "Protect the highest-leverage block before reacting to every urgent ping.",
+    attribution: null,
+  },
+  {
+    message: "Begin with the end in mind — then put first things first.",
+    attribution: "Stephen R. Covey, adapted",
   },
   {
     message: "A strong week earns room for joy. Protect the wins before you spend them.",
-    tone: "motivation" as const,
-  },
-  {
-    message: "Cash buffer first. Everything else gets easier after that.",
-    tone: "wisdom" as const,
+    attribution: null,
   },
   {
     message: "One clear move today beats ten vague plans.",
-    tone: "motivation" as const,
+    attribution: null,
   },
   {
-    message: "Your goals are real. Your pace can adjust — your direction doesn't have to.",
-    tone: "encouragement" as const,
+    message: "Your pace can adjust — your direction doesn't have to.",
+    attribution: null,
   },
   {
-    message: "Income growth and spending discipline are both levers. Use the one the system needs today.",
-    tone: "wisdom" as const,
+    message: "Rest is part of compounding when it is chosen and capped.",
+    attribution: null,
   },
   {
-    message: "You are building optionality, not just cutting costs.",
-    tone: "affirmation" as const,
+    message: "Finish open work before chasing a headline.",
+    attribution: null,
   },
   {
-    message: "Rent collected, bills covered, buffer intact — that's a win worth acknowledging.",
-    tone: "encouragement" as const,
+    message: "Promotion paths are lists you execute — not one-pagers you restart.",
+    attribution: null,
   },
   {
-    message: "Progress isn't always visible on the chart. Trust the habits underneath it.",
-    tone: "motivation" as const,
+    message: "Body, leverage, and intentional joy reinforce each other. Cash follows the system.",
+    attribution: null,
   },
   {
-    message: "What you protect in checking protects everything else downstream.",
-    tone: "wisdom" as const,
+    message: "Network equity compounds slower than cash and pays longer.",
+    attribution: null,
   },
   {
-    message: "You showed up to your finances today. That already separates you from most people.",
-    tone: "affirmation" as const,
+    message: "What you protect in the morning shapes what the evening can hold.",
+    attribution: null,
+  },
+  {
+    message: "You're not assembling a budget — you're assembling a life that reinforces itself.",
+    attribution: null,
+  },
+  {
+    message: "Low-leverage hours feel productive until you add them up.",
+    attribution: null,
+  },
+  {
+    message: "Do the hard important thing first when the day shape allows it.",
+    attribution: null,
+  },
+  {
+    message: "Once cash is on rails, check it briefly — then get back to the lever that compounds.",
+    attribution: null,
+  },
+  {
+    message: "The best days feel quiet because the plan was already set.",
+    attribution: null,
+  },
+  {
+    message: "Progress isn't always on a chart. Trust the habits underneath it.",
+    attribution: null,
   },
   {
     message: "Earn the splurge, then enjoy it — guilt-free spending is part of the plan.",
-    tone: "encouragement" as const,
+    attribution: null,
   },
   {
-    message: "Debt paid down today unlocks credit, calm, and the next property move.",
-    tone: "motivation" as const,
-  },
-  {
-    message: "Lyft income, paycheck, rent — each stream has a job. Give it one.",
-    tone: "wisdom" as const,
-  },
-  {
-    message: "You're the coach of your own life. Act like it for the next decision.",
-    tone: "motivation" as const,
-  },
-  {
-    message: "Stability isn't boring — it's the foundation everything else grows from.",
-    tone: "affirmation" as const,
+    message: "You are building optionality across career, body, network, and money.",
+    attribution: null,
   },
   {
     message: "When the week feels tight, shrink the move — don't abandon the system.",
-    tone: "encouragement" as const,
+    attribution: null,
   },
   {
-    message: "Ten minutes on your numbers today saves ten hours of stress later.",
-    tone: "motivation" as const,
-  },
-  {
-    message: "The best financial habit is looking — you're already doing it.",
-    tone: "affirmation" as const,
+    message: "Show up to the day you actually have — office, WFH, or weekend.",
+    attribution: null,
   },
   {
     message: "Macro goals are built from micro choices. Today's choice counts.",
-    tone: "wisdom" as const,
+    attribution: null,
   },
   {
-    message: "You can rest and still be on track. Recovery is part of performance.",
-    tone: "encouragement" as const,
+    message: "Stability isn't boring — it's the floor everything else grows from.",
+    attribution: null,
   },
   {
-    message: "Cut leakage, fund the buffer, attack the highest-cost debt — in that order when it matters.",
-    tone: "wisdom" as const,
-  },
-  {
-    message: "Your future self is counting on the discipline you practice now.",
-    tone: "motivation" as const,
+    message: "Skip regenerating the same advice. Ship the next concrete step.",
+    attribution: null,
   },
   {
     message: "Wealth is built quietly. Keep stacking quiet wins.",
-    tone: "affirmation" as const,
+    attribution: null,
   },
   {
     message: "Off track for a day isn't off track for the goal. Reset and continue.",
-    tone: "encouragement" as const,
+    attribution: null,
   },
   {
-    message: "Every bill you anticipate is power you take back from surprise spending.",
-    tone: "wisdom" as const,
+    message: "You're the coach of your own day. Act like it for the next decision.",
+    attribution: null,
   },
   {
-    message: "You're building a machine that works for you — feed it one good decision today.",
-    tone: "motivation" as const,
+    message: "Local life, local leverage — Oxon Hill days don't need Downtown DC mornings.",
+    attribution: null,
   },
 ];
 
-const TONE_LABELS = {
-  affirmation: "Daily affirmation",
-  encouragement: "Words of encouragement",
-  wisdom: "Daily wisdom",
-  motivation: "Today's motivation",
-} as const;
-
 export type DailyAffirmation = {
   message: string;
-  tone: keyof typeof TONE_LABELS;
+  attribution: string | null;
   toneLabel: string;
 };
 
+/** Quote of the day — stable per calendar day. */
 export function getDailyAffirmation(date = DateTime.local()): DailyAffirmation {
   const dayOfYear = date.ordinal;
-  const entry = DAILY_AFFIRMATIONS[dayOfYear % DAILY_AFFIRMATIONS.length];
+  const entry = QUOTES_OF_THE_DAY[dayOfYear % QUOTES_OF_THE_DAY.length];
   return {
     message: entry.message,
-    tone: entry.tone,
-    toneLabel: TONE_LABELS[entry.tone],
+    attribution: entry.attribution,
+    toneLabel: "Quote of the day",
   };
 }
 
