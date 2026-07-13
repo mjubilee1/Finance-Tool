@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { useEffect } from "react";
 import {
   BookOpenCheck,
   Cpu,
@@ -11,9 +12,13 @@ import {
   ParkingCircle,
   RefreshCw,
   Sparkles,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
+import { useBrowserSpeech } from "@/hooks/use-browser-speech";
 import { isDmvPageTheme, isTechTrendTheme } from "@/lib/trends";
+import { buildTrendsSpeechText } from "@/lib/trends-speech";
 
 export type TrendsLane = "tech" | "dmv";
 
@@ -162,6 +167,7 @@ export function TrendsView({
 }) {
   const queryClient = useQueryClient();
   const isTech = lane === "tech";
+  const { speak, stop, isSpeaking, speechError, supported } = useBrowserSpeech();
 
   const { data, isLoading, isFetching, error, refetch } = useQuery<TrendsResponse>({
     queryKey: ["trends-digest"],
@@ -264,6 +270,26 @@ export function TrendsView({
         }
       : rawMain;
 
+  useEffect(() => {
+    stop();
+  }, [lane, digest.id, stop]);
+
+  const listenToDigest = () => {
+    if (isSpeaking) {
+      stop();
+      return;
+    }
+
+    speak(
+      buildTrendsSpeechText({
+        lane,
+        focusGuardrail: digest.focusGuardrail,
+        main,
+        items,
+      }),
+    );
+  };
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -296,6 +322,21 @@ export function TrendsView({
               Growth →
             </button>
           ) : null}
+          {supported ? (
+            <button
+              type="button"
+              onClick={listenToDigest}
+              className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl ring-1 ${
+                isSpeaking
+                  ? "text-orange-800 bg-orange-50 ring-orange-200/80"
+                  : "text-slate-700 hover:bg-slate-50 ring-slate-200/70"
+              }`}
+              title={isSpeaking ? "Stop reading" : "Read today's digest aloud"}
+            >
+              {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              {isSpeaking ? "Stop" : "Listen"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={refresh}
@@ -307,6 +348,10 @@ export function TrendsView({
           </button>
         </div>
       </div>
+
+      {speechError ? (
+        <p className="text-xs text-rose-600">{speechError}</p>
+      ) : null}
 
       <p className="text-xs text-slate-500">Updated {updatedLabel}</p>
 
