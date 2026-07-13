@@ -694,6 +694,7 @@ export function Dashboard() {
                   onOpenRecurring={() => setActiveTab('recurring')}
                   onOpenGrowth={() => setActiveTab('growth')}
                   onOpenGoals={() => setActiveTab('goals')}
+                  onOpenTrends={() => setActiveTab('tech')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                   userName={session?.user?.name}
