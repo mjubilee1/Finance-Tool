@@ -189,6 +189,11 @@ export async function saveGoogleCalendarConnection(userId: string, token: Google
     ? encrypt(token.refresh_token)
     : reusableRefreshToken;
 
+  // Access token alone is enough to create/read events for ~1 hour.
+  // needs_reconnect only when we truly have nothing usable.
+  const status =
+    encryptedRefreshToken || token.access_token ? "active" : "needs_reconnect";
+
   await prisma.googleCalendarConnection.upsert({
     where: { userId },
     create: {
@@ -197,7 +202,7 @@ export async function saveGoogleCalendarConnection(userId: string, token: Google
       encryptedRefreshToken,
       accessTokenExpiresAt: expiresAtFrom(token.expires_in),
       scopes: scopesFrom(token.scope),
-      status: encryptedRefreshToken ? "active" : "needs_reconnect",
+      status,
       connectedAt: new Date(),
     },
     update: {
@@ -205,7 +210,7 @@ export async function saveGoogleCalendarConnection(userId: string, token: Google
       encryptedRefreshToken,
       accessTokenExpiresAt: expiresAtFrom(token.expires_in),
       scopes: scopesFrom(token.scope),
-      status: encryptedRefreshToken ? "active" : "needs_reconnect",
+      status,
       connectedAt: new Date(),
     },
   });
@@ -289,7 +294,7 @@ async function refreshGoogleCalendarAccessToken(
 
 async function getActiveGoogleCalendarAccessToken(userId: string) {
   const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  if (!connection || connection.status !== "active") return null;
+  if (!connection) return null;
 
   const expiresAt = connection.accessTokenExpiresAt?.getTime();
   if (expiresAt && expiresAt > Date.now() + 60_000) {
@@ -297,12 +302,18 @@ async function getActiveGoogleCalendarAccessToken(userId: string) {
     if (!accessToken) {
       return failCalendarTokenDecrypt(userId);
     }
+    if (connection.status !== "active") {
+      await prisma.googleCalendarConnection.update({
+        where: { userId },
+        data: { status: "active" },
+      });
+    }
     return accessToken;
   }
 
   if (!connection.encryptedRefreshToken) {
     await markGoogleCalendarNeedsReconnect(userId);
-    throw new Error("Google Calendar needs to be reconnected.");
+    return null;
   }
 
   return refreshGoogleCalendarAccessToken(userId, connection.encryptedRefreshToken, connection.scopes);
@@ -378,8 +389,8 @@ export async function fetchUpcomingGoogleCalendarEvents(
 
 export async function createGoogleCalendarEvent(userId: string, input: CreateGoogleCalendarEventInput) {
   const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  if (!connection || connection.status !== "active") {
-    throw new Error("Connect Google Calendar before I can create events.");
+  if (!connection) {
+    throw new Error("Connect Google Calendar on Overview before I can create events.");
   }
 
   if (!hasCalendarEventWriteScope(connection.scopes)) {
@@ -392,7 +403,13 @@ export async function createGoogleCalendarEvent(userId: string, input: CreateGoo
 
   const accessToken = await getActiveGoogleCalendarAccessToken(userId);
   if (!accessToken) {
-    throw new Error("Connect Google Calendar before I can create events.");
+    const status = await getGoogleCalendarStatus(userId);
+    if (status.status === "needs_reconnect") {
+      throw new Error(
+        "Reconnect Google Calendar on Overview — the saved token expired or was linked in a different environment.",
+      );
+    }
+    throw new Error("Connect Google Calendar on Overview before I can create events.");
   }
 
   const eventBody = input.allDay

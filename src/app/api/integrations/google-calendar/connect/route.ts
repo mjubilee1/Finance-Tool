@@ -4,7 +4,9 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import {
   buildGoogleCalendarAuthUrl,
+  disconnectGoogleCalendar,
   getGoogleCalendarRedirectUri,
+  getGoogleCalendarStatus,
   GOOGLE_CALENDAR_OAUTH_STATE_COOKIE,
 } from "@/lib/google-calendar";
 
@@ -20,6 +22,12 @@ export async function GET(request: Request) {
   }
 
   try {
+    const calendarStatus = await getGoogleCalendarStatus(session.user.id);
+    if (calendarStatus.status === "needs_reconnect") {
+      // Wipe stale tokens so Google issues a fresh refresh token on re-approval.
+      await disconnectGoogleCalendar(session.user.id);
+    }
+
     const state = randomBytes(24).toString("hex");
     const redirectUri = getGoogleCalendarRedirectUri(request);
     const authUrl = buildGoogleCalendarAuthUrl(state, redirectUri);
