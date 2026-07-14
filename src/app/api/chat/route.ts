@@ -21,6 +21,7 @@ import {
   type TodayUpdatesPayload,
 } from "@/lib/today-brief";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
+import { loadUserPlanActivitiesBetween } from "@/lib/planner";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -230,29 +231,9 @@ async function loadCoachWeekCalendarEvents(userId: string) {
 
 async function loadCoachWeekUserPlanActivities(userId: string) {
   const now = DateTime.local();
-
-  return prisma.growthActivity.findMany({
-    where: {
-      userId,
-      category: "user_plan",
-      date: {
-        gte: now.toISODate() ?? undefined,
-        lte: now.plus({ days: 6 }).toISODate() ?? undefined,
-      },
-    },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      date: true,
-      title: true,
-      domain: true,
-      notes: true,
-      minutesSpent: true,
-      status: true,
-      sortOrder: true,
-      timeLabel: true,
-    },
-  });
+  const startDate = now.toISODate()!;
+  const endDate = now.plus({ days: 6 }).toISODate()!;
+  return loadUserPlanActivitiesBetween(userId, startDate, endDate);
 }
 
 function stringifyStoredJson(value: unknown) {

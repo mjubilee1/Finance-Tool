@@ -11,6 +11,7 @@ import { buildTodayPlan, type TodayPlanBlockKey } from "@/lib/today-plan";
 import { applyMentionsToActivityText } from "@/lib/growth-calendar-sync";
 import {
   getPlannerDayLayout,
+  loadGrowthActivitiesForDate,
   serializeUserPlanBlock,
   systemPlanRef,
   type PlannerBlockOverride,
@@ -174,10 +175,7 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
       prisma.dailyFinancialSnapshot.findUnique({
         where: { userId_date: { userId, date: today } },
       }),
-      prisma.growthActivity.findMany({
-        where: { userId, date: today },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      }),
+      loadGrowthActivitiesForDate(userId, today),
       prisma.financialMemory.findMany({
         where: {
           userId,
