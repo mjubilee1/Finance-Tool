@@ -84,7 +84,7 @@ export async function GET() {
     };
     const weekPlan = buildWeeklyOperatingPlan({
       start: now,
-      calendarEvents: weekCalendar?.events ?? [],
+      calendarEvents: weekCalendarData.events,
       userPlanActivities,
     });
 
