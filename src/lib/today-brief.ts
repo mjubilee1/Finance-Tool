@@ -12,9 +12,9 @@ import { applyMentionsToActivityText } from "@/lib/growth-calendar-sync";
 import {
   getPlannerDayLayout,
   loadGrowthActivitiesForDate,
+  resolvePlannerOverride,
   serializeUserPlanBlock,
   systemPlanRef,
-  type PlannerBlockOverride,
   type PlannerDayLayoutData,
 } from "@/lib/planner";
 
@@ -238,9 +238,25 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
     }
   }
 
+  // Also pick up week-template aliases (e.g. 2026-07-14-lyft) onto today keys.
+  for (const key of ["lyft", "gym", "leverage", "joy"] as const) {
+    const override = resolvePlannerOverride(plannerLayout.overrides, today, key);
+    if (!override?.status) continue;
+    if (override.status === "done") {
+      completedBlockKeys.add(key);
+      skippedBlockKeys.delete(key);
+    } else if (override.status === "skipped") {
+      skippedBlockKeys.add(key);
+      completedBlockKeys.delete(key);
+    } else if (override.status === "planned") {
+      completedBlockKeys.delete(key);
+      skippedBlockKeys.delete(key);
+    }
+  }
+
   const planBlocks = plan.blocks
     .map((block) => {
-      const override = plannerLayout.overrides[block.key] as PlannerBlockOverride | undefined;
+      const override = resolvePlannerOverride(plannerLayout.overrides, today, block.key);
       const status =
         override?.status === "hidden"
           ? "hidden"

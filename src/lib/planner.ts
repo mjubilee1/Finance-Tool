@@ -34,6 +34,48 @@ export function isPlannerSystemKey(value: unknown): value is PlannerSystemKey {
   return typeof value === "string" && (PLANNER_SYSTEM_KEYS as readonly string[]).includes(value);
 }
 
+/** Map Today keys ↔ Week Ahead template ids so done/skipped stay in sync. */
+export function plannerOverrideAliasKeys(date: string, blockKey: string): string[] {
+  const keys = new Set<string>([blockKey]);
+
+  const todayToWeek: Record<PlannerSystemKey, string[]> = {
+    lyft: [`${date}-lyft`],
+    gym: [`${date}-training`],
+    leverage: [`${date}-promotion`],
+    joy: [`${date}-evening`, `${date}-social`],
+  };
+
+  if (isPlannerSystemKey(blockKey)) {
+    for (const alias of todayToWeek[blockKey]) keys.add(alias);
+  }
+
+  if (blockKey === `${date}-lyft` || blockKey.endsWith("-lyft")) keys.add("lyft");
+  if (blockKey === `${date}-training` || blockKey.endsWith("-training")) keys.add("gym");
+  if (blockKey === `${date}-promotion` || blockKey.endsWith("-promotion")) keys.add("leverage");
+  if (
+    blockKey === `${date}-evening` ||
+    blockKey === `${date}-social` ||
+    blockKey.endsWith("-evening") ||
+    blockKey.endsWith("-social")
+  ) {
+    keys.add("joy");
+  }
+
+  return [...keys];
+}
+
+export function resolvePlannerOverride(
+  overrides: Record<string, PlannerBlockOverride>,
+  date: string,
+  blockKey: string,
+): PlannerBlockOverride | undefined {
+  for (const key of plannerOverrideAliasKeys(date, blockKey)) {
+    const override = overrides[key];
+    if (override) return override;
+  }
+  return undefined;
+}
+
 export function userPlanRef(id: string) {
   return `user:${id}`;
 }
@@ -493,25 +535,31 @@ export async function setSystemBlockOverride(
   if (!blockKey.trim()) throw new Error("blockKey is required");
 
   const layout = await getPlannerDayLayout(userId, date);
-  const prev = layout.overrides[blockKey] ?? {};
+  const aliasKeys = plannerOverrideAliasKeys(date, blockKey);
+  const prev =
+    aliasKeys.map((key) => layout.overrides[key]).find((row) => Boolean(row)) ?? {};
   const nextOverride: PlannerBlockOverride = {
     ...prev,
     ...patch,
   };
   if (patch.status === undefined && prev.status) nextOverride.status = prev.status;
 
-  const overrides = { ...layout.overrides, [blockKey]: nextOverride };
+  const overrides = { ...layout.overrides };
+  for (const key of aliasKeys) {
+    overrides[key] = nextOverride;
+  }
   await upsertPlannerDayLayout(userId, date, {
     order: layout.order,
     overrides,
   });
 
   // Keep Growth metrics sharp when completing a core today block.
-  if (isPlannerSystemKey(blockKey)) {
+  const todayKey = aliasKeys.find((key) => isPlannerSystemKey(key));
+  if (todayKey && isPlannerSystemKey(todayKey)) {
     if (patch.status === "done" || patch.status === "skipped") {
-      await ensureSystemBlockActivity(userId, date, blockKey, patch.status, nextOverride);
+      await ensureSystemBlockActivity(userId, date, todayKey, patch.status, nextOverride);
     } else if (patch.status === "planned") {
-      await clearSystemBlockActivity(userId, date, blockKey);
+      await clearSystemBlockActivity(userId, date, todayKey);
     }
   }
 

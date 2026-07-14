@@ -573,9 +573,11 @@ function weeklyBlockTone(block: WeeklyOperatingPlanOverview["days"][number]["blo
 
 function WeekAhead({
   weekPlan,
+  todayDate,
   onChanged,
 }: {
   weekPlan: WeeklyOperatingPlanOverview | null | undefined;
+  todayDate?: string | null;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -637,6 +639,7 @@ function WeekAhead({
 
       <div className="grid gap-3 md:grid-cols-2">
         {weekPlan.days.map((day) => {
+          const isToday = Boolean(todayDate && day.date === todayDate);
           const visibleBlocks = day.blocks
             .filter((block) =>
               block.source === "google_calendar" ||
@@ -644,27 +647,44 @@ function WeekAhead({
               block.priority === "protect" ||
               block.priority === "prep" ||
               block.type === "cash" ||
-              block.type === "work",
+              block.type === "work" ||
+              block.type === "focus" ||
+              block.type === "recovery" ||
+              isToday,
             )
-            .slice(0, 6);
+            .slice(0, isToday ? 8 : 6);
           const refs = visibleBlocks.map((block) => block.ref || `week:${block.id}`);
 
           return (
-            <div key={day.date} className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
+            <div
+              key={day.date}
+              className={`rounded-xl p-3 ring-1 ${
+                isToday
+                  ? "bg-[var(--accent-soft)] ring-[color-mix(in_srgb,var(--accent)_40%,transparent)]"
+                  : "bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] ring-[var(--card-border)]"
+              }`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-[var(--ink)]">
                     {day.weekdayLabel} · {day.dateLabel}
+                    {isToday ? (
+                      <span className="ml-2 rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                        Today
+                      </span>
+                    ) : null}
                   </p>
                   <p className="text-xs text-[var(--muted)] mt-0.5">{DAY_SHAPE_LABEL[day.dayShape]}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="rounded-full bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                    {day.blocks.some((block) => block.source === "google_calendar")
-                      ? "Booked"
-                      : day.blocks.some((block) => block.source === "user_plan")
-                        ? "Custom"
-                        : "Rails"}
+                    {isToday
+                      ? "Today"
+                      : day.blocks.some((block) => block.source === "google_calendar")
+                        ? "Booked"
+                        : day.blocks.some((block) => block.source === "user_plan")
+                          ? "Custom"
+                          : "Rails"}
                   </span>
                   <button
                     type="button"
@@ -1227,6 +1247,11 @@ export function OverviewHome({
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
                 Today&apos;s operating plan
               </p>
+              <p className="text-sm font-semibold text-[var(--ink)] mt-0.5">
+                {brief?.dateLabel
+                  ? `${brief.dayLabel}, ${brief.dateLabel}`
+                  : todayLabel}
+              </p>
               <p className="text-sm text-[var(--muted)]">
                 {brief?.plan.summary ?? "Protect the blocks that compound."}
               </p>
@@ -1760,7 +1785,11 @@ export function OverviewHome({
         </div>
       </div>
 
-      <WeekAhead weekPlan={todayOverview?.weekPlan} onChanged={refreshPlanner} />
+      <WeekAhead
+        weekPlan={todayOverview?.weekPlan}
+        todayDate={todayDate}
+        onChanged={refreshPlanner}
+      />
 
       <button
         type="button"
