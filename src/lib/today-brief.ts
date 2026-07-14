@@ -8,6 +8,7 @@ import {
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
 import { buildTodayPlan, type TodayPlanBlockKey } from "@/lib/today-plan";
+import { applyMentionsToActivityText } from "@/lib/growth-calendar-sync";
 
 type CfoBriefHeadline = {
   status: string | null;
@@ -63,6 +64,7 @@ export type TodayUpdatesPayload = {
     leverage?: string;
     minutesSpent?: number;
     notes?: string;
+    date?: string;
   } | null;
 };
 
@@ -135,7 +137,7 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
   const today = now.toISODate()!;
   const shape = dayShapeFor(now.weekday);
 
-  const [metrics, recommendation, profile, snapshot, activities] = await Promise.all([
+  const [metrics, recommendation, profile, snapshot, activities, gymMemories] = await Promise.all([
     calculateGrowthMetrics(userId),
     prisma.growthRecommendation.findUnique({
       where: { userId_date: { userId, date: today } },
@@ -148,9 +150,28 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
       where: { userId, date: today },
       orderBy: { createdAt: "asc" },
     }),
+    prisma.financialMemory.findMany({
+      where: {
+        userId,
+        OR: [
+          { title: { contains: "gym", mode: "insensitive" } },
+          { content: { contains: "gym", mode: "insensitive" } },
+          { title: { contains: "workout", mode: "insensitive" } },
+          { content: { contains: "workout", mode: "insensitive" } },
+          { title: { contains: "fitness", mode: "insensitive" } },
+          { content: { contains: "fitness", mode: "insensitive" } },
+          { content: { contains: "training", mode: "insensitive" } },
+        ],
+      },
+      orderBy: [{ importanceScore: "desc" }, { updatedAt: "desc" }],
+      take: 4,
+      select: { title: true, content: true },
+    }),
   ]);
 
-  const plan = buildTodayPlan(metrics, recommendation, profile);
+  const plan = buildTodayPlan(metrics, recommendation, profile, {
+    memorySnippets: gymMemories.map((memory) => `${memory.title}: ${memory.content}`),
+  });
   const todayActivities = activities.map((activity) => ({
     title: activity.title,
     domain: activity.domain,
@@ -219,11 +240,12 @@ export async function applyTodayUpdates(
 
   if (updates.logActivity?.title?.trim()) {
     const domain = updates.logActivity.domain;
+    const targetDate = updates.logActivity.date?.trim() || today;
     if ((GROWTH_DOMAINS as readonly string[]).includes(domain)) {
       await prisma.growthActivity.create({
         data: {
           userId,
-          date: today,
+          date: targetDate,
           domain,
           category: updates.logActivity.category || "coach_update",
           title: updates.logActivity.title.trim().slice(0, 160),
@@ -236,7 +258,13 @@ export async function applyTodayUpdates(
           impactScore: 5,
         },
       });
-      applied.push(`Logged: ${updates.logActivity.title.trim()}`);
+      await applyMentionsToActivityText(
+        userId,
+        `${updates.logActivity.title} ${updates.logActivity.notes ?? ""}`,
+        targetDate,
+        updates.logActivity.title.trim(),
+      );
+      applied.push(`Logged: ${updates.logActivity.title.trim()}${targetDate !== today ? ` on ${targetDate}` : ""}`);
     }
   }
 
@@ -351,7 +379,7 @@ export function formatTodayBriefForSpeech(
       lines.push(`• Move status: ${brief.recommendation.status}.`);
     }
   } else {
-    lines.push("• Open Growth to generate today's highest-leverage action.");
+    lines.push("• Ask Coach to generate today's highest-leverage action.");
   }
 
   return lines.join("\n");

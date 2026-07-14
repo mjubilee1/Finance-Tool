@@ -5,6 +5,7 @@ import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_C
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { storeFinancialMemories } from "./financial-memory";
+import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "./lyft";
 
 type NewMemory = {
   title: string;
@@ -87,7 +88,7 @@ function buildFallbackCfoInsight(params: {
   const recurringBills = params.recurringPatterns
     .filter((pattern) => pattern.direction === "expense")
     .slice(0, 5)
-    .map((pattern) => `${pattern.merchantName ?? "Recurring bill"} ${pattern.frequency} ${Math.abs(pattern.averageAmount).toFixed(2)}`);
+    .map((pattern) => `Date needed • ${pattern.merchantName ?? "Recurring bill"} • ${pattern.frequency} • $${Math.abs(pattern.averageAmount).toFixed(2)}`);
 
   const buffer = 1000;
   const safeSpendToday = Math.max(0, Math.min(40, Math.floor((checkingBalance - buffer) / 14)));
@@ -102,12 +103,12 @@ function buildFallbackCfoInsight(params: {
       cashSafety: `Checking shows about ${checkingBalance.toFixed(2)} available. Protect mortgage, minimums, and at least a ${buffer.toFixed(0)} cash buffer before extra debt payments.`,
       upcomingBills: recurringBills.length > 0
         ? recurringBills
-        : ["No due-date data is stored yet. Add due dates for mortgage, cards, utilities, IRS, insurance, and subscriptions."],
+        : ["Date needed • No due-date data is stored yet. Add due dates for mortgage, cards, utilities, IRS, insurance, and subscriptions."],
       incomeExpected: tenantRentSeen
-        ? ["Tenant rent pattern detected recently."]
-        : ["No tenant rent, paycheck, Lyft income, or refund pattern detected in the current transaction set."],
+        ? [`Timing needed • Tenant rent pattern detected recently. Lyft profit still requires clearing the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee first.`]
+        : [`Timing needed • No tenant rent, paycheck, Lyft profit, or refund pattern detected in the current transaction set. Lyft gross earnings count as fee coverage until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee is covered.`],
       safeSpendToday,
-      safeSpendTodayReason: `Default discretionary target is about $40/day for food/fun variable spend — not income and not bill coverage. Gas and Lyft costs sit outside this number. This keeps checking above the protected cash buffer while bill due dates and debt minimums are incomplete.`,
+      safeSpendTodayReason: `Default discretionary target is about $40/day for food/fun variable spend — not income and not bill coverage. Gas and Lyft costs sit outside this number, and Lyft profit starts only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee is covered. This keeps checking above the protected cash buffer while bill due dates and debt minimums are incomplete.`,
       debtMove,
       spendingWarning: foodSpend > 0
         ? `Food/convenience spending appears in the recent transactions. Keep food tight today and avoid using credit cards for food.`
@@ -291,6 +292,7 @@ ${JSON.stringify({
     recentDailySpendAverage: dailyMetrics.recentDailySpendAverage,
   })}
 safeSpendToday is remaining food/fun room today. dailyAllowance is the ~$40/day food/fun target. Gas, Lyft operating costs, and bills do NOT count against it. Never raise safeSpendToday above the system-calculated dailyAllowance.
+Lyft gross earnings are not profit until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft program fee is covered for the week. For weekly recommendations, separate "cover the fee floor" from "drive for surplus profit."
 
 RECENT TRANSACTIONS (last 30 days, primary accounts when set):
 ${JSON.stringify(focusTransactions.slice(0, 60).map((transaction: {
@@ -346,8 +348,8 @@ Generate a JSON response exactly matching this structure:
   "cfoBrief": {
     "status": "stable",
     "cashSafety": "...",
-    "upcomingBills": ["..."],
-    "incomeExpected": ["..."],
+    "upcomingBills": ["Mon Jul 13 • Netflix • $18.99", "Date needed • Credit card minimum • amount unknown"],
+    "incomeExpected": ["Fri Jul 17 • W2 paycheck • ~$1,555", "Timing needed • Tenant rent pattern detected recently"],
     "safeSpendToday": 40,
     "safeSpendTodayReason": "...",
     "debtMove": "...",

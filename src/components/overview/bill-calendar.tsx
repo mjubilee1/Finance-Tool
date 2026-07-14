@@ -9,6 +9,32 @@ type Props = {
   onAskChat?: () => void;
 };
 
+function parseScheduleItem(item: string, missingTimingLabel: string) {
+  const [maybeTiming, ...detailParts] = item.split(/\s*•\s*/);
+  const timing = maybeTiming.trim();
+
+  if (detailParts.length > 0 && isTimingLabel(timing)) {
+    return {
+      timing,
+      detail: detailParts.join(" • ").trim(),
+    };
+  }
+
+  return {
+    timing: missingTimingLabel,
+    detail: item,
+  };
+}
+
+function isTimingLabel(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.includes("needed") ||
+    /^(est\.?\s+)?(mon|tue|wed|thu|fri|sat|sun)\b/.test(normalized) ||
+    /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+  );
+}
+
 export function BillCalendar({ upcomingBills = [], incomeExpected = [], onAskChat }: Props) {
   const calendarDays = buildBillCalendar(14);
   const hasBills = upcomingBills.length > 0;
@@ -56,12 +82,17 @@ export function BillCalendar({ upcomingBills = [], incomeExpected = [], onAskCha
           </p>
           {hasBills ? (
             <ul className="space-y-2 text-sm text-[var(--ink)]">
-              {upcomingBills.map((bill) => (
-                <li key={bill} className="flex items-start gap-2">
-                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-rose-500 dark:bg-rose-400 shrink-0" />
-                  {bill}
-                </li>
-              ))}
+              {upcomingBills.map((bill) => {
+                const parsed = parseScheduleItem(bill, "Date needed");
+                return (
+                  <li key={bill} className="flex items-start gap-2.5">
+                    <span className="mt-0.5 shrink-0 rounded-md bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-400/30 dark:text-rose-200">
+                      {parsed.timing}
+                    </span>
+                    <span className="leading-relaxed">{parsed.detail}</span>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="text-sm text-[var(--muted)] leading-relaxed">
@@ -76,12 +107,17 @@ export function BillCalendar({ upcomingBills = [], incomeExpected = [], onAskCha
           </p>
           {hasIncome ? (
             <ul className="space-y-2 text-sm text-[var(--ink)]">
-              {incomeExpected.map((item) => (
-                <li key={item} className="flex items-start gap-2">
-                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shrink-0" />
-                  {item}
-                </li>
-              ))}
+              {incomeExpected.map((item) => {
+                const parsed = parseScheduleItem(item, "Timing needed");
+                return (
+                  <li key={item} className="flex items-start gap-2.5">
+                    <span className="mt-0.5 shrink-0 rounded-md bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-800 ring-1 ring-blue-400/30 dark:text-blue-200">
+                      {parsed.timing}
+                    </span>
+                    <span className="leading-relaxed">{parsed.detail}</span>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="text-sm text-[var(--muted)] leading-relaxed">

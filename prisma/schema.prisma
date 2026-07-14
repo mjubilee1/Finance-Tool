@@ -58,6 +58,7 @@ model User {
   accounts                Account[]
   sessions                Session[]
   plaidItems              PlaidItem[]
+  googleCalendarConnection GoogleCalendarConnection?
   financialAccounts       FinancialAccount[]
   transactions            Transaction[]
   recurringPatterns       RecurringPattern[]
@@ -91,6 +92,25 @@ model PlaidItem {
   updatedAt            DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GoogleCalendarConnection {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  calendarId            String    @default("primary")
+  encryptedAccessToken  String    @db.Text
+  encryptedRefreshToken String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  scopes                String[]
+  status                String    @default("active") // active | needs_reconnect
+  connectedAt           DateTime  @default(now())
+  lastSyncAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }
 
 model PlaidApiLog {
@@ -233,22 +253,25 @@ model FinancialGoal {
 
 // Growth Intelligence — high-leverage compounding across life domains
 model GrowthActivity {
-  id           String   @id @default(cuid())
-  userId       String
-  date         String // YYYY-MM-DD
-  domain       String // career | startup | financial | social | fitness | personal
-  category     String
-  title        String
-  notes        String?  @db.Text
-  leverage     String   @default("long_term_leverage") // immediate_income | long_term_leverage
-  minutesSpent Int?
-  impactScore  Float    @default(5) // 1-10
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  userId                String
+  date                  String // YYYY-MM-DD
+  domain                String // career | startup | financial | social | fitness | personal
+  category              String
+  title                 String
+  notes                 String?  @db.Text
+  leverage              String   @default("long_term_leverage") // immediate_income | long_term_leverage
+  minutesSpent          Int?
+  impactScore           Float    @default(5) // 1-10
+  /// Google Calendar event id when auto-logged from schedule
+  sourceCalendarEventId String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+  @@index([userId, sourceCalendarEventId])
 }
 
 model GrowthContact {

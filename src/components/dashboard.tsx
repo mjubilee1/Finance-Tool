@@ -1,6 +1,5 @@
 "use client";
 
-import { sumDepositoryCash } from "@/lib/account-focus";
 import { calculateGoalPace, type DailySpendPoint } from "@/lib/cash-flow";
 import { isLifeGoalType } from "@/lib/goal-types";
 import { formatCurrency } from "@/lib/format";
@@ -119,12 +118,17 @@ type CashFlowData = {
       label: string;
       spent: number;
       income: number;
+      baseIncome: number;
+      extraIncome: number;
       net: number;
       isToday: boolean;
       isFuture: boolean;
     }>;
     weekSpent: number;
     weekIncome: number;
+    baseWeeklyIncome: number;
+    baseDailyIncome: number;
+    extraIncome: number;
     weekNet: number;
     weeklyBudget: number;
     budgetToDate: number;
@@ -322,7 +326,6 @@ export function Dashboard() {
         }
       : undefined,
   };
-  const cfoBrief = aiInsight?.cfoBrief;
   const briefRefreshInfo = briefRefresh;
   const briefUpdatedLabel = briefRefreshInfo?.lastUpdatedAt
     ? new Date(briefRefreshInfo.lastUpdatedAt).toLocaleString([], {
@@ -338,25 +341,6 @@ export function Dashboard() {
         minute: "2-digit",
       })
     : null;
-  const fallbackSafeSpendToday = 40;
-  const safeSpendToday = cashFlow?.today?.dailyAllowance
-    ?? cashFlow?.safeDailySpend
-    ?? fallbackSafeSpendToday;
-  const availableCheckingCash = sumDepositoryCash(accounts);
-  const protectedCashBuffer = Math.max(500, availableCheckingCash * 0.25);
-  const monthlySafeSpend = safeSpendToday * 30;
-  const sixMonthSafeSpend = safeSpendToday * 180;
-  const safeSpendRaiseFactors = [
-    "Paycheck, tenant rent, Lyft profit, or refunds clear in checking.",
-    "Mortgage, utilities, IRS, insurance, subscriptions, and card minimums are covered.",
-    "Food, convenience, travel, house repairs, and fun spending stay under the daily discretionary cap.",
-  ];
-  const safeSpendHurtFactors = [
-    "Rent is late, expected income misses, or checking drops near the cash buffer.",
-    "A mortgage, utility, insurance, tax, subscription, or card minimum is coming due.",
-    "Large food, travel, house-repair, interest, or credit-card spending hits.",
-  ];
-
   const priorityGoal = useMemo(() => {
     const sorted = [...goals].sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
     const top = sorted[0];
@@ -676,16 +660,6 @@ export function Dashboard() {
                 <OverviewHome
                   aiInsight={displayInsight}
                   cashFlow={cashFlow}
-                  safeSpendToday={safeSpendToday}
-                  safeSpendTodayReason={
-                    cashFlow.safeSpendTodayReason ??
-                    displayInsight.cfoBrief?.safeSpendTodayReason
-                  }
-                  protectedCashBuffer={protectedCashBuffer}
-                  monthlySafeSpend={monthlySafeSpend}
-                  sixMonthSafeSpend={sixMonthSafeSpend}
-                  safeSpendRaiseFactors={safeSpendRaiseFactors}
-                  safeSpendHurtFactors={safeSpendHurtFactors}
                   briefUpdatedLabel={briefUpdatedLabel}
                   nextBriefLabel={nextBriefLabel}
                   refreshHours={briefRefreshInfo?.refreshHours}

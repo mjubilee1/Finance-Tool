@@ -1,7 +1,9 @@
 import { CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
+import { COACH_NORTH_STAR } from "@/lib/life-os-north-star";
 import { GOAL_SUGGESTION_RULES } from "@/lib/goal-suggestion";
 import type { CoachIntent } from "@/lib/coach-intent";
 import type { TodayBriefContext } from "@/lib/today-brief";
+import type { WeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 
 const MORNING_BRIEF_FORMAT = `
 When the user asks for a morning check-in, today's plan, or their schedule, reply in this read-aloud friendly structure inside "message":
@@ -49,6 +51,9 @@ When the user teaches durable facts, store them in memoriesToStore.
 Joy preferences are options, not automatic assignments.
 When the user uploads photo(s), read them carefully and store durable schedule/money facts in memoriesToStore.
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
+
+NORTH STAR:
+${COACH_NORTH_STAR}
 `;
 
 type FinancePack = {
@@ -62,13 +67,20 @@ type FinancePack = {
   typicalPaycheck: number | null;
 };
 
+type CalendarContext = {
+  nowIso: string;
+  timeZone: string;
+};
+
 export function buildCoachSystemPrompt(params: {
   intent: CoachIntent;
   userName: string | null;
   todayBrief: TodayBriefContext;
   financePack: FinancePack;
+  calendarContext: CalendarContext;
+  weeklyPlan: WeeklyOperatingPlan;
 }) {
-  const { intent, userName, todayBrief, financePack } = params;
+  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan } = params;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
   const includeTodayBrief =
@@ -145,7 +157,38 @@ GROWTH FOCUS: Use TODAY_BRIEF recommendation and planner blocks. Tie advice to d
 `);
   }
 
+  sections.push(`
+WEEKLY_OPERATING_SCRIPT (source of truth for "schedule my week", "what is ahead", and planning around calendar events):
+${JSON.stringify(weeklyPlan)}
+
+Weekly planning rules:
+- Google Calendar blocks are real commitments; plan around them.
+- Weekly template blocks are rails, not hard calendar events.
+- 9-5 work is locked Mon-Fri. Promotion/network work is optional and happens outside job hours.
+- Mon-Wed office: morning Lyft before commute, no gym block.
+- Thu-Fri WFH: morning Lyft before 9-5, gym in a midday flex pocket inside the job day, promotion/network off-hours.
+- Sat-Sun weekend: morning Lyft AM like every other day, then gym, social, and recovery.
+- When the user teaches durable schedule preferences (Lyft timing, gym window, work shape, day rhythm), store them in memoriesToStore so future planning stays aligned.
+- For parties, birthdays, networking, appointments, and events with locations, call out prep/travel/follow-up windows.
+- Do not create multiple calendar blocks for a weekly script unless the user explicitly asks you to schedule them.
+- If the user asks to add something to their plan/list for today or another day this week, use todayUpdates.logActivity with category "user_plan", a clear title, domain, notes, and optional date (YYYY-MM-DD). That adds it to the Week ahead and today's planner without creating a Google Calendar event unless they also ask for that.
+- If the user asks you to update their weekly rhythm or default schedule, confirm the change in message, store the preference in memoriesToStore, and use logActivity with category "user_plan" only when they want a specific dated block added.
+`);
+
   sections.push(GOAL_SUGGESTION_RULES);
+
+  sections.push(`
+CALENDAR ACTIONS:
+- Current local time: ${calendarContext.nowIso}
+- Default calendar time zone: ${calendarContext.timeZone}
+- If the user explicitly asks to add, create, schedule, or put something on Google Calendar, populate calendarEvent with action "create".
+- Do not create calendar events from vague planning talk. If title, date, or start time is missing/ambiguous, ask one concise follow-up in message and set calendarEvent to null.
+- If duration is not specified for a timed event, default to 60 minutes. Preserve the user's requested duration when given.
+- For all-day events, use allDay true with start/end as YYYY-MM-DD; Google Calendar end date is exclusive, so a one-day all-day event ends the next date.
+- Never include sensitive financial account details in calendar event descriptions.
+- When the event is networking, social, or relationship-related, include @Name in the title or description (e.g. "DMV mixer @Jane Smith") so Growth links it to that contact after the event finishes.
+- Finished Google Calendar events auto-log into Growth activities — prefer clear titles like "Network happy hour" or "Coffee with @Alex".
+`);
 
   sections.push(`
 Return JSON only with this exact shape:
@@ -169,6 +212,16 @@ Return JSON only with this exact shape:
     "severity": "review"
   },
   "goalSuggestion": null,
+  "calendarEvent": {
+    "action": "create",
+    "title": "Event title",
+    "start": "ISO date-time with offset, or YYYY-MM-DD for all-day",
+    "end": "ISO date-time with offset, or exclusive YYYY-MM-DD for all-day",
+    "allDay": false,
+    "timeZone": "${calendarContext.timeZone}",
+    "location": null,
+    "description": null
+  },
   "memoriesToStore": [],
   "shouldRefreshBrief": false
 }
@@ -177,10 +230,13 @@ todayUpdates rules:
 - Use null/false defaults when the user is not changing today's plan.
 - skipPlanBlock must be one of: "lyft", "gym", "leverage", "joy", or null.
 - markMoveStatus must be "skipped", "done", or null.
-- logActivity when set: { "title", "domain", "category", "leverage", "minutesSpent", "notes" }
+- logActivity when set: { "title", "domain", "category", "date", "leverage", "minutesSpent", "notes" }
+- Use @Name in logActivity.title or notes to link a contact (e.g. "Coffee with @Jane Smith").
+- Use category "user_plan" when adding an item to the user's operating plan/list. date is optional YYYY-MM-DD; default is today.
 
 Use spotlight null when the user is not asking about a specific transaction.
 Use goalSuggestion null unless one high-value tracked goal clearly helps.
+Use calendarEvent null unless the user is explicitly asking to create a Google Calendar event and gave enough detail.
 If the user is only asking a question and not teaching durable facts, return an empty memoriesToStore array and shouldRefreshBrief false.
 
 User display name: ${userName || "Trell"}

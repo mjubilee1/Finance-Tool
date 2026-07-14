@@ -2,6 +2,7 @@
 
 import { formatCurrency } from "@/lib/format";
 import type { WeeklyCashFlow } from "@/lib/cash-flow";
+import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 
 type Props = {
   weekly: WeeklyCashFlow;
@@ -15,8 +16,17 @@ const paceStyles = {
 };
 
 export function WeeklyCashFlowStrip({ weekly }: Props) {
-  const { days, weekSpent, weekIncome, weekNet, weeklyBudget, budgetUsedPercent, paceStatus, paceMessage } =
-    weekly;
+  const {
+    days,
+    weekSpent,
+    weekNet,
+    baseWeeklyIncome,
+    baseDailyIncome,
+    extraIncome,
+    budgetUsedPercent,
+    paceStatus,
+    paceMessage,
+  } = weekly;
 
   return (
     <div className="app-card p-6">
@@ -24,6 +34,10 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
         <div>
           <p className="app-label mb-1">This week</p>
           <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">Weekly cash flow</h2>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Paycheck is spread across 7 days; extra deposits land when they post. Lyft first{" "}
+            {LYFT_WEEKLY_PROGRAM_FEE_LABEL} covers the fee.
+          </p>
         </div>
         <div className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 ${paceStyles[paceStatus]}`}>
           {paceMessage}
@@ -46,37 +60,59 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
             <p className="text-sm sm:text-base font-bold mt-0.5 tabular-nums">
               {new Date(`${day.date}T12:00:00`).getDate()}
             </p>
-            {!day.isFuture && (
-              <p
-                className={`text-[10px] sm:text-xs mt-1 font-medium tabular-nums ${
-                  day.isToday ? "text-white/85" : "text-[var(--muted)]"
-                }`}
-              >
-                {day.spent > 0 ? formatCurrency(day.spent) : "—"}
-              </p>
-            )}
+            <p
+              className={`text-[10px] sm:text-xs mt-1 font-medium tabular-nums ${
+                day.isToday
+                  ? "text-white/85"
+                  : day.net >= 0
+                    ? "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
+                    : "text-rose-500"
+              }`}
+            >
+              {formatSignedCurrency(day.net)}
+            </p>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Spent", value: weekSpent, className: "text-[var(--ink)]" },
-          { label: "Income", value: weekIncome, className: "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" },
+          { label: "Cost so far", value: weekSpent, className: "text-[var(--ink)]" },
           {
-            label: "Net",
+            label: "Base pay",
+            value: baseWeeklyIncome,
+            className: "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]",
+            sub: `${formatCurrency(baseDailyIncome)}/day`,
+          },
+          {
+            label: "Other deposits",
+            value: extraIncome,
+            className: "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]",
+          },
+          {
+            label: "Cash flow",
             value: weekNet,
             className: weekNet >= 0 ? "text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" : "text-rose-500",
+            signed: true,
           },
-          { label: "Week budget", value: weeklyBudget, className: "text-[var(--ink)]", sub: `${Math.round(budgetUsedPercent)}% used` },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
             <p className="app-label">{stat.label}</p>
-            <p className={`text-lg font-bold tabular-nums ${stat.className}`}>{formatCurrency(stat.value)}</p>
+            <p className={`text-lg font-bold tabular-nums ${stat.className}`}>
+              {stat.signed ? formatSignedCurrency(stat.value) : formatCurrency(stat.value)}
+            </p>
             {stat.sub && <p className="text-[10px] text-[var(--muted)] mt-0.5">{stat.sub}</p>}
           </div>
         ))}
       </div>
+      <p className="mt-3 text-[10px] text-[var(--muted)]">
+        Logged costs have absorbed {Math.round(budgetUsedPercent)}% of base weekly pay.
+      </p>
     </div>
   );
+}
+
+function formatSignedCurrency(amount: number) {
+  if (Math.abs(amount) < 0.01) return "$0.00";
+  return `${amount > 0 ? "+" : "-"}${formatCurrency(Math.abs(amount))}`;
 }

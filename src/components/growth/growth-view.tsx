@@ -8,11 +8,9 @@ import {
   Loader2,
   Plus,
   RefreshCw,
-  Sparkles,
   Users,
   AlertTriangle,
   CheckCircle2,
-  SkipForward,
   ImagePlus,
   X,
   Search,
@@ -32,7 +30,7 @@ import { formatCurrency } from "@/lib/format";
 import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
 import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-notes";
-import { dayShapeFor, type JoyIdea } from "@/lib/joy-ideas-shared";
+import { GOOD_WEEK_CHECKLIST } from "@/lib/life-os-north-star";
 
 type DomainScores = {
   career: number;
@@ -124,6 +122,7 @@ type GrowthDashboard = {
     leverage: string;
     impactScore: number;
     minutesSpent: number | null;
+    sourceCalendarEventId?: string | null;
   }>;
   contacts: Array<{
     id: string;
@@ -217,162 +216,6 @@ function buildWeeklyTldr(review: NonNullable<GrowthDashboard["weeklyReview"]>): 
   };
 }
 
-type TodayPlanBlock = {
-  key: string;
-  label: string;
-  time: string;
-  why: string;
-  domain: string;
-  category: string;
-  leverage: "immediate_income" | "long_term_leverage";
-  minutes: number;
-  impact: number;
-  tone: "teal" | "sky" | "amber" | "slate";
-};
-
-function buildTodayPlan(
-  metrics: GrowthDashboard["metrics"],
-  recommendation: GrowthDashboard["recommendation"],
-  profile: GrowthDashboard["lifeLeverageProfile"],
-): { dayLabel: string; summary: string; blocks: TodayPlanBlock[] } {
-  const now = DateTime.local();
-  const shape = dayShapeFor(now.weekday);
-  const isWeekend = shape === "weekend";
-  const isOffice = shape === "office";
-  const leverageMinutes = Math.min(
-    isOffice ? 60 : isWeekend ? 90 : 75,
-    Math.max(45, recommendation?.timeRequiredMinutes ?? (isOffice ? 45 : 60)),
-  );
-  const cashTight = metrics.financialSignals.safeSpendToday < 20 || metrics.financialSignals.cashAvailable < 1000;
-  const socialThin = metrics.domains.social < 55 || metrics.activityCounts.social === 0;
-  const promotionUpside = profile?.promotionUpsideAnnual ?? 0;
-  const promotionDeadline = profile?.promotionDeadline
-    ? DateTime.fromISO(profile.promotionDeadline)
-    : null;
-  const promotionSoon = promotionDeadline?.isValid
-    ? promotionDeadline.diff(now, "days").days <= 60
-    : Boolean(profile?.promotionTarget);
-  const leverageLabel = promotionSoon
-    ? isOffice
-      ? "Promotion desk block"
-      : "Promotion project block"
-    : recommendation?.domain === "social" || socialThin
-      ? isOffice
-        ? "Network / async outreach"
-        : "Network / startup leverage"
-      : isOffice
-        ? "Desk leverage block"
-        : "Startup leverage";
-  const leverageWhy = promotionSoon
-    ? `Career hour toward ${profile?.promotionTarget ?? "your promotion"} (~${
-        promotionUpside > 0 ? formatCurrency(promotionUpside) : "big"
-      }/yr). Ship promo-ready work: visibility, docs, stakeholder updates, or the project that gets you promoted.${
-        isOffice ? " Desk-compatible during office hours." : ""
-      }`
-    : firstSentence(recommendation?.action, 120) ??
-      (isOffice
-        ? "Desk-compatible ship, outreach, or learning that compounds."
-        : "Ship, outreach, or learn something that compounds.");
-  // Live ideas come from /api/growth/joy-ideas — not a stale profile list.
-  const joyLabel = isWeekend
-    ? "Intentional joy block"
-    : isOffice
-      ? "Small evening joy"
-      : "Short joy reset";
-  const joyTime = isWeekend ? "2-4 hr cap" : isOffice ? "20-40 min" : "30-60 min";
-  const joyMinutes = isWeekend ? 150 : isOffice ? 30 : 45;
-  const joyWhy = isWeekend
-    ? "Tap Ideas for live DMV picks based on today."
-    : isOffice
-      ? "Short evening window. Tap Ideas for live picks."
-      : "Capped around work. Tap Ideas for live picks.";
-  const lyftWhy = cashTight
-    ? isOffice
-      ? "Morning Lyft already in rhythm; evening only if the weekly fee still needs covering."
-      : "Cash-pressure block after higher-leverage work."
-    : isOffice
-      ? "Optional evening only — morning Lyft already baked in."
-      : "Optional after body + leverage + joy.";
-  const summary =
-    shape === "weekend"
-      ? "Protect body, one leverage block, and intentional joy. Lyft fills cash gaps, not the whole day."
-      : shape === "office"
-        ? "Office day — desk leverage around work, small evening joy, Lyft morning/evening only."
-        : "WFH day — deeper leverage block, capped joy, Lyft after the deep work.";
-
-  return {
-    dayLabel: now.toFormat("cccc"),
-    summary,
-    blocks: [
-      {
-        key: "gym",
-        label: profile?.fitnessGoal ? "Gym / body goal" : "Gym / body reset",
-        time: "45-75 min",
-        why: profile?.fitnessGoal ?? "Keeps tomorrow's work energy from borrowing against today.",
-        domain: "fitness",
-        category: "gym",
-        leverage: "long_term_leverage",
-        minutes: 60,
-        impact: 7,
-        tone: "teal",
-      },
-      {
-        key: "leverage",
-        label: leverageLabel,
-        time: `${leverageMinutes} min`,
-        why: leverageWhy,
-        domain: promotionSoon ? "career" : recommendation?.domain ?? (socialThin ? "social" : "startup"),
-        category: promotionSoon ? "promotion" : recommendation?.domain === "social" || socialThin ? "networking" : "build",
-        leverage: "long_term_leverage",
-        minutes: leverageMinutes,
-        impact: 8,
-        tone: "sky",
-      },
-      {
-        key: "joy",
-        label: joyLabel,
-        time: joyTime,
-        why: joyWhy,
-        domain: "personal",
-        category: "joy",
-        leverage: "long_term_leverage",
-        minutes: joyMinutes,
-        impact: 6,
-        tone: "amber",
-      },
-      {
-        key: "lyft",
-        label: cashTight ? "Lyft cash block" : isOffice ? "Optional evening Lyft" : "Optional Lyft",
-        time: cashTight ? (isOffice ? "60-90 min evening" : "2-3 hr") : isOffice ? "60-90 min evening" : "60-90 min",
-        why: lyftWhy,
-        domain: "financial",
-        category: "lyft",
-        leverage: "immediate_income",
-        minutes: cashTight ? (isOffice ? 75 : 150) : 75,
-        impact: cashTight ? 7 : 4,
-        tone: "slate",
-      },
-    ],
-  };
-}
-
-type GrowthActivityRow = GrowthDashboard["activities"][number];
-
-function isTodayPlanBlockLogged(
-  block: TodayPlanBlock,
-  activities: GrowthActivityRow[],
-  todayIso: string,
-  chosenJoy: JoyIdea | null,
-) {
-  return activities.some((activity) => {
-    if (activity.date !== todayIso) return false;
-    if (activity.domain !== block.domain || activity.category !== block.category) return false;
-    if (block.key === "joy" && chosenJoy) {
-      return activity.title === `Joy: ${chosenJoy.label}`;
-    }
-    return true;
-  });
-}
 
 function formatActivityDate(iso: string): string {
   const dt = DateTime.fromISO(iso);
@@ -390,12 +233,18 @@ function leverageLabel(leverage: string, short = false): string {
 
 function domainChipClass(domain: string): string {
   const map: Record<string, string> = {
-    career: "bg-sky-100 text-sky-800 ring-sky-200/80",
-    startup: "bg-violet-100 text-violet-800 ring-violet-200/80",
-    financial: "bg-emerald-100 text-emerald-800 ring-emerald-200/80",
-    social: "bg-amber-100 text-amber-800 ring-amber-200/80",
-    fitness: "bg-teal-100 text-teal-800 ring-teal-200/80",
-    personal: "bg-slate-100 text-slate-700 ring-slate-200/80",
+    career:
+      "bg-[color-mix(in_srgb,var(--accent)_18%,var(--card-solid))] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]",
+    startup:
+      "bg-[color-mix(in_srgb,#8b5cf6_16%,var(--card-solid))] text-[color-mix(in_srgb,#7c3aed_55%,var(--ink))] ring-[color-mix(in_srgb,#8b5cf6_30%,transparent)]",
+    financial:
+      "bg-[color-mix(in_srgb,#10b981_14%,var(--card-solid))] text-[color-mix(in_srgb,#047857_65%,var(--ink))] ring-[color-mix(in_srgb,#10b981_28%,transparent)]",
+    social:
+      "bg-[color-mix(in_srgb,var(--ember)_14%,var(--card-solid))] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]",
+    fitness:
+      "bg-[color-mix(in_srgb,var(--accent)_14%,var(--card-solid))] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]",
+    personal:
+      "bg-[color-mix(in_srgb,var(--ink)_7%,var(--card-solid))] text-[var(--ink-soft)] ring-[var(--card-border)]",
   };
   return map[domain] ?? map.personal;
 }
@@ -415,24 +264,10 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const [contactTypeFilter, setContactTypeFilter] = useState("all");
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [showWeeklyDetails, setShowWeeklyDetails] = useState(false);
-  const [showMoveDetails, setShowMoveDetails] = useState(false);
+  const [showGoodWeekChecklist, setShowGoodWeekChecklist] = useState(false);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
   const [expandedActivityIds, setExpandedActivityIds] = useState<Set<string>>(new Set());
   const [showProfileForm, setShowProfileForm] = useState(false);
-  const [showJoyIdeas, setShowJoyIdeas] = useState(false);
-  const [chosenJoy, setChosenJoy] = useState<JoyIdea | null>(null);
-  const [joyIdeas, setJoyIdeas] = useState<JoyIdea[]>([]);
-  const [joyWeather, setJoyWeather] = useState<string | null>(null);
-  const [joyIdeasError, setJoyIdeasError] = useState<string | null>(null);
-  const [loadingJoyIdeas, setLoadingJoyIdeas] = useState(false);
-  const [showAddPlanBlock, setShowAddPlanBlock] = useState(false);
-  const [myBlockForm, setMyBlockForm] = useState({
-    title: "",
-    minutesSpent: "60",
-    domain: "personal",
-    leverage: "long_term_leverage" as "long_term_leverage" | "immediate_income",
-    notes: "",
-  });
   const [activityForm, setActivityForm] = useState({
     date: DateTime.local().toISODate() ?? "",
     domain: "career",
@@ -463,7 +298,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     notes: "",
   });
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["growth-dashboard"],
     queryFn: async () => {
       const res = await fetch("/api/growth");
@@ -478,7 +313,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     void queryClient.invalidateQueries({ queryKey: ["growth-overview-preview"] });
   };
 
-  const contacts = data?.contacts ?? [];
+  const contacts = useMemo(() => data?.contacts ?? [], [data?.contacts]);
 
   const contactTypes = useMemo(() => {
     const types = new Set<string>();
@@ -512,20 +347,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [contacts, contactQuery, contactTypeFilter]);
 
-  const generateRecommendation = async (force = false) => {
-    setBusy("recommend");
-    try {
-      await fetch("/api/growth/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
-      });
-      invalidate();
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const openProfileForm = () => {
     const profile = data?.lifeLeverageProfile;
     setProfileForm({
@@ -534,7 +355,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
       promotionUpsideAnnual: profile?.promotionUpsideAnnual?.toString() ?? "20000",
       currentWeight: profile?.currentWeight?.toString() ?? "",
       targetWeight: profile?.targetWeight?.toString() ?? "",
-      fitnessGoal: profile?.fitnessGoal ?? "Gym + cardio to protect energy and body goals",
+      fitnessGoal: profile?.fitnessGoal ?? "",
       lyftHourlyNet: profile?.lyftHourlyNet?.toString() ?? "20",
       notes: profile?.notes ?? "",
     });
@@ -559,34 +380,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     }
   };
 
-  const loadJoyIdeas = async (mode: "toggle" | "refresh" = "toggle") => {
-    if (mode === "toggle" && showJoyIdeas) {
-      setShowJoyIdeas(false);
-      return;
-    }
-    setShowJoyIdeas(true);
-    setLoadingJoyIdeas(true);
-    setJoyIdeasError(null);
-    try {
-      const res = await fetch("/api/growth/joy-ideas", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to load ideas");
-      const payload = (await res.json()) as {
-        ideas?: JoyIdea[];
-        weatherSummary?: string | null;
-      };
-      setJoyIdeas(payload.ideas ?? []);
-      setJoyWeather(payload.weatherSummary ?? null);
-      if (!payload.ideas?.length) {
-        setJoyIdeasError("No ideas came back — try again.");
-      }
-    } catch {
-      setJoyIdeas([]);
-      setJoyIdeasError("Could not load live ideas. Try again.");
-    } finally {
-      setLoadingJoyIdeas(false);
-    }
-  };
-
   const generateWeeklyReview = async (force = false) => {
     setBusy("review");
     try {
@@ -598,20 +391,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
       if (!res.ok) {
         throw new Error("Weekly review failed");
       }
-      invalidate();
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const updateRecommendationStatus = async (id: string, status: "done" | "skipped") => {
-    setBusy(status);
-    try {
-      await fetch("/api/growth/recommend", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      });
       invalidate();
     } finally {
       setBusy(null);
@@ -660,74 +439,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     }
   };
 
-  const logTodayPlanBlock = async (block: TodayPlanBlock) => {
-    setBusy(`today-plan-${block.key}`);
-    const isJoy = block.key === "joy";
-    const title = isJoy && chosenJoy ? `Joy: ${chosenJoy.label}` : block.label;
-    const notes =
-      isJoy && chosenJoy ? `${chosenJoy.detail}. ${block.why}` : block.why;
-    try {
-      const res = await fetch("/api/growth/activities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: DateTime.local().toISODate() ?? "",
-          domain: block.domain,
-          category: block.category,
-          title,
-          leverage: block.leverage,
-          minutesSpent: block.minutes,
-          impactScore: block.impact,
-          notes,
-        }),
-      });
-      if (res.ok) {
-        if (isJoy) {
-          setChosenJoy(null);
-          setShowJoyIdeas(false);
-        }
-        invalidate();
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const addMyPlanBlock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!myBlockForm.title.trim()) return;
-    setBusy("my-plan");
-    try {
-      const res = await fetch("/api/growth/activities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: DateTime.local().toISODate() ?? "",
-          domain: myBlockForm.domain,
-          category: "user_plan",
-          title: myBlockForm.title.trim(),
-          leverage: myBlockForm.leverage,
-          minutesSpent: myBlockForm.minutesSpent,
-          impactScore: myBlockForm.leverage === "immediate_income" ? 5 : 7,
-          notes: myBlockForm.notes.trim() || "Added by you to today's planner",
-        }),
-      });
-      if (res.ok) {
-        setMyBlockForm({
-          title: "",
-          minutesSpent: "60",
-          domain: "personal",
-          leverage: "long_term_leverage",
-          notes: "",
-        });
-        setShowAddPlanBlock(false);
-        invalidate();
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const removeActivity = async (id: string) => {
     setBusy(`remove-activity-${id}`);
     try {
@@ -738,10 +449,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     } finally {
       setBusy(null);
     }
-  };
-
-  const removeMyPlanBlock = async (id: string) => {
-    await removeActivity(id);
   };
 
   const submitContact = async (e: React.FormEvent) => {
@@ -860,17 +567,12 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     );
   }
 
-  const { metrics, recommendation, weeklyReview, opportunities, activities, snapshots } = data;
+  const { metrics, weeklyReview, opportunities, activities, snapshots } = data;
   const chartData = snapshots.map((s) => ({
     date: s.date.slice(5),
     score: Math.round(s.compoundingScore),
   }));
   const weeklyTldr = weeklyReview ? buildWeeklyTldr(weeklyReview) : null;
-  const todayPlan = buildTodayPlan(metrics, recommendation, data.lifeLeverageProfile);
-  const todayIso = DateTime.local().toISODate() ?? "";
-  const myPlanBlocks = activities.filter(
-    (a) => a.date === todayIso && a.category === "user_plan",
-  );
 
   const toggleActivityExpanded = (id: string) => {
     setExpandedActivityIds((prev) => {
@@ -902,28 +604,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               Tech →
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              if (recommendation) {
-                document.getElementById("todays-move")?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "nearest",
-                });
-                return;
-              }
-              void generateRecommendation(false);
-            }}
-            disabled={busy !== null}
-            className="inline-flex items-center gap-1.5 app-btn-primary px-3 py-2 text-sm disabled:opacity-60"
-          >
-            {busy === "recommend" || isFetching ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Sparkles size={14} />
-            )}
-            {recommendation ? "Today's move" : "Generate today's move"}
-          </button>
           <button
             type="button"
             onClick={() => {
@@ -1118,21 +798,21 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="app-label block mb-1.5">Fitness goal</label>
+              <label className="app-label block mb-1.5">Gym goal / split</label>
               <input
                 className="app-input w-full px-3 py-2 text-sm"
                 value={profileForm.fitnessGoal}
                 onChange={(e) => setProfileForm({ ...profileForm, fitnessGoal: e.target.value })}
-                placeholder="Cardio 3x/week, cut weight, build energy"
+                placeholder="e.g. Mon push, Tue pull, Thu legs, Sat cardio"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="app-label block mb-1.5">Extra context</label>
+              <label className="app-label block mb-1.5">Schedule context</label>
               <textarea
                 className="app-input w-full px-3 py-2 text-sm min-h-[72px]"
                 value={profileForm.notes}
                 onChange={(e) => setProfileForm({ ...profileForm, notes: e.target.value })}
-                placeholder="Anything the app should remember when choosing where your time goes."
+                placeholder="Gym times, commute constraints, workout class schedule, promotion checklist, or anything that should shape today."
               />
             </div>
             <div className="sm:col-span-2 flex justify-end">
@@ -1148,415 +828,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         ) : null}
       </div>
       </div>
-
-      <div className="order-4 md:order-4 app-card p-4 md:p-5 min-w-0 ring-1 ring-teal-100/80">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-          <div>
-            <p className="app-label mb-1">Today planner</p>
-            <h2 className="text-lg font-semibold text-slate-900">
-              {todayPlan.dayLabel} life allocation
-            </h2>
-            <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-              {todayPlan.summary}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowAddPlanBlock((v) => !v)}
-              className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-            >
-              {showAddPlanBlock ? "Cancel" : "+ Add my block"}
-            </button>
-            <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200/70 hidden sm:inline-flex">
-              Keep Overview money-only
-            </span>
-          </div>
-        </div>
-
-        {showAddPlanBlock ? (
-          <form
-            onSubmit={addMyPlanBlock}
-            className="mb-4 grid sm:grid-cols-2 gap-2 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200/80"
-          >
-            <div className="sm:col-span-2">
-              <label className="app-label block mb-1">What&apos;s on your schedule</label>
-              <input
-                className="app-input w-full px-3 py-2 text-sm"
-                value={myBlockForm.title}
-                onChange={(e) => setMyBlockForm({ ...myBlockForm, title: e.target.value })}
-                placeholder="e.g. Dentist 2pm, church, family dinner, deep work"
-                required
-              />
-            </div>
-            <div>
-              <label className="app-label block mb-1">Minutes</label>
-              <input
-                type="number"
-                min={15}
-                className="app-input w-full px-3 py-2 text-sm"
-                value={myBlockForm.minutesSpent}
-                onChange={(e) =>
-                  setMyBlockForm({ ...myBlockForm, minutesSpent: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <label className="app-label block mb-1">Type</label>
-              <select
-                className="app-input w-full px-3 py-2 text-sm"
-                value={myBlockForm.leverage}
-                onChange={(e) =>
-                  setMyBlockForm({
-                    ...myBlockForm,
-                    leverage: e.target.value as "long_term_leverage" | "immediate_income",
-                  })
-                }
-              >
-                <option value="long_term_leverage">Compound</option>
-                <option value="immediate_income">Cash</option>
-              </select>
-            </div>
-            <div>
-              <label className="app-label block mb-1">Domain</label>
-              <select
-                className="app-input w-full px-3 py-2 text-sm"
-                value={myBlockForm.domain}
-                onChange={(e) => setMyBlockForm({ ...myBlockForm, domain: e.target.value })}
-              >
-                {DOMAINS.map((domain) => (
-                  <option key={domain} value={domain}>
-                    {domain}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="app-label block mb-1">Note (optional)</label>
-              <input
-                className="app-input w-full px-3 py-2 text-sm"
-                value={myBlockForm.notes}
-                onChange={(e) => setMyBlockForm({ ...myBlockForm, notes: e.target.value })}
-                placeholder="Time / place / constraint"
-              />
-            </div>
-            <div className="sm:col-span-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={busy !== null || !myBlockForm.title.trim()}
-                className="app-btn-primary px-4 py-2 text-sm disabled:opacity-60"
-              >
-                {busy === "my-plan" ? "Adding..." : "Add to today"}
-              </button>
-            </div>
-          </form>
-        ) : null}
-
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          {todayPlan.blocks.map((block) => {
-            const toneClass =
-              block.tone === "teal"
-                ? "bg-teal-50/80 ring-teal-200/70 text-teal-800"
-                : block.tone === "sky"
-                  ? "bg-sky-50/80 ring-sky-200/70 text-sky-800"
-                  : block.tone === "amber"
-                    ? "bg-amber-50/80 ring-amber-200/70 text-amber-800"
-                    : "bg-slate-50 ring-slate-200/80 text-slate-700";
-            const isLogging = busy === `today-plan-${block.key}`;
-            const isJoy = block.key === "joy";
-            const alreadyLogged = isTodayPlanBlockLogged(
-              block,
-              activities,
-              todayIso,
-              chosenJoy,
-            );
-            const displayLabel =
-              isJoy && chosenJoy ? `Joy: ${chosenJoy.label}` : block.label;
-            const displayWhy =
-              isJoy && chosenJoy ? chosenJoy.detail : block.why;
-
-            return (
-              <div key={block.key} className={`rounded-2xl p-3 ring-1 ${toneClass}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{displayLabel}</p>
-                    <p className="text-xs font-semibold mt-0.5">{block.time}</p>
-                  </div>
-                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                    {block.leverage === "immediate_income" ? "cash" : "compound"}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{displayWhy}</p>
-                {isJoy ? (
-                  <div className="mt-3 space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void loadJoyIdeas()}
-                      disabled={loadingJoyIdeas}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200/80 hover:bg-white disabled:opacity-60"
-                    >
-                      {loadingJoyIdeas ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : null}
-                      {loadingJoyIdeas
-                        ? "Finding ideas..."
-                        : showJoyIdeas
-                          ? "Hide ideas"
-                          : "Ideas for today"}
-                    </button>
-                    {showJoyIdeas ? (
-                      <div className="space-y-1.5">
-                        {joyWeather ? (
-                          <p className="text-[11px] text-slate-500 px-0.5">
-                            {joyWeather}
-                          </p>
-                        ) : null}
-                        {joyIdeasError ? (
-                          <p className="text-[11px] text-amber-800 leading-snug rounded-xl bg-white/70 px-2.5 py-2 ring-1 ring-amber-100">
-                            {joyIdeasError}
-                          </p>
-                        ) : null}
-                        {joyIdeas.length > 0 ? (
-                          <ul className="space-y-1.5 max-h-56 overflow-y-auto">
-                            {joyIdeas.map((idea) => {
-                              const selected = chosenJoy?.id === idea.id;
-                              return (
-                                <li key={idea.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setChosenJoy(selected ? null : idea)
-                                    }
-                                    className={`w-full text-left rounded-xl px-2.5 py-2 ring-1 transition ${
-                                      selected
-                                        ? "bg-amber-100 ring-amber-300"
-                                        : "bg-white/70 ring-amber-100 hover:bg-white"
-                                    }`}
-                                  >
-                                    <p className="text-xs font-semibold text-slate-900">
-                                      {idea.label}
-                                    </p>
-                                    <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
-                                      {idea.detail}
-                                      {idea.timeFit ? ` · ${idea.timeFit}` : ""}
-                                    </p>
-                                  </button>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        ) : null}
-                        {!loadingJoyIdeas && joyIdeas.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => void loadJoyIdeas("refresh")}
-                            className="w-full text-[11px] font-semibold text-amber-900/80 py-1"
-                          >
-                            Refresh ideas
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => logTodayPlanBlock(block)}
-                  disabled={busy !== null || alreadyLogged}
-                  className={`mt-3 w-full rounded-xl px-3 py-1.5 text-xs font-semibold ring-1 disabled:opacity-60 ${
-                    alreadyLogged
-                      ? "bg-white/90 text-teal-800 ring-teal-200/80"
-                      : "bg-white/80 text-slate-700 ring-white/80 hover:bg-white"
-                  }`}
-                >
-                  {isLogging ? (
-                    "Logging..."
-                  ) : alreadyLogged ? (
-                    <span className="inline-flex items-center justify-center gap-1">
-                      <CheckCircle2 size={12} /> Logged today
-                    </span>
-                  ) : (
-                    "Log when done"
-                  )}
-                </button>
-              </div>
-            );
-          })}
-
-          {myPlanBlocks.map((block) => (
-            <div
-              key={block.id}
-              className="rounded-2xl p-3 ring-1 bg-white ring-slate-300/80 text-slate-700"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{block.title}</p>
-                  <p className="text-xs font-semibold mt-0.5 text-slate-600">
-                    {block.minutesSpent ? `${block.minutesSpent} min` : "Your block"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                  yours
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-                {block.notes?.trim() || "On your real schedule today."}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-1 capitalize">
-                {block.domain}
-                {" · "}
-                {block.leverage === "immediate_income" ? "cash" : "compound"}
-              </p>
-              <button
-                type="button"
-                onClick={() => removeMyPlanBlock(block.id)}
-                disabled={busy !== null}
-                className="mt-3 w-full rounded-xl bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-60"
-              >
-                {busy === `remove-activity-${block.id}` ? "Removing..." : "Remove"}
-              </button>
-            </div>
-          ))}
-        </div>
-        <p className="text-[11px] text-slate-500 mt-3">
-          System blocks are a default allocation. Add your real appointments and plans with{" "}
-          <span className="font-semibold">+ Add my block</span>.
-        </p>
-      </div>
-
-      {recommendation ? (
-        <div
-          id="todays-move"
-          className="order-3 md:order-5 app-card p-4 md:p-5 ring-1 ring-teal-200/60 bg-teal-50/30 min-w-0"
-        >
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <p className="app-label text-teal-800">Highest-leverage move today</p>
-            <span className="text-[11px] font-semibold text-teal-700/90 capitalize rounded-full bg-white/80 px-2 py-0.5 ring-1 ring-teal-200/60">
-              {recommendation.timeRequiredMinutes} min
-            </span>
-            {recommendation.domain ? (
-              <span className="text-[11px] font-semibold text-slate-600 capitalize rounded-full bg-white/80 px-2 py-0.5 ring-1 ring-slate-200/70">
-                {recommendation.domain}
-              </span>
-            ) : null}
-            <span className="text-[11px] font-medium text-slate-500 capitalize">
-              {recommendation.leverageType.replaceAll("_", " ")}
-            </span>
-          </div>
-
-          <h2 className="text-xl font-semibold text-slate-900 tracking-tight leading-snug break-words">
-            {firstSentence(recommendation.action, 90) ?? recommendation.action}
-          </h2>
-
-          <p className="mt-3 text-sm text-slate-600 leading-relaxed break-words">
-            {firstSentence(recommendation.whyItMatters, 160) ?? recommendation.whyItMatters}
-          </p>
-
-          {recommendation.nextActions.length > 0 ? (
-            <ol className="mt-4 space-y-2.5">
-              {(showMoveDetails
-                ? recommendation.nextActions
-                : recommendation.nextActions.slice(0, 3)
-              ).map((step, index) => (
-                <li key={`${index}-${step.slice(0, 24)}`} className="flex gap-3 min-w-0">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[11px] font-bold text-white">
-                    {index + 1}
-                  </span>
-                  <span className="text-sm text-slate-800 leading-snug break-words">
-                    {showMoveDetails ? step : firstSentence(step, 100) ?? step}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-
-          {showMoveDetails ? (
-            <div className="mt-4 space-y-3 rounded-xl bg-white/70 p-3 ring-1 ring-slate-200/60 text-sm text-slate-700 leading-relaxed">
-              <p className="break-words">
-                <span className="font-semibold text-slate-900">Long-term: </span>
-                {recommendation.longTermBenefit}
-              </p>
-              <p className="break-words">
-                <span className="font-semibold text-slate-900">Instead of: </span>
-                {recommendation.opportunityCost}
-              </p>
-              {(recommendation.relatedPeople.length > 0 ||
-                recommendation.relatedGoals.length > 0) && (
-                <p className="text-xs text-slate-500 break-words">
-                  {recommendation.relatedPeople.length > 0
-                    ? `People: ${recommendation.relatedPeople.join(", ")}`
-                    : null}
-                  {recommendation.relatedPeople.length > 0 &&
-                  recommendation.relatedGoals.length > 0
-                    ? " · "
-                    : null}
-                  {recommendation.relatedGoals.length > 0
-                    ? `Goals: ${recommendation.relatedGoals.join(", ")}`
-                    : null}
-                </p>
-              )}
-            </div>
-          ) : null}
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {recommendation.status === "pending" ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => updateRecommendationStatus(recommendation.id, "done")}
-                  disabled={busy !== null}
-                  className="inline-flex items-center gap-1.5 app-btn-primary px-3 py-1.5 text-xs"
-                >
-                  <CheckCircle2 size={14} /> Done
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateRecommendationStatus(recommendation.id, "skipped")}
-                  disabled={busy !== null}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white ring-1 ring-slate-200"
-                >
-                  <SkipForward size={14} /> Skip
-                </button>
-              </>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold text-slate-500 capitalize">
-                  Status: {recommendation.status}
-                </p>
-                {recommendation.status === "skipped" ? (
-                  <button
-                    type="button"
-                    onClick={() => generateRecommendation(true)}
-                    disabled={busy !== null}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-800 bg-white ring-1 ring-teal-200"
-                  >
-                    <RefreshCw size={14} /> Different move
-                  </button>
-                ) : null}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowMoveDetails((v) => !v)}
-              className="text-xs font-semibold text-teal-700 ml-auto"
-            >
-              {showMoveDetails ? "Hide details" : "Why this / full plan"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="order-3 md:order-5 app-card p-4 md:p-5 text-center">
-          <p className="text-slate-600 mb-3">No recommendation yet for today.</p>
-          <button
-            type="button"
-            onClick={() => generateRecommendation(false)}
-            disabled={busy !== null}
-            className="app-btn-primary px-4 py-2 text-sm"
-          >
-            Generate today&apos;s highest-leverage move
-          </button>
-        </div>
-      )}
 
       <div
         className={`order-8 md:contents flex flex-col gap-4 md:gap-6 ${
@@ -2046,13 +1317,17 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
             <Plus size={12} /> Log activity
           </button>
         </div>
+        <p className="text-[11px] text-slate-500 mb-3">
+          Finished Google Calendar events auto-log here. Tag people with{" "}
+          <span className="font-semibold">@Name</span> in the title (e.g. network mixer @Jane Smith).
+        </p>
         {showActivityForm ? (
           <form onSubmit={submitActivity} className="grid sm:grid-cols-2 gap-2 mb-4 p-3 rounded-xl bg-slate-50">
             <div className="flex items-start gap-2 min-w-0 sm:col-span-2">
               <textarea
                 required
                 className="app-input min-w-0 flex-1 px-3 py-2 text-sm min-h-[72px] resize-y"
-                placeholder="What did you do? Tap mic to speak…"
+                placeholder="What did you do? e.g. Network mixer @Jane Smith — tap mic to speak…"
                 value={activityForm.title}
                 onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}
               />
@@ -2158,7 +1433,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           </form>
         ) : null}
         {activities.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-[var(--muted)]">
             Log workouts, shipping blocks, networking, learning, and Lyft hours so the score can improve.
           </p>
         ) : (
@@ -2174,7 +1449,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               return (
                 <li
                   key={a.id}
-                  className="rounded-xl bg-slate-50/90 ring-1 ring-slate-100 p-3 min-w-0"
+                  className="rounded-xl p-3 min-w-0 ring-1 ring-[var(--card-border)] bg-[var(--card-solid)]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5 min-w-0">
@@ -2183,19 +1458,24 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                       >
                         {a.domain}
                       </span>
-                      <span className="text-[10px] font-medium text-slate-400">
+                      <span className="text-[10px] font-medium text-[var(--muted)]">
                         {formatActivityDate(a.date)}
                       </span>
-                      <span className="text-[10px] font-medium text-slate-400 capitalize">
+                      <span className="text-[10px] font-medium text-[var(--muted)] capitalize">
                         {leverageLabel(a.leverage, true)}
                       </span>
+                      {a.sourceCalendarEventId || a.category === "calendar" || a.notes?.startsWith("From Google Calendar.") ? (
+                        <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                          calendar
+                        </span>
+                      ) : null}
                     </div>
                     <button
                       type="button"
                       onClick={() => removeActivity(a.id)}
                       disabled={busy !== null}
                       aria-label={`Remove ${a.title}`}
-                      className="rounded-lg p-1.5 -mr-1 -mt-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 shrink-0"
+                      className="rounded-lg p-1.5 -mr-1 -mt-0.5 text-[var(--muted)] hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 shrink-0"
                     >
                       {busy === `remove-activity-${a.id}` ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -2204,24 +1484,26 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                       )}
                     </button>
                   </div>
-                  <p className="mt-2 text-sm font-medium text-slate-900 leading-snug break-words">
+                  <p className="mt-2 text-sm font-semibold text-[var(--ink)] leading-relaxed break-words">
                     {preview}
                   </p>
                   {isLong ? (
                     <button
                       type="button"
                       onClick={() => toggleActivityExpanded(a.id)}
-                      className="mt-1 text-xs font-semibold text-teal-700"
+                      className="mt-1 text-xs font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
                     >
                       {isExpanded ? "Show less" : "Show more"}
                     </button>
                   ) : null}
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200/80">
+                    <span className="inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--ink)_6%,var(--card-solid))] px-2 py-0.5 text-[10px] font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)]">
                       Impact {a.impactScore}
                     </span>
                     {a.minutesSpent ? (
-                      <span className="text-[10px] text-slate-400">{a.minutesSpent} min</span>
+                      <span className="text-[10px] font-medium text-[var(--muted)]">
+                        {a.minutesSpent} min
+                      </span>
                     ) : null}
                   </div>
                 </li>
@@ -2246,9 +1528,38 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         {busy === "review" && !weeklyReview ? (
           <p className="text-sm text-slate-500">Building this week&apos;s review from your score and notes…</p>
         ) : !weeklyReview ? (
-          <p className="text-sm text-slate-500">
-            Run a founder-style weekly retrospective: what worked, what to cut, where leverage is.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">
+              Run a founder-style weekly retrospective: what compounded, what to cut, where leverage is.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowGoodWeekChecklist((v) => !v)}
+              className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-left ring-1 ring-slate-200/80"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Good week checklist
+              </span>
+              {showGoodWeekChecklist ? (
+                <ChevronUp className="h-4 w-4 text-slate-500" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-slate-500" />
+              )}
+            </button>
+            {showGoodWeekChecklist ? (
+              <ul className="space-y-2 text-sm text-slate-700">
+                {GOOD_WEEK_CHECKLIST.map((item) => (
+                  <li key={item.id} className="flex gap-2.5 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200/70">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600/80" />
+                    <span>
+                      <span className="font-semibold text-slate-900">{item.label}</span>
+                      <span className="text-slate-600"> — {item.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ) : weeklyTldr ? (
               <div className="space-y-4">
                 <div className="rounded-2xl bg-teal-50/80 ring-1 ring-teal-200/70 p-4">
@@ -2285,6 +1596,34 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                     </div>
                   ) : null}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowGoodWeekChecklist((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-left ring-1 ring-slate-200/80"
+                >
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Good week checklist
+                  </span>
+                  {showGoodWeekChecklist ? (
+                    <ChevronUp className="h-4 w-4 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                  )}
+                </button>
+                {showGoodWeekChecklist ? (
+                  <ul className="space-y-2 text-sm text-slate-700">
+                    {GOOD_WEEK_CHECKLIST.map((item) => (
+                      <li key={item.id} className="flex gap-2.5 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200/70">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600/80" />
+                        <span>
+                          <span className="font-semibold text-slate-900">{item.label}</span>
+                          <span className="text-slate-600"> — {item.detail}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
                 <button
                   type="button"

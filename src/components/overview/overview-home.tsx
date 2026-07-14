@@ -1,28 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
 import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint } from "@/lib/cash-flow";
-import { QuickCashGlance } from "./quick-cash-glance";
-import { TodayCashFlowMeter } from "./today-cash-flow-meter";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
+  CalendarDays,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Cpu,
   Flame,
-  MapPin,
   MessageSquare,
   Quote,
-  Repeat,
+  RefreshCw,
+  SkipForward,
   Sparkles,
-  Target,
 } from "lucide-react";
 
 function DailySpendTooltip({
@@ -119,9 +118,19 @@ type TodayOverviewResponse = {
     dateLabel: string;
     plan: {
       summary: string;
-      blocks: Array<{ key: string; label: string; time: string; why: string }>;
+      blocks: Array<{
+        key: string;
+        label: string;
+        time: string;
+        fit: string;
+        why: string;
+        role: string;
+        priority: string;
+        evidence: string | null;
+      }>;
     };
     recommendation: {
+      id: string;
       action: string;
       whyItMatters: string;
       status: string;
@@ -133,15 +142,17 @@ type TodayOverviewResponse = {
       todaysMove: string | null;
       systemImpact: string | null;
     };
+    userPlanBlocks: Array<{
+      title: string;
+      domain: string;
+      minutesSpent: number | null;
+      notes: string | null;
+    }>;
     completedBlockKeys: string[];
     skippedBlockKeys: string[];
   };
-  trendTldr: {
-    tech: { title: string; why: string; oneAction: string };
-    dmv: { title: string; why: string; oneAction: string };
-    focusGuardrail: string;
-    topTechItem: { title: string; summary: string; whyItMatters: string } | null;
-  } | null;
+  calendar: GoogleCalendarOverview | null;
+  weekPlan?: WeeklyOperatingPlanOverview | null;
 };
 
 const DAY_SHAPE_LABEL: Record<TodayOverviewResponse["brief"]["dayShape"], string> = {
@@ -149,6 +160,266 @@ const DAY_SHAPE_LABEL: Record<TodayOverviewResponse["brief"]["dayShape"], string
   wfh: "WFH day",
   weekend: "Weekend",
 };
+
+type GoogleCalendarOverview = {
+  connected: boolean;
+  connectAvailable: boolean;
+  status: "active" | "needs_reconnect" | "not_connected";
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  events: Array<{
+    id: string;
+    title: string;
+    start: string;
+    end: string | null;
+    allDay: boolean;
+    location: string | null;
+    htmlLink: string | null;
+  }>;
+  error?: string;
+};
+
+type WeeklyOperatingPlanOverview = {
+  generatedAt: string;
+  startDate: string;
+  endDate: string;
+  days: Array<{
+    date: string;
+    dateLabel: string;
+    weekdayLabel: string;
+    dayShape: "office" | "wfh" | "weekend";
+    headline: string;
+    valueFocus: string;
+    blocks: Array<{
+      id: string;
+      type: "calendar" | "cash" | "focus" | "free" | "prep" | "recovery" | "review" | "training" | "work";
+      priority: "locked" | "protect" | "optional" | "prep";
+      label: string;
+      time: string;
+      why: string;
+      source: "weekly_template" | "google_calendar" | "user_plan";
+      sortKey: number;
+      calendarEventId?: string;
+      location?: string | null;
+      htmlLink?: string | null;
+    }>;
+  }>;
+};
+
+type PlanBlock = TodayOverviewResponse["brief"]["plan"]["blocks"][number];
+type UserPlanBlock = TodayOverviewResponse["brief"]["userPlanBlocks"][number];
+type CalendarEvent = GoogleCalendarOverview["events"][number];
+type TimelineItem =
+  | { type: "plan"; block: PlanBlock; blockIndex: number; sortKey: number }
+  | { type: "calendar"; event: CalendarEvent; sortKey: number }
+  | { type: "user"; block: UserPlanBlock; blockIndex: number; sortKey: number };
+
+function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]) {
+  if (event.allDay) return "All day";
+
+  const start = DateTime.fromISO(event.start);
+  const end = event.end ? DateTime.fromISO(event.end) : null;
+  if (!start.isValid) return "Time TBD";
+
+  const startLabel = start.toLocaleString(DateTime.TIME_SIMPLE);
+  const endLabel = end?.isValid ? end.toLocaleString(DateTime.TIME_SIMPLE) : null;
+  return endLabel ? `${startLabel}-${endLabel}` : startLabel;
+}
+
+function calendarEventSortKey(event: CalendarEvent) {
+  if (event.allDay) return 0.5;
+
+  const start = DateTime.fromISO(event.start);
+  if (!start.isValid) return 23.9;
+
+  return start.hour + start.minute / 60;
+}
+
+function formatPlanRole(role: string) {
+  if (role === "focus") return "Focus block";
+  return `${role.charAt(0).toUpperCase()}${role.slice(1)} block`;
+}
+
+function planBlockSortKey(block: PlanBlock, dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined) {
+  if (block.key === "lyft") return dayShape === "office" ? 7.5 : 16;
+  if (block.key === "gym") return dayShape === "weekend" ? 11 : 17.5;
+  if (block.key === "leverage") return dayShape === "office" ? 13 : 10;
+  if (block.key === "joy") return dayShape === "weekend" ? 16 : 20;
+  return 23;
+}
+
+function buildTimelineItems(
+  systemBlocks: PlanBlock[],
+  userBlocks: UserPlanBlock[],
+  calendarEvents: CalendarEvent[],
+  dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined,
+): TimelineItem[] {
+  return [
+    ...systemBlocks.map((block, blockIndex) => ({
+      type: "plan" as const,
+      block,
+      blockIndex,
+      sortKey: planBlockSortKey(block, dayShape),
+    })),
+    ...calendarEvents.map((event) => ({
+      type: "calendar" as const,
+      event,
+      sortKey: calendarEventSortKey(event),
+    })),
+    ...userBlocks.map((block, blockIndex) => ({
+      type: "user" as const,
+      block,
+      blockIndex,
+      sortKey: 24 + blockIndex / 10,
+    })),
+  ].sort((a, b) => a.sortKey - b.sortKey);
+}
+
+function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview | null }) {
+  if (!calendar) return null;
+
+  const handleConnect = () => {
+    window.location.assign("/api/integrations/google-calendar/connect");
+  };
+  const needsReconnect = calendar.status === "needs_reconnect";
+
+  if (!calendar.connected) {
+    return (
+      <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--ink)]">Connect Google Calendar</p>
+            <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
+              {needsReconnect
+                ? "The saved calendar token needs fresh Google approval so Coach can create events."
+                : "Pull in appointments and let Coach create events from chat or voice."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={!calendar.connectAvailable}
+            className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {needsReconnect ? "Reconnect" : "Connect"}
+          </button>
+        </div>
+        {!calendar.connectAvailable ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable this.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (calendar.error) {
+    return <p className="mb-3 text-xs text-amber-700 dark:text-amber-300">{calendar.error}</p>;
+  }
+
+  return null;
+}
+
+function weeklyBlockTone(block: WeeklyOperatingPlanOverview["days"][number]["blocks"][number]) {
+  if (block.source === "google_calendar") {
+    return "bg-teal-500/10 text-teal-700 ring-teal-400/30 dark:text-teal-300";
+  }
+  if (block.source === "user_plan") {
+    return "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]";
+  }
+  if (block.priority === "protect") {
+    return "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_24%,transparent)] dark:text-[var(--accent-bright)]";
+  }
+  if (block.priority === "prep") {
+    return "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]";
+  }
+  if (block.priority === "locked") {
+    return "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-[var(--ink-soft)] ring-[var(--card-border)]";
+  }
+  return "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] text-[var(--muted)] ring-[var(--card-border)]";
+}
+
+function WeekAhead({ weekPlan }: { weekPlan: WeeklyOperatingPlanOverview | null | undefined }) {
+  if (!weekPlan?.days.length) return null;
+
+  return (
+    <div className="rounded-2xl bg-[var(--card-solid)] p-5 ring-1 ring-[var(--card-border)]">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+            Week ahead
+          </p>
+          <h2 className="text-lg font-semibold text-[var(--ink)] mt-1">Your operating script</h2>
+          <p className="text-sm text-[var(--muted)] mt-0.5">
+            Calendar commitments plus the default rails for work, Lyft, body, network, and prep.
+          </p>
+        </div>
+        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+          {weekPlan.startDate} → {weekPlan.endDate}
+        </span>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {weekPlan.days.map((day) => {
+          const visibleBlocks = day.blocks
+            .filter((block) =>
+              block.source === "google_calendar" ||
+              block.source === "user_plan" ||
+              block.priority === "protect" ||
+              block.priority === "prep" ||
+              block.type === "cash" ||
+              block.type === "work",
+            )
+            .slice(0, 4);
+
+          return (
+            <div key={day.date} className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--ink)]">
+                    {day.weekdayLabel} · {day.dateLabel}
+                  </p>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">{DAY_SHAPE_LABEL[day.dayShape]}</p>
+                </div>
+                <span className="rounded-full bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                  {day.blocks.some((block) => block.source === "google_calendar")
+                    ? "Booked"
+                    : day.blocks.some((block) => block.source === "user_plan")
+                      ? "Custom"
+                      : "Rails"}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-[var(--ink-soft)]">{day.valueFocus}</p>
+
+              <div className="mt-3 space-y-2">
+                {visibleBlocks.map((block) => (
+                  <div key={block.id} className={`rounded-lg px-2.5 py-2 ring-1 ${weeklyBlockTone(block)}`}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      {block.htmlLink ? (
+                        <a
+                          href={block.htmlLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate text-xs font-semibold hover:brightness-110"
+                        >
+                          {block.label}
+                        </a>
+                      ) : (
+                        <p className="truncate text-xs font-semibold">{block.label}</p>
+                      )}
+                      <p className="shrink-0 text-[10px] font-medium tabular-nums opacity-80">{block.time}</p>
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug opacity-80">{block.why}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 type Props = {
   aiInsight: {
@@ -161,14 +432,8 @@ type Props = {
   cashFlow: {
     today: TodayCashFlow;
     weekly: WeeklyCashFlow;
+    primaryCash?: number;
   };
-  safeSpendToday: number;
-  safeSpendTodayReason?: string;
-  protectedCashBuffer: number;
-  monthlySafeSpend: number;
-  sixMonthSafeSpend: number;
-  safeSpendRaiseFactors: string[];
-  safeSpendHurtFactors: string[];
   briefUpdatedLabel: string | null;
   nextBriefLabel: string | null;
   refreshHours?: number;
@@ -190,13 +455,6 @@ type Props = {
 export function OverviewHome({
   aiInsight,
   cashFlow,
-  safeSpendToday,
-  safeSpendTodayReason,
-  protectedCashBuffer,
-  monthlySafeSpend,
-  sixMonthSafeSpend,
-  safeSpendRaiseFactors,
-  safeSpendHurtFactors,
   briefUpdatedLabel,
   nextBriefLabel,
   refreshHours,
@@ -204,15 +462,13 @@ export function OverviewHome({
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
-  onOpenGoals,
-  onOpenTrends,
-  priorityGoal,
   isBriefPending = false,
   userName,
 }: Props) {
+  const queryClient = useQueryClient();
   const [showCashDetails, setShowCashDetails] = useState(false);
+  const [moveBusy, setMoveBusy] = useState<"done" | "skipped" | "recommend" | null>(null);
   const cfoBrief = aiInsight.cfoBrief;
-  const primaryRecommendedAction = aiInsight.recommendedActions?.[0];
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
@@ -220,6 +476,7 @@ export function OverviewHome({
   const todayLabel = now.toFormat("EEEE, MMMM d");
   const greeting = getPersonalizedGreeting(userName);
   const quote = getDailyAffirmation();
+  const checkingCash = cashFlow.primaryCash ?? null;
 
   const { data: todayOverview, isLoading: todayLoading } = useQuery({
     queryKey: ["overview-today"],
@@ -233,26 +490,50 @@ export function OverviewHome({
   });
 
   const brief = todayOverview?.brief;
-  const trendTldr = todayOverview?.trendTldr;
-  const focusAction =
-    brief?.recommendation?.action ??
-    cfoBrief?.todaysMove ??
-    primaryRecommendedAction?.title ??
-    null;
-  const focusWhy =
-    brief?.recommendation?.whyItMatters ??
-    cfoBrief?.systemImpact ??
-    primaryRecommendedAction?.reason ??
-    brief?.plan.summary ??
-    null;
-  const leverageBlock = brief?.plan.blocks.find((block) => block.key === "leverage");
+  const completed = new Set(brief?.completedBlockKeys ?? []);
+  const skipped = new Set(brief?.skippedBlockKeys ?? []);
+  const systemBlocks = brief?.plan.blocks ?? [];
+  const userBlocks = brief?.userPlanBlocks ?? [];
+  const leverageBlock = systemBlocks.find((block) => block.key === "leverage");
+  const calendar = todayOverview?.calendar ?? null;
+  const calendarEvents = calendar?.connected ? calendar.events : [];
+  const timelineItems = buildTimelineItems(systemBlocks, userBlocks, calendarEvents, brief?.dayShape);
+
+  const updateMoveStatus = async (id: string, status: "done" | "skipped") => {
+    setMoveBusy(status);
+    try {
+      await fetch("/api/growth/recommend", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+      void queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+    } finally {
+      setMoveBusy(null);
+    }
+  };
+
+  const generateMove = async (force = false) => {
+    setMoveBusy("recommend");
+    try {
+      await fetch("/api/growth/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+      void queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+    } finally {
+      setMoveBusy(null);
+    }
+  };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 max-w-3xl">
       {isBriefPending ? (
         <div className="rounded-xl bg-amber-500/15 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/35">
-          Cash flow is ready. Your money brief is still generating in the background — use Refresh if
-          it does not appear soon.
+          Cash is ready. Money brief still generating — Refresh if it doesn&apos;t show soon.
         </div>
       ) : null}
 
@@ -267,8 +548,8 @@ export function OverviewHome({
           </h1>
           <p className="text-[var(--muted)] text-sm mt-1">
             {brief
-              ? `${DAY_SHAPE_LABEL[brief.dayShape]} — focus first, cash check second.`
-              : "Your daily focus board — cash stays in the background."}
+              ? `${DAY_SHAPE_LABEL[brief.dayShape]} — here's your day.`
+              : "Your day first. Cash stays quiet until you need it."}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
@@ -287,66 +568,262 @@ export function OverviewHome({
         </div>
       </div>
 
-      {/* Quote of the day */}
-      <div className="rounded-2xl bg-[var(--card-solid)] p-4 md:p-5 ring-1 ring-[var(--card-border)]">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center shrink-0 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
-            <Quote size={16} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
-              {quote.toneLabel}
-            </p>
-            <p className="text-sm md:text-[15px] text-[var(--ink)] mt-1 leading-relaxed italic">
-              &ldquo;{quote.message}&rdquo;
-            </p>
-            {quote.attribution ? (
-              <p className="text-xs text-[var(--muted)] mt-2">— {quote.attribution}</p>
-            ) : null}
-          </div>
+      {/* Daily quote */}
+      <div className="rounded-2xl bg-[var(--card-solid)] px-4 py-3 ring-1 ring-[var(--card-border)]">
+        <div className="flex items-start gap-2.5">
+          <Quote size={14} className="text-[var(--accent)] mt-0.5 shrink-0" />
+          <p className="text-sm text-[var(--ink-soft)] leading-relaxed italic">
+            &ldquo;{quote.message}&rdquo;
+          </p>
         </div>
       </div>
 
-      {/* Focus for today */}
-      <div className="rounded-2xl bg-[var(--accent)] p-5 text-white shadow-md shadow-blue-600/20">
-        <p className="text-xs font-semibold uppercase tracking-wider text-white/90 mb-1">
-          Focus for today
-        </p>
+      {/* Compact cash strip */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-[var(--card-solid)] p-4 ring-1 ring-[var(--card-border)]">
+          <p className="text-[10px] uppercase tracking-wider font-semibold text-[var(--muted)]">
+            Checking
+          </p>
+          <p className="text-2xl font-bold tabular-nums text-[var(--ink)] mt-1 tracking-tight">
+            {checkingCash != null ? formatCurrency(checkingCash) : "—"}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-[var(--card-solid)] p-4 ring-1 ring-[var(--card-border)]">
+          <p className="text-[10px] uppercase tracking-wider font-semibold text-[var(--muted)]">
+            Food/fun left
+          </p>
+          <p
+            className={`text-2xl font-bold tabular-nums mt-1 tracking-tight ${
+              cashFlow.today.remainingToday < 0 ? "text-rose-500" : "text-[var(--ink)]"
+            }`}
+          >
+            {formatCurrency(Math.max(0, cashFlow.today.remainingToday))}
+          </p>
+          <p className="text-[10px] text-[var(--muted)] mt-0.5 tabular-nums">
+            of {formatCurrency(cashFlow.today.dailyAllowance)} today
+          </p>
+        </div>
+      </div>
+
+      {/* Today's schedule — main stage */}
+      <div className="rounded-2xl bg-[var(--card-solid)] p-5 md:p-6 ring-1 ring-[var(--card-border)]">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
+              <CalendarDays size={18} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+                Today&apos;s operating plan
+              </p>
+              <p className="text-sm text-[var(--muted)]">
+                {brief?.plan.summary ?? "Protect the blocks that compound."}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {todayLoading && !brief ? (
-          <p className="text-sm text-white/85">Loading today&apos;s focus…</p>
-        ) : focusAction ? (
-          <>
-            <p className="text-lg font-semibold leading-snug text-white">{focusAction}</p>
-            {focusWhy ? (
-              <p className="text-sm text-white/90 mt-1.5 leading-relaxed">{focusWhy}</p>
-            ) : null}
-            {leverageBlock ? (
-              <p className="text-xs text-white/80 mt-3 border-t border-white/25 pt-2">
-                Protect: {leverageBlock.label} · {leverageBlock.time}
-              </p>
-            ) : null}
-            {brief?.recommendation?.status && brief.recommendation.status !== "pending" ? (
-              <p className="text-xs text-white/80 mt-2 capitalize">
-                Move status: {brief.recommendation.status}
-              </p>
-            ) : null}
-          </>
+          <p className="text-sm text-[var(--muted)] py-6 text-center">Loading today&apos;s plan…</p>
         ) : (
           <>
-            <p className="text-lg font-semibold leading-snug text-white">
-              {brief?.plan.summary ?? "Open Growth to lock today's highest-leverage move."}
-            </p>
-            <p className="text-sm text-white/90 mt-1.5 leading-relaxed">
-              Body, career leverage, and intentional joy beat staring at cash once the floor is set.
-            </p>
+            <GoogleCalendarAgenda calendar={calendar} />
+
+            <ol className="space-y-0">
+              {timelineItems.map((item, index) => {
+                const showConnector = index < timelineItems.length - 1;
+
+                if (item.type === "calendar") {
+                  return (
+                    <li key={`calendar-${item.event.id}`} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-teal-500/10 text-teal-700 ring-1 ring-teal-400/35 dark:text-teal-300">
+                          <CalendarDays size={14} />
+                        </div>
+                        {showConnector ? (
+                          <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
+                        ) : null}
+                      </div>
+                      <div className="flex-1 pb-4">
+                        <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] px-3 py-2 -mt-1 ring-1 ring-[var(--card-border)]">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            {item.event.htmlLink ? (
+                              <a
+                                href={item.event.htmlLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-[var(--ink)] hover:text-[var(--accent)]"
+                              >
+                                {item.event.title}
+                              </a>
+                            ) : (
+                              <p className="font-semibold text-[var(--ink)]">{item.event.title}</p>
+                            )}
+                            <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
+                              {formatCalendarEventTime(item.event)}
+                            </p>
+                          </div>
+                          <p className="text-xs text-[var(--muted)] mt-1 leading-snug">
+                            Google Calendar{item.event.location ? ` · ${item.event.location}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                }
+
+                if (item.type === "user") {
+                  const block = item.block;
+
+                  return (
+                    <li key={`user-${block.title}-${item.blockIndex}`} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 bg-[color-mix(in_srgb,var(--ember)_18%,transparent)] text-[var(--ember-strong)] ring-1 ring-[color-mix(in_srgb,var(--ember)_35%,transparent)]">
+                          +
+                        </div>
+                        {showConnector ? (
+                          <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
+                        ) : null}
+                      </div>
+                      <div className="flex-1 pb-2">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="font-semibold text-[var(--ink)]">{block.title}</p>
+                          {block.minutesSpent != null ? (
+                            <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
+                              {block.minutesSpent} min
+                            </p>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-[var(--muted)] mt-0.5 capitalize">{block.domain} · your block</p>
+                        {block.notes ? (
+                          <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.notes}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                }
+
+                const block = item.block;
+                const isDone = completed.has(block.key);
+                const isSkipped = skipped.has(block.key);
+                const isFocus = block.key === "leverage";
+
+                return (
+                  <li key={block.key} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ${
+                          isDone
+                            ? "bg-teal-500/20 text-teal-700 ring-teal-400/40"
+                            : isSkipped
+                              ? "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--muted)] ring-[var(--card-border)]"
+                              : isFocus
+                                ? "bg-[var(--accent)] text-white ring-[var(--accent)]"
+                                : "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
+                        }`}
+                      >
+                        {isDone ? <Check size={14} /> : item.blockIndex + 1}
+                      </div>
+                      {showConnector ? (
+                        <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
+                      ) : null}
+                    </div>
+                    <div
+                      className={`flex-1 pb-4 ${
+                        isSkipped ? "opacity-50" : ""
+                      } ${isFocus && !isDone && !isSkipped ? "rounded-xl bg-[var(--accent-soft)] px-3 py-2 -mt-1 ring-1 ring-[color-mix(in_srgb,var(--accent)_22%,transparent)]" : ""}`}
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="font-semibold text-[var(--ink)]">
+                          {block.label}
+                          {isFocus && !isDone ? (
+                            <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-[var(--accent-strong)]">
+                              Protect
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs font-medium tabular-nums text-[var(--muted)]">{block.time}</p>
+                      </div>
+                      <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.why}</p>
+                      <p className="text-xs text-[var(--muted)] mt-1 leading-snug">
+                        {block.priority} · {block.fit}
+                      </p>
+                      {isSkipped ? (
+                        <p className="text-xs text-[var(--muted)] mt-1">Skipped</p>
+                      ) : isDone ? (
+                        <p className="text-xs text-teal-700 dark:text-teal-300 mt-1">Done</p>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           </>
         )}
+
+        {brief?.recommendation?.action ? (
+          <div className="mt-2 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_22%,transparent)]">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] mb-1">
+              Highest-leverage move
+            </p>
+            <p className="text-sm font-semibold text-[var(--ink)] leading-snug">
+              {brief.recommendation.action}
+            </p>
+            {leverageBlock ? (
+              <p className="text-xs text-[var(--muted)] mt-1">
+                Fits in: {formatPlanRole(leverageBlock.role)} · {leverageBlock.time}
+              </p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {brief.recommendation.status === "pending" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => updateMoveStatus(brief.recommendation!.id, "done")}
+                    disabled={moveBusy !== null}
+                    className="inline-flex items-center gap-1.5 rounded-full app-btn-primary px-3 py-1.5 text-xs disabled:opacity-60"
+                  >
+                    <CheckCircle2 size={14} />
+                    Done
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateMoveStatus(brief.recommendation!.id, "skipped")}
+                    disabled={moveBusy !== null}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] disabled:opacity-60"
+                  >
+                    <SkipForward size={14} />
+                    Skip
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold text-[var(--muted)] capitalize">
+                    {brief.recommendation.status}
+                  </p>
+                  {brief.recommendation.status === "skipped" ? (
+                    <button
+                      type="button"
+                      onClick={() => generateMove(true)}
+                      disabled={moveBusy !== null}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)] disabled:opacity-60"
+                    >
+                      <RefreshCw size={14} />
+                      Different move
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap gap-2">
           {onOpenGrowth ? (
             <button
               type="button"
               onClick={onOpenGrowth}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/30 hover:bg-white/25 transition"
+              className="inline-flex items-center gap-1.5 rounded-full app-btn-primary px-3.5 py-2 text-xs"
             >
               <Flame size={14} />
               Open Growth
@@ -355,7 +832,7 @@ export function OverviewHome({
           <button
             type="button"
             onClick={onOpenChat}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold text-white ring-1 ring-white/30 hover:bg-white/25 transition"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition"
           >
             <MessageSquare size={14} />
             Ask Coach
@@ -363,166 +840,19 @@ export function OverviewHome({
         </div>
       </div>
 
-      {/* News / trend TLDR */}
-      <div className="rounded-2xl bg-[var(--card-solid)] p-4 md:p-5 ring-1 ring-[var(--card-border)]">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-[color-mix(in_srgb,var(--ember)_18%,transparent)] flex items-center justify-center ring-1 ring-[color-mix(in_srgb,var(--ember)_35%,transparent)]">
-              <Sparkles size={16} className="text-[var(--ember)]" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--ember-strong)] dark:text-[var(--ember)]">
-                Trend TLDR
-              </p>
-              <p className="text-xs text-[var(--muted)]">What&apos;s worth noticing — not a new project.</p>
-            </div>
-          </div>
-          {onOpenTrends ? (
-            <button
-              type="button"
-              onClick={onOpenTrends}
-              className="text-xs font-semibold text-[var(--accent-bright)] hover:brightness-110 transition shrink-0"
-            >
-              Full Trends →
-            </button>
-          ) : null}
-        </div>
-
-        {trendTldr ? (
-          <div className="space-y-3">
-            <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] p-3.5 ring-1 ring-[var(--card-border)]">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Cpu size={14} className="text-[var(--accent)]" />
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-soft)]">
-                  Tech signal
-                </p>
-              </div>
-              <p className="font-semibold text-[var(--ink)] leading-snug">{trendTldr.tech.title}</p>
-              <p className="text-sm text-[var(--ink-soft)] mt-1 leading-relaxed">
-                {trendTldr.topTechItem?.summary ?? trendTldr.tech.why}
-              </p>
-              <p className="text-sm text-[var(--ink)] mt-2 leading-relaxed">
-                <span className="font-medium">Do:</span> {trendTldr.tech.oneAction}
-              </p>
-            </div>
-            <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] p-3.5 ring-1 ring-[var(--card-border)]">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <MapPin size={14} className="text-[var(--ember)]" />
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-soft)]">
-                  DMV / money pulse
-                </p>
-              </div>
-              <p className="font-semibold text-[var(--ink)] leading-snug">{trendTldr.dmv.title}</p>
-              <p className="text-sm text-[var(--ink-soft)] mt-1 leading-relaxed">{trendTldr.dmv.why}</p>
-            </div>
-            {trendTldr.focusGuardrail ? (
-              <p className="text-xs text-[var(--muted)] leading-relaxed">{trendTldr.focusGuardrail}</p>
-            ) : null}
-          </div>
-        ) : (
-          <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] p-3.5 ring-1 ring-[var(--card-border)]">
-            <p className="text-sm text-[var(--ink-soft)] leading-relaxed">
-              No digest yet for today. Open Trends once to generate a skim — Overview will surface the
-              TLDR here without reinventing your day.
-            </p>
-            {onOpenTrends ? (
-              <button
-                type="button"
-                onClick={onOpenTrends}
-                className="mt-3 text-sm font-semibold text-[var(--accent-bright)] hover:brightness-110 transition"
-              >
-                Generate today&apos;s Trends →
-              </button>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
-        >
-          <MessageSquare size={14} className="text-[var(--accent)]" />
-          Ask Coach
-        </button>
-        {onOpenGrowth ? (
-          <button
-            type="button"
-            onClick={onOpenGrowth}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
-          >
-            <Flame size={14} className="text-[var(--ember)]" />
-            Growth
-          </button>
-        ) : null}
-        {onOpenTrends ? (
-          <button
-            type="button"
-            onClick={onOpenTrends}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
-          >
-            <Cpu size={14} className="text-[var(--accent)]" />
-            Trends
-          </button>
-        ) : null}
-        {onOpenGoals ? (
-          <button
-            type="button"
-            onClick={onOpenGoals}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
-          >
-            <Target size={14} className="text-[var(--accent)]" />
-            Goals
-          </button>
-        ) : null}
-        {onOpenRecurring ? (
-          <button
-            type="button"
-            onClick={onOpenRecurring}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--card-solid)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition-colors"
-          >
-            <Repeat size={14} className="text-[var(--accent)]" />
-            Recurring
-          </button>
-        ) : null}
-      </div>
-
-      {/* Quick cash — secondary */}
-      <QuickCashGlance
-        today={cashFlow.today}
-        status={cfoBrief?.status}
-        warning={cfoBrief?.spendingWarning}
-        onExpand={() => setShowCashDetails(true)}
-      />
-
-      {priorityGoal ? (
-        <div
-          className={`app-card p-4 ring-1 ${
-            priorityGoal.onTrack
-              ? "ring-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-soft)]"
-              : "ring-amber-400/35 bg-amber-500/10"
-          }`}
-        >
-          <p className="app-label mb-1">Focus goal</p>
-          <p className="font-semibold text-[var(--ink)]">{priorityGoal.name}</p>
-          <p className="text-sm text-[var(--ink-soft)] mt-1 leading-relaxed">{priorityGoal.paceMessage}</p>
-        </div>
-      ) : null}
+      <WeekAhead weekPlan={todayOverview?.weekPlan} />
 
       <button
         type="button"
         onClick={() => setShowCashDetails(!showCashDetails)}
         className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)] app-card hover:brightness-110 transition"
       >
-        {showCashDetails ? "Hide cash details" : "Show cash, bills & spend"}
+        {showCashDetails ? "Hide cash details" : "Cash, bills & spend"}
         {showCashDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
 
       {showCashDetails ? (
         <>
-          <TodayCashFlowMeter today={cashFlow.today} status={cfoBrief?.status} />
           <WeeklyCashFlowStrip weekly={cashFlow.weekly} />
           <BillCalendar
             upcomingBills={cfoBrief?.upcomingBills}
@@ -555,111 +885,18 @@ export function OverviewHome({
             ) : null}
           </div>
 
-          <div className="app-card p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <p className="app-label mb-2">Why this daily number</p>
-                <h2 className="text-lg font-semibold text-[var(--ink)] leading-snug">
-                  {formatCurrency(safeSpendToday)}/day is the food/fun target — gas and bills sit outside
-                  it.
-                </h2>
-                <p className="text-sm text-[var(--ink-soft)] mt-2 max-w-2xl leading-relaxed">
-                  {safeSpendTodayReason ??
-                    cfoBrief?.safeSpendTodayReason ??
-                    "About $40/day for food and fun. Cash buffer is the protected floor in checking. Gas/Lyft costs do not eat this number."}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-right shrink-0">
-                <div className="rounded-xl bg-[var(--accent-soft)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
-                  <p className="app-label text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
-                    Food/fun per month
-                  </p>
-                  <p className="text-lg font-bold text-[var(--ink)] tabular-nums">
-                    {formatCurrency(monthlySafeSpend)}
-                  </p>
-                  <p className="text-[10px] text-[var(--ink-soft)] mt-0.5">$40 × 30 days</p>
-                </div>
-                <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
-                  <p className="app-label">Cash buffer</p>
-                  <p className="text-lg font-bold text-[var(--ink)] tabular-nums">
-                    {formatCurrency(protectedCashBuffer)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3 mt-5">
-              <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-4 ring-1 ring-[var(--card-border)]">
-                <p className="app-label mb-1">Food/fun spend over 6 months</p>
-                <p className="text-2xl font-bold text-[var(--ink)] tabular-nums">
-                  {formatCurrency(sixMonthSafeSpend)}
-                </p>
-                <p className="text-xs text-[var(--ink-soft)] mt-1 leading-relaxed">
-                  Rough total you&apos;d <span className="font-medium text-[var(--ink)]">spend</span> on
-                  food/fun if most days stay near $40 — not money saved.
-                </p>
-              </div>
-              <div className="rounded-xl bg-[var(--accent-soft)] p-4 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
-                <p className="app-label text-[var(--accent-strong)] dark:text-[var(--accent-bright)] mb-2">
-                  What raises it
-                </p>
-                <ul className="space-y-2 text-sm text-[var(--ink-soft)] leading-relaxed">
-                  {safeSpendRaiseFactors.map((factor) => (
-                    <li key={factor}>{factor}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="rounded-xl bg-amber-500/10 p-4 ring-1 ring-amber-400/30">
-                <p className="app-label text-amber-800 dark:text-amber-200 mb-2">What lowers it</p>
-                <ul className="space-y-2 text-sm text-[var(--ink-soft)] leading-relaxed">
-                  {safeSpendHurtFactors.map((factor) => (
-                    <li key={factor}>{factor}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {recurringReviews.length > 0 ? (
-            <div className="app-card p-6">
-              <div className="flex items-center justify-between gap-4 mb-4">
-                <div>
-                  <h2 className="font-semibold text-[var(--ink)] text-lg">Recurring to review</h2>
-                  <p className="text-sm text-[var(--muted)]">
-                    {recurringReviews.length} repeating charge
-                    {recurringReviews.length === 1 ? "" : "s"} flagged by your Coach.
-                  </p>
-                </div>
-                {onOpenRecurring ? (
-                  <button
-                    type="button"
-                    onClick={onOpenRecurring}
-                    className="text-sm font-semibold text-[var(--accent-bright)] hover:brightness-110 transition shrink-0"
-                  >
-                    Open recurring →
-                  </button>
-                ) : null}
-              </div>
-              <div className="grid sm:grid-cols-2 gap-4">
-                {recurringReviews.slice(0, 2).map((sub) => (
-                  <div
-                    key={sub.merchant}
-                    className="rounded-xl bg-rose-500/10 p-5 ring-1 ring-rose-400/25"
-                  >
-                    <div className="flex justify-between items-start mb-2 gap-2">
-                      <p className="font-semibold text-[var(--ink)] truncate">{sub.merchant}</p>
-                      <p className="font-bold text-rose-600 dark:text-rose-400 tabular-nums shrink-0">
-                        {formatCurrency(sub.averageAmount)}
-                      </p>
-                    </div>
-                    <p className="app-label text-rose-600 dark:text-rose-300 mb-2">{sub.frequency}</p>
-                    <p className="text-sm text-[var(--ink-soft)] leading-relaxed line-clamp-3">
-                      {sub.recommendation}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {recurringReviews.length > 0 && onOpenRecurring ? (
+            <button
+              type="button"
+              onClick={onOpenRecurring}
+              className="w-full app-card p-4 text-left hover:brightness-110 transition"
+            >
+              <p className="font-semibold text-[var(--ink)]">
+                {recurringReviews.length} recurring charge
+                {recurringReviews.length === 1 ? "" : "s"} to review
+              </p>
+              <p className="text-sm text-[var(--muted)] mt-0.5">Open Recurring →</p>
+            </button>
           ) : null}
 
           {dailySpendSeries.some((d) => d.totalSpent > 0) ? (

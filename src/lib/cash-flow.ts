@@ -12,6 +12,8 @@ type CashFlowTransaction = {
   merchantName?: string | null;
 };
 
+const DEFAULT_WEEKLY_BASE_INCOME = 1555.27;
+
 export type DailySpendBreakdownItem = {
   label: string;
   amount: number;
@@ -29,6 +31,8 @@ export type WeekDaySummary = {
   label: string;
   spent: number;
   income: number;
+  baseIncome: number;
+  extraIncome: number;
   net: number;
   isToday: boolean;
   isFuture: boolean;
@@ -38,6 +42,9 @@ export type WeeklyCashFlow = {
   days: WeekDaySummary[];
   weekSpent: number;
   weekIncome: number;
+  baseWeeklyIncome: number;
+  baseDailyIncome: number;
+  extraIncome: number;
   weekNet: number;
   weeklyBudget: number;
   budgetToDate: number;
@@ -73,8 +80,8 @@ function isTransfer(transaction: CashFlowTransaction) {
   return transaction.categoryPrimary?.toLowerCase().includes("transfer") ?? false;
 }
 
-function spendBucket(transaction: CashFlowTransaction): string {
-  const text = [
+function transactionText(transaction: CashFlowTransaction) {
+  return [
     transaction.name,
     transaction.merchantName,
     transaction.categoryPrimary,
@@ -82,6 +89,34 @@ function spendBucket(transaction: CashFlowTransaction): string {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function isLikelyBasePaycheck(transaction: CashFlowTransaction) {
+  if (transaction.amount >= 0) return false;
+
+  const amount = Math.abs(transaction.amount);
+  const text = transactionText(transaction);
+
+  return (
+    /\b(payroll|paycheck|direct dep|direct deposit|salary|w2|employer|amergis)\b/.test(text) ||
+    (text.includes("income") && amount >= 1200 && amount <= 2000)
+  );
+}
+
+function inferWeeklyBaseIncome(transactions: CashFlowTransaction[]) {
+  const paychecks = transactions
+    .filter((transaction) => !transaction.pending && !isTransfer(transaction) && isLikelyBasePaycheck(transaction))
+    .map((transaction) => Math.abs(transaction.amount))
+    .filter((amount) => Number.isFinite(amount) && amount > 0);
+
+  if (paychecks.length === 0) return DEFAULT_WEEKLY_BASE_INCOME;
+
+  const average = paychecks.reduce((sum, amount) => sum + amount, 0) / paychecks.length;
+  return roundCurrency(average);
+}
+
+function spendBucket(transaction: CashFlowTransaction): string {
+  const text = transactionText(transaction);
 
   if (
     text.includes("food") ||
@@ -240,6 +275,7 @@ export function calculateTodayCashFlow(
 export function calculateWeeklyCashFlow(params: {
   transactions: CashFlowTransaction[];
   dailyAllowance: number;
+  weeklyBaseIncome?: number | null;
   referenceDate?: string;
 }): WeeklyCashFlow {
   const { transactions, dailyAllowance } = params;
@@ -249,10 +285,15 @@ export function calculateWeeklyCashFlow(params: {
   const weekStart = today.startOf("week");
 
   const settled = transactions.filter((t) => !t.pending && !isTransfer(t));
+  const baseWeeklyIncome =
+    params.weeklyBaseIncome != null && Number.isFinite(params.weeklyBaseIncome) && params.weeklyBaseIncome > 0
+      ? roundCurrency(params.weeklyBaseIncome)
+      : inferWeeklyBaseIncome(settled);
+  const baseDailyIncome = roundCurrency(baseWeeklyIncome / 7);
 
   const days: WeekDaySummary[] = [];
   let weekSpent = 0;
-  let weekIncome = 0;
+  let extraIncome = 0;
 
   for (let i = 0; i < 7; i++) {
     const day = weekStart.plus({ days: i });
@@ -264,25 +305,28 @@ export function calculateWeeklyCashFlow(params: {
       ? transactions.filter((t) => !isTransfer(t) && isTransactionOnDate(t, dateKey))
       : settled.filter((t) => getTransactionActivityDate(t) === dateKey);
     let spent = 0;
-    let income = 0;
+    let dayExtraIncome = 0;
 
     for (const t of dayTransactions) {
       if (t.amount > 0) spent += t.amount;
-      else if (t.amount < 0) income += Math.abs(t.amount);
+      else if (t.amount < 0 && !isLikelyBasePaycheck(t)) dayExtraIncome += Math.abs(t.amount);
     }
 
     spent = roundCurrency(spent);
-    income = roundCurrency(income);
+    dayExtraIncome = roundCurrency(dayExtraIncome);
+    const income = roundCurrency(baseDailyIncome + dayExtraIncome);
 
     if (!isFuture) {
       weekSpent += spent;
-      weekIncome += income;
+      extraIncome += dayExtraIncome;
     }
 
     days.push({
       date: dateKey,
       label: day.toFormat("EEE"),
       spent,
+      baseIncome: baseDailyIncome,
+      extraIncome: dayExtraIncome,
       income,
       net: roundCurrency(income - spent),
       isToday,
@@ -291,30 +335,37 @@ export function calculateWeeklyCashFlow(params: {
   }
 
   const daysElapsed = today.diff(weekStart, "days").days + 1;
-  const weeklyBudget = roundCurrency(dailyAllowance * 7);
-  const budgetToDate = roundCurrency(dailyAllowance * Math.min(7, Math.max(1, daysElapsed)));
+  const weekIncome = roundCurrency(baseWeeklyIncome + extraIncome);
+  const weeklyBudget = baseWeeklyIncome;
+  const budgetToDate = roundCurrency(
+    baseDailyIncome * Math.min(7, Math.max(1, daysElapsed)),
+  );
   const budgetUsedPercent =
-    budgetToDate > 0 ? Math.min(100, roundCurrency((weekSpent / budgetToDate) * 100)) : 0;
+    weeklyBudget > 0 ? Math.min(100, roundCurrency((weekSpent / weeklyBudget) * 100)) : 0;
 
   let paceStatus: WeeklyCashFlow["paceStatus"] = "on_track";
-  let paceMessage = `On pace for the week — ${formatPaceDelta(weekSpent, budgetToDate)}.`;
+  const weekNet = roundCurrency(weekIncome - weekSpent);
+  let paceMessage = `${formatSignedCurrency(weekNet)} projected weekly cash flow after costs logged so far.`;
 
-  if (budgetUsedPercent >= 100) {
+  if (weekNet < 0) {
     paceStatus = "at_risk";
-    paceMessage = `Over weekly budget by ${formatCurrencyDelta(weekSpent - budgetToDate)} with ${7 - daysElapsed} day(s) left.`;
+    paceMessage = `${formatCurrencyDelta(Math.abs(weekNet))} short after this week's logged costs. Hold cash.`;
   } else if (budgetUsedPercent >= 85) {
     paceStatus = "behind";
-    paceMessage = `${formatCurrencyDelta(budgetToDate - weekSpent)} left in this week's allowance — spending is tight.`;
-  } else if (budgetUsedPercent <= 60 && daysElapsed >= 3) {
+    paceMessage = `${Math.round(budgetUsedPercent)}% of weekly pay is already absorbed by costs.`;
+  } else if (weekNet >= dailyAllowance * 7 && daysElapsed >= 3) {
     paceStatus = "ahead";
-    paceMessage = `Ahead of plan by ${formatCurrencyDelta(budgetToDate - weekSpent)} so far this week.`;
+    paceMessage = `${formatSignedCurrency(weekNet)} projected weekly cushion after logged costs.`;
   }
 
   return {
     days,
     weekSpent: roundCurrency(weekSpent),
-    weekIncome: roundCurrency(weekIncome),
-    weekNet: roundCurrency(weekIncome - weekSpent),
+    weekIncome,
+    baseWeeklyIncome,
+    baseDailyIncome,
+    extraIncome: roundCurrency(extraIncome),
+    weekNet,
     weeklyBudget,
     budgetToDate,
     budgetUsedPercent,
@@ -331,10 +382,10 @@ function formatCurrencyDelta(amount: number) {
   }).format(Math.abs(amount));
 }
 
-function formatPaceDelta(spent: number, budget: number) {
-  const delta = budget - spent;
-  if (Math.abs(delta) < 1) return "right on target";
-  return delta > 0 ? `${formatCurrencyDelta(delta)} under budget` : `${formatCurrencyDelta(delta)} over budget`;
+function formatSignedCurrency(amount: number) {
+  const formatted = formatCurrencyDelta(amount);
+  if (Math.abs(amount) < 1) return "$0";
+  return amount > 0 ? `+${formatted}` : `-${formatted}`;
 }
 
 export function calculateGoalPace(params: {

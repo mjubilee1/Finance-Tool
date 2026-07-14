@@ -46,6 +46,9 @@ type Props = {
 
 type FilterTab = "primary" | "cash" | "debt" | "all";
 
+const accountNoticeClass =
+  "rounded-xl bg-[color-mix(in_srgb,var(--warn)_16%,var(--card-solid))] px-4 py-3 ring-1 ring-[color-mix(in_srgb,var(--warn)_42%,transparent)] text-sm font-medium text-[var(--ink)] leading-relaxed";
+
 function accountKindLabel(type: string) {
   if (type === "credit" || type === "loan") return "Debt";
   if (type === "depository") return "Cash";
@@ -110,7 +113,7 @@ export function AccountsView({
   balanceMeta,
 }: Props) {
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<FilterTab>("primary");
+  const [filter, setFilter] = useState<FilterTab>("all");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [editingCreditId, setEditingCreditId] = useState<string | null>(null);
   const [savingCreditId, setSavingCreditId] = useState<string | null>(null);
@@ -221,8 +224,8 @@ export function AccountsView({
   }
 
   const tabs: { id: FilterTab; label: string }[] = [
-    { id: "primary", label: summary.usingPrimaryFilter ? "Primary" : "Cash (pick primary)" },
     { id: "all", label: "All" },
+    { id: "primary", label: summary.usingPrimaryFilter ? "Primary" : "Cash (pick primary)" },
     { id: "cash", label: "Cash & invest" },
     { id: "debt", label: "Debt" },
   ];
@@ -251,7 +254,7 @@ export function AccountsView({
       </div>
 
       {(balanceMeta?.usedCachedBalances || (oldestUpdate && oldestUpdate < DateTime.now().minus({ hours: 2 }))) && (
-        <div className="rounded-xl bg-amber-50/80 px-4 py-3 ring-1 ring-amber-200/60 text-sm text-amber-950 leading-relaxed">
+        <div className={accountNoticeClass}>
           {balanceMeta?.usedCachedBalances && (balanceMeta.balanceCallLimit ?? 0) > 0
             ? `Daily Plaid balance limit reached (${balanceMeta.balanceCallsToday}/${balanceMeta.balanceCallLimit}). Amounts may be outdated — tap Refresh balances after midnight UTC, or use the header Refresh button.`
             : balanceMeta?.usedCachedBalances
@@ -261,7 +264,7 @@ export function AccountsView({
       )}
 
       {!summary.usingPrimaryFilter && (
-        <div className="rounded-xl bg-amber-50/80 px-4 py-3 ring-1 ring-amber-200/60 text-sm text-amber-950 leading-relaxed">
+        <div className={accountNoticeClass}>
           No primary accounts yet. Tap the star on the accounts you care about for cash flow (usually your main checking).
         </div>
       )}

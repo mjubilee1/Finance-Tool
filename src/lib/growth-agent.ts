@@ -5,11 +5,17 @@ import { getFocusAccounts, filterTransactionsForDailySpend } from "./account-foc
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { calculateGoalFunding } from "./goal-funding";
 import { storeFinancialMemories } from "./financial-memory";
+import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "./lyft";
 import {
   contactHasNotes,
   formatContactNotesForAgent,
   migrateLegacyContactNotes,
 } from "./growth-contact-notes";
+import { COACH_NORTH_STAR, goodWeekChecklistForPrompt } from "@/lib/life-os-north-star";
+import {
+  getRecentCalendarContextForGrowth,
+  syncCalendarEventsToGrowth,
+} from "@/lib/growth-calendar-sync";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -68,6 +74,9 @@ You are the user's Growth Intelligence agent inside a Personal Life OS.
 Your job is NOT to organize life. Your job is to answer:
 "What is the highest-leverage thing I can do next to maximize long-term growth?"
 
+NORTH STAR:
+${COACH_NORTH_STAR}
+
 Core philosophy: everything compounds — relationships, skills, reputation, income,
 investments, businesses, health, knowledge, opportunities, and time.
 Evaluate decisions by long-term impact, not only immediate reward.
@@ -96,7 +105,7 @@ Active-context rules:
 - Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
 - Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person; Mon–Wed often already include ~5am + ~2hr morning Lyft before commute.
 - Name when an action fits (desk lunch message, Thu deep block, evening/weekend Lyft or meet).
-- Often weigh: drive Lyft today (cover weekly Hertz/Lyft fee → Capital One surplus) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost — e.g. "skip grinding 6 Lyft hours for ~$100 if a network/promotion block compounds more; cover the fee floor first, then protect leverage."
+- Often weigh: drive Lyft today (cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee → Capital One surplus) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost — e.g. "skip grinding 6 Lyft hours for ~$100 if a network/promotion block compounds more; cover the fee floor first, then protect leverage."
 - Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
 - Default discretionary target ~$40 most days (food/fun; gas/Lyft outside); celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
@@ -108,6 +117,8 @@ Active-context rules:
 - One highest-leverage move per day. Do not regenerate the same theme if it was skipped or done.
 - If memories/context say the user already has a boss promotion list / existing promo plan, do NOT suggest drafting a promo one-pager — suggest executing the next concrete item from their existing path, or a different leverage domain.
 - When CONTEXT includes avoidedMoves / skippedMoves, propose something meaningfully different.
+- Finished Google Calendar events (networking, gym, etc.) auto-log as growth activities — credit real schedule wins and adjust social/career scores from calendarContext when present.
+- @Name in calendar titles or activity logs links that contact — treat as relationship touchpoints.
 - Goal discipline: do not invent a pile of goals. If freed cash appears (canceled sub, surplus after buffer), prefer pointing it at highest-APR debt or an existing near-term money goal. Mention "create a tracked goal in Goals" only when one clear outcome is worth tracking — never flood the list.
 - Trends digest (trendsContext) is background signal only. Never turn a headline into a new side project. Prefer finishing open leverage / promotion work; reading may inform, not derail.
 
@@ -441,7 +452,7 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
         "Each real shipped increment improves skills and income upside beyond Lyft hours.",
       timeRequiredMinutes: 90,
       opportunityCost:
-        "One Lyft evening may help cover the weekly Hertz fee; one shipped increment can pay for years.",
+        `One Lyft evening may help cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} weekly fee; one shipped increment can pay for years.`,
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [],
       nextActions: [
@@ -498,7 +509,7 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
   const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
   const today = DateTime.local().toISODate()!;
-  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends] =
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, calendarContext] =
     await Promise.all([
       prisma.financialMemory.findMany({
         where: { userId },
@@ -541,6 +552,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: true,
         },
       }),
+      getRecentCalendarContextForGrowth(userId),
     ]);
 
   const skippedOrDoneMoves = recentMoves
@@ -595,6 +607,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: todayTrends.focusGuardrail,
         }
       : null,
+    calendarContext,
     metrics,
   };
 }
@@ -1094,9 +1107,14 @@ Rules:
 - "tldr" = one sentence only (max 20 words)
 - Cover BOTH money AND network/relationships when contacts exist — do not make this finance-only
 - If contacts lack notes or no social activity was logged, include that in doMore / bottleneck
+- Score the week against GOOD_WEEK_CHECKLIST below — whatWorked = items that held; whatDidnt / stopDoing = items that slipped
+- If most checklist items held, say the week compounded and earned permission for discretionary joy is okay
 - Every array item = ONE short action or fact (max 12 words)
 - Max 3 items per array
 - No paragraphs. No semicolon-chains. No joining multiple ideas with "and then"
+
+GOOD_WEEK_CHECKLIST:
+${goodWeekChecklistForPrompt()}
 
 Return JSON:
 {
@@ -1180,6 +1198,10 @@ ${JSON.stringify(context)}`,
 }
 
 export async function getGrowthDashboard(userId: string) {
+  await syncCalendarEventsToGrowth(userId).catch((error) => {
+    console.error("Calendar → Growth sync failed:", error);
+  });
+
   const metrics = await calculateGrowthMetrics(userId);
   await persistGrowthSnapshot(userId, metrics);
   await syncOpportunities(userId, metrics);

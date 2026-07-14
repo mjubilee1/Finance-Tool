@@ -6,6 +6,13 @@ import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
+import {
+  createGoogleCalendarEvent,
+  fetchUpcomingGoogleCalendarEvents,
+  type CreateGoogleCalendarEventInput,
+  type GoogleCalendarEvent,
+} from "@/lib/google-calendar";
+import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
@@ -13,6 +20,7 @@ import {
   buildTodayBriefContext,
   type TodayUpdatesPayload,
 } from "@/lib/today-brief";
+import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -58,6 +66,17 @@ type ChatMemory = {
   importanceScore: number;
 };
 
+type CalendarEventRequest = {
+  action: "create";
+  title: string;
+  start: string;
+  end: string | null;
+  allDay: boolean;
+  timeZone: string;
+  location: string | null;
+  description: string | null;
+};
+
 type ChatResponsePayload = {
   message: string;
   memoriesToStore: ChatMemory[];
@@ -74,10 +93,12 @@ type ChatResponsePayload = {
     severity?: "review" | "watch" | "ok";
   } | null;
   goalSuggestion?: GoalSuggestion | null;
+  calendarEvent?: CalendarEventRequest | null;
 };
 
 const MAX_CONTEXT_MESSAGES = 10;
 const MAX_HISTORY_MESSAGES = 50;
+const DEFAULT_CALENDAR_TIME_ZONE = "America/New_York";
 
 function sanitizeChatMessages(messages: unknown): ChatMessage[] {
   return (Array.isArray(messages) ? messages : [])
@@ -108,6 +129,123 @@ function parseStoredJson<T>(value: string | null): T | null {
   } catch {
     return null;
   }
+}
+
+function parseCalendarEventRequest(value: unknown): CalendarEventRequest | null {
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as Partial<Record<keyof CalendarEventRequest, unknown>>;
+  if (candidate.action !== "create") return null;
+
+  const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
+  const start = typeof candidate.start === "string" ? candidate.start.trim() : "";
+  const end = typeof candidate.end === "string" ? candidate.end.trim() : null;
+  if (!title || !start) return null;
+
+  return {
+    action: "create",
+    title,
+    start,
+    end: end || null,
+    allDay: candidate.allDay === true,
+    timeZone:
+      typeof candidate.timeZone === "string" && candidate.timeZone.trim()
+        ? candidate.timeZone.trim()
+        : DEFAULT_CALENDAR_TIME_ZONE,
+    location:
+      typeof candidate.location === "string" && candidate.location.trim()
+        ? candidate.location.trim()
+        : null,
+    description:
+      typeof candidate.description === "string" && candidate.description.trim()
+        ? candidate.description.trim()
+        : null,
+  };
+}
+
+function buildCalendarEventInput(request: CalendarEventRequest): CreateGoogleCalendarEventInput | null {
+  if (request.allDay) {
+    const start = DateTime.fromISO(request.start, { zone: request.timeZone });
+    if (!start.isValid) return null;
+
+    const end = request.end
+      ? DateTime.fromISO(request.end, { zone: request.timeZone })
+      : start.plus({ days: 1 });
+    if (!end.isValid || end <= start) return null;
+
+    return {
+      summary: request.title,
+      start: start.toISODate()!,
+      end: end.toISODate()!,
+      allDay: true,
+      timeZone: request.timeZone,
+      location: request.location,
+      description: request.description,
+    };
+  }
+
+  const start = DateTime.fromISO(request.start, { setZone: true });
+  if (!start.isValid) return null;
+
+  const end = request.end ? DateTime.fromISO(request.end, { setZone: true }) : start.plus({ minutes: 60 });
+  if (!end.isValid || end <= start) return null;
+
+  return {
+    summary: request.title,
+    start: start.toISO()!,
+    end: end.toISO()!,
+    allDay: false,
+    timeZone: request.timeZone,
+    location: request.location,
+    description: request.description,
+  };
+}
+
+function describeCalendarEvent(event: GoogleCalendarEvent) {
+  const start = event.allDay
+    ? DateTime.fromISO(event.start).toLocaleString(DateTime.DATE_MED)
+    : DateTime.fromISO(event.start, { setZone: true }).toLocaleString(DateTime.DATETIME_MED);
+  const label = start ? `${event.title} (${start})` : event.title;
+  return event.htmlLink ? `${label}: ${event.htmlLink}` : label;
+}
+
+async function loadCoachWeekCalendarEvents(userId: string) {
+  const now = DateTime.local();
+
+  try {
+    const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
+      timeMin: now.toJSDate(),
+      timeMax: now.plus({ days: 6 }).endOf("day").toJSDate(),
+      maxResults: 40,
+    });
+
+    return calendar.events;
+  } catch {
+    return [] as GoogleCalendarEvent[];
+  }
+}
+
+async function loadCoachWeekUserPlanActivities(userId: string) {
+  const now = DateTime.local();
+
+  return prisma.growthActivity.findMany({
+    where: {
+      userId,
+      category: "user_plan",
+      date: {
+        gte: now.toISODate() ?? undefined,
+        lte: now.plus({ days: 6 }).toISODate() ?? undefined,
+      },
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      date: true,
+      title: true,
+      domain: true,
+      notes: true,
+      minutesSpent: true,
+    },
+  });
 }
 
 function stringifyStoredJson(value: unknown) {
@@ -162,6 +300,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
           ? parsed.spotlight
           : null,
       goalSuggestion: parseGoalSuggestion(parsed.goalSuggestion),
+      calendarEvent: parseCalendarEventRequest(parsed.calendarEvent),
     };
   } catch {
     return {
@@ -170,6 +309,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       shouldRefreshBrief: false,
       todayUpdates: null,
       goalSuggestion: null,
+      calendarEvent: null,
     };
   }
 }
@@ -489,12 +629,26 @@ export async function POST(req: Request) {
     })();
 
     const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const todayBrief = await buildTodayBriefContext(session.user.id);
+    const [todayBrief, weekCalendarEvents, userPlanActivities] = await Promise.all([
+      buildTodayBriefContext(session.user.id),
+      loadCoachWeekCalendarEvents(session.user.id),
+      loadCoachWeekUserPlanActivities(session.user.id),
+    ]);
+    const weeklyPlan = buildWeeklyOperatingPlan({
+      start: DateTime.local(),
+      calendarEvents: weekCalendarEvents,
+      userPlanActivities,
+    });
 
     const systemPrompt = buildCoachSystemPrompt({
       intent: coachIntent,
       userName: session.user.name ?? null,
       todayBrief,
+      weeklyPlan,
+      calendarContext: {
+        nowIso: DateTime.local().setZone(DEFAULT_CALENDAR_TIME_ZONE).toISO() ?? new Date().toISOString(),
+        timeZone: DEFAULT_CALENDAR_TIME_ZONE,
+      },
       financePack: {
         accounts: accounts.map((a) => ({
           name: a.name,
@@ -606,6 +760,31 @@ export async function POST(req: Request) {
       refreshedMoveAction = result.refreshedMove?.action ?? null;
     }
 
+    let calendarEventCreated: GoogleCalendarEvent | null = null;
+    let calendarEventError: string | null = null;
+    if (chatResponse.calendarEvent) {
+      const eventInput = buildCalendarEventInput(chatResponse.calendarEvent);
+      if (!eventInput) {
+        calendarEventError = "I need a clear title, date, and start time before I can create that calendar event.";
+      } else {
+        try {
+          calendarEventCreated = await createGoogleCalendarEvent(session.user.id, eventInput);
+          if (!calendarEventCreated) {
+            calendarEventError = "Google Calendar created the event, but I could not read back the event details.";
+          } else {
+            await syncCalendarEventsToGrowth(session.user.id, { daysBack: 14 }).catch((syncError) => {
+              console.error("Calendar → Growth sync after create failed:", syncError);
+            });
+          }
+        } catch (calendarError) {
+          calendarEventError =
+            calendarError instanceof Error
+              ? calendarError.message
+              : "Google Calendar could not create that event.";
+        }
+      }
+    }
+
     let assistantHistoryMessage = chatResponse.message;
     if (savedMemoryTitles.length > 0) {
       assistantHistoryMessage += `\n\nSaved for your financial overview: ${savedMemoryTitles.join(", ")}.`;
@@ -618,6 +797,11 @@ export async function POST(req: Request) {
       if (refreshedMoveAction) {
         assistantHistoryMessage += `\nNew move for the rest of today: ${refreshedMoveAction}`;
       }
+    }
+    if (calendarEventCreated) {
+      assistantHistoryMessage += `\n\nCreated on Google Calendar: ${describeCalendarEvent(calendarEventCreated)}`;
+    } else if (calendarEventError) {
+      assistantHistoryMessage += `\n\nCalendar not updated: ${calendarEventError}`;
     }
 
     await prisma.$transaction([
@@ -655,6 +839,8 @@ export async function POST(req: Request) {
       intent: coachIntent,
       spotlight: chatResponse.spotlight ?? null,
       goalSuggestion: chatResponse.goalSuggestion ?? null,
+      calendarEventCreated,
+      calendarEventError,
       memoriesSaved: savedMemoryTitles,
       briefRefreshed,
       todayUpdated: todayApplied.length > 0,

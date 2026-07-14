@@ -49,7 +49,7 @@ const initialCoachMessages: ChatMessage[] = [
   {
     role: "assistant",
     content:
-      "Hi — I'm your Life OS coach. Try “good morning” or “what should I do today” for your schedule, money headline, and today's move. Tell me when you skip Lyft or change the plan — I'll update Growth and pivot the rest of your day. Money questions, charges, and screenshots still work here.",
+      "Hi — I'm your Life OS coach. Try “good morning” or “what should I do today” for your schedule, money headline, and today's move. You can also say “schedule gym tomorrow at 6” and, once Google Calendar is connected, I’ll add the event. Money questions, charges, and screenshots still work here.",
   },
 ];
 
@@ -368,6 +368,16 @@ export function ChatInterface({
           assistantMessage += `\n\nNew move for the rest of today: ${data.refreshedMoveAction}`;
         }
         await queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+        await queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+      }
+
+      if (data.calendarEventCreated) {
+        const event = data.calendarEventCreated as { title?: string; htmlLink?: string | null };
+        assistantMessage += `\n\nCreated on Google Calendar: ${event.title ?? "Event"}${event.htmlLink ? `: ${event.htmlLink}` : ""}`;
+        await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        await queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+      } else if (typeof data.calendarEventError === "string" && data.calendarEventError.trim()) {
+        assistantMessage += `\n\nCalendar not updated: ${data.calendarEventError}`;
       }
 
       setMessages((prev) => [

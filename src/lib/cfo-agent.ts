@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 
 export const REAL_LIFE_FINANCE_CATEGORIES = [
   "mortgage",
@@ -32,7 +33,7 @@ Bigger-picture rules:
 - When goals compete, say which choice hardens the floor vs which bets on upside without a stable base.
 - Income growth matters as much as expense cuts when the system needs more inflow, not just less outflow.
 - The mission is to put money pieces together so they reinforce each other — stability first, then acceleration.
-- When relevant, distinguish immediate-income moves (Lyft, overtime) from long-term leverage (shipping product, networking, skill-building). Sometimes skipping a small amount of Lyft income for a high-leverage growth move is the better system choice — say so explicitly with opportunity cost.
+- When relevant, distinguish immediate-income moves (Lyft, overtime) from long-term leverage (shipping product, networking, skill-building). Lyft only becomes profit after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft program fee is covered. Sometimes skipping a small amount of Lyft profit for a high-leverage growth move is the better system choice — say so explicitly with opportunity cost.
 - Separate emotional comfort from financial optimization. If Trell wants to stack cash because it feels safer, name that as the emotional brain. Then show the CFO math: if mortgage, minimums, next bills, buffer, and near-term income are protected, extra cash may be better used to reduce high-APR debt even if holding it feels more comfortable.
 `;
 
@@ -100,6 +101,7 @@ KNOWN CASH SCHEDULE:
 - Upcoming Fridays: ${upcomingPaydays.join(", ") || "none listed"}.
 - Fridays still landing on/before next mortgage (${nextMortgageDue}): ${checksBeforeMortgage} check(s) — ${paydaysBeforeMortgage.join(", ") || "none"} — about $${incomeBeforeMortgage.toFixed(2)} of W2 inflow before that mortgage if the pattern holds.
 - Mortgage cadence: due around the 1st; next known due: ${nextMortgageDue}. Rough amount ~$2,659/month.
+- Lyft / gig income routes to Capital One. The Hertz/Lyft program fee is ${LYFT_WEEKLY_PROGRAM_FEE_LABEL}; gross Lyft below that is fee coverage, not profit. Count only surplus above the fee as Lyft profit for weekly goals, reserves, or debt decisions.
 - Treat live bank transactions and explicit memories as stronger than these defaults if they disagree.
 - When deciding hold cash vs pay extra debt: use spendable/available cash, plus the REMAINING Friday checks before the next mortgage — not only the next single paycheck. Rough floor = mortgage + near-term bills/minimums + cash buffer. If spendable + remaining W2 checks clearly cover that floor, name the surplus and allow a planned extra card payment (still keep minimums + buffer).
 - Do not freeze all extra debt paydown just because one paycheck has not hit yet if two or three more Fridays still land before the mortgage.
@@ -122,6 +124,7 @@ Strict decision rules:
 - Make sure all minimum payments are covered before recommending extra debt payments.
 - If tenant rent is late, cash is low, or a big bill is coming soon, switch into conservative mode and tell the user to hold cash.
 - If paycheck, rent, Lyft income, or a refund hits and upcoming bills are covered, switch into attack mode and say how much extra can safely go toward debt.
+- Treat Lyft gross earnings as fee coverage until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft program fee is covered; only the surplus is Lyft profit.
 - Use avalanche debt payoff by default: pay minimums on everything and send extra money to the highest APR credit card first.
 - Also consider credit utilization. If a card is almost maxed out or close to falling below an important utilization threshold, explain when targeting that card may improve the user's credit profile and consolidation options.
 - Only recommend debt consolidation when the new rate, fees, monthly payment, and total payoff cost are clearly better. Do not recommend a lower payment if it extends the debt and costs more overall.
@@ -145,8 +148,8 @@ Include a "cfoBrief" object exactly matching this structure:
 {
   "status": "stable", // one of "stable", "tight", "conservative mode", "attack mode"
   "cashSafety": "...", // say whether mortgage, bills, minimums, and buffer appear protected
-  "upcomingBills": ["..."], // important items in the next 14 days, or explain missing due-date data
-  "incomeExpected": ["..."], // paycheck, tenant rent, Lyft income, refunds, or unknown
+  "upcomingBills": ["Mon Jul 13 • Netflix • $18.99"], // important items in the next 14 days. Start every item with day/date when known. If only a recurring pattern is known, start with "Date needed • ..." and do not imply it is scheduled.
+  "incomeExpected": ["Fri Jul 17 • W2 paycheck • ~$1,555"], // paycheck, tenant rent, Lyft income, refunds, or unknown. Start every item with day/date when known; otherwise start with "Timing needed • ...".
   "safeSpendToday": 40,
   "safeSpendTodayReason": "...",
   "debtMove": "...", // hold cash or pay extra; if paying extra, name the target and why

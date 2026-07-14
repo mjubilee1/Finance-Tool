@@ -334,6 +334,7 @@ html.dark .bg-white\/90,
 html.dark .bg-slate-50,
 html.dark .bg-slate-50\/70,
 html.dark .bg-slate-50\/80,
+html.dark .bg-slate-50\/90,
 html.dark .bg-slate-100,
 html.dark .bg-zinc-50 {
   background-color: color-mix(in srgb, var(--card-solid) 92%, var(--accent-muted)) !important;
@@ -346,7 +347,8 @@ html.dark .bg-teal-50\/50,
 html.dark .bg-teal-50\/80,
 html.dark .bg-teal-100,
 html.dark .bg-sky-50,
-html.dark .bg-sky-50\/80 {
+html.dark .bg-sky-50\/80,
+html.dark .bg-sky-100 {
   background-color: var(--accent-soft) !important;
 }
 
@@ -369,6 +371,7 @@ html.dark .bg-orange-50\/40 {
 }
 
 html.dark .bg-violet-50,
+html.dark .bg-violet-100,
 html.dark .bg-fuchsia-50 {
   background-color: rgba(167, 139, 250, 0.14) !important;
 }
@@ -403,7 +406,8 @@ html.dark .text-rose-900 {
 
 html.dark .text-amber-700,
 html.dark .text-amber-800,
-html.dark .text-amber-900 {
+html.dark .text-amber-900,
+html.dark .text-amber-950 {
   color: #fcd34d !important;
 }
 

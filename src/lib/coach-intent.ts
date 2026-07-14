@@ -22,6 +22,9 @@ export function classifyCoachIntent(message: string): CoachIntent {
     /^(hi|hello|hey|yo|good morning|good afternoon|good evening)\b/.test(text) ||
     /\b(what should i do|what do i do|what('s| is) my (schedule|day|plan)|today'?s (brief|plan|schedule|move)|read (me )?my day)\b/.test(
       text,
+    ) ||
+    /\b(schedule my week|plan my week|script my week|week ahead|what('s| is) ahead|operating script|how should i schedule)\b/.test(
+      text,
     )
   ) {
     return "morning_brief";

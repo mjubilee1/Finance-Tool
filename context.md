@@ -39,6 +39,23 @@ The daily and weekly planning experience should be inspired by *The 7 Habits of 
 - Today is the center of gravity because life happens daily; weekly review gives meaning, accountability, and permission without replacing the daily focus.
 - Treat body, career leverage, financial stability, and intentional joy as compounding inputs rather than isolated checklist items.
 
+### North star (coach + weekly review)
+
+Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI Lyft after the fee is covered, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.
+
+### What a good week looks like
+
+Weekly review scores the week against this checklist (not one perfect day):
+
+- **Leverage protected** — career, promotion, or build blocks most weekdays
+- **Body fed the system** — gym/training 2–3×; energy for desk and leverage work
+- **Network warmed** — at least one follow-up, note, or outreach with connection equity
+- **Cash rhythm held** — ~$40 most days OR blowouts earned after solid days
+- **Lyft math respected** — weekly fee covered before extra low-ROI grind
+- **Financial floor intact** — bills, buffer, debt move when cash allowed
+- **Joy intentional** — rest and social chosen and capped; not doomscroll/drain nights
+- **System remembers** — activities, spends, contacts logged for sharper next week
+
 ### Today Planner must respect the real schedule
 
 The planner is only useful if today's blocks fit the day shape — never suggest a weekend-sized outing on an office day.
@@ -101,7 +118,7 @@ Sign-in is **email + 6-digit code** (passcode sent to email), **not** email + pa
 | Account | Role | Income |
 |---------|------|--------|
 | **Chase** (primary) | Main checking; day-to-day and paycheck hub | W2 direct-deposit paychecks every Friday |
-| **Capital One** (secondary) | Goals, plans, side-income bucket | Lyft driving earnings (after weekly Hertz/Lyft program fee) |
+| **Capital One** (secondary) | Goals, plans, side-income bucket | Lyft driving earnings (after the $334/week Hertz/Lyft program fee) |
 
 When modeling features, allocations, or coach advice:
 
@@ -110,7 +127,7 @@ When modeling features, allocations, or coach advice:
 - W2 paycheck cadence: **every Friday**
 - Mortgage cadence: due around the **1st of each month** (roughly $2,659; e.g. in mid-July the next mortgage date is Aug 1)
 - Lyft / gig income → Capital One
-- Lyft has a **weekly program/rental fee** that must be covered before the week is profitable
+- Lyft has a **$334/week program/rental fee** that must be covered before the week is profitable
 - Goals and plans should be future-proofed against the account that actually holds that money
 - Daily tradeoff often: drive Lyft today vs higher-leverage career/build/network work
 - Typical schedule: Mon–Wed office (early Lyft ~2hr then commute; desk-only mid-day), Thu–Fri WFH (better for deep work / in-person)
