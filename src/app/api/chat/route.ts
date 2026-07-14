@@ -100,6 +100,9 @@ const MAX_CONTEXT_MESSAGES = 10;
 const MAX_HISTORY_MESSAGES = 50;
 const DEFAULT_CALENDAR_TIME_ZONE = "America/New_York";
 
+/** Vercel / serverless: allow vision + calendar coach turns enough time to finish. */
+export const maxDuration = 60;
+
 function sanitizeChatMessages(messages: unknown): ChatMessage[] {
   return (Array.isArray(messages) ? messages : [])
     .filter((message): message is ChatMessage => {
@@ -417,6 +420,23 @@ function incrementChatUsage(userId: string, dailyLimit: number) {
   return true;
 }
 
+/**
+ * Once the coach has already answered a screenshot turn, drop the raw image from
+ * later requests. Keeps follow-ups (e.g. "like 9pm") fast and less flaky.
+ */
+function stripAnsweredImages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((message, index) => {
+    if (message.role !== "user" || !message.images?.length) return message;
+
+    const alreadyAnswered = messages
+      .slice(index + 1)
+      .some((later) => later.role === "assistant");
+    if (!alreadyAnswered) return message;
+
+    return { role: message.role, content: message.content };
+  });
+}
+
 function toOpenAiMessages(messages: ChatMessage[]): OpenAiChatMessage[] {
   return messages.map((message) => {
     if (message.role !== "user" || !message.images?.length) {
@@ -571,11 +591,13 @@ export async function POST(req: Request) {
         images: message.images.length > 0 ? message.images : undefined,
       }));
 
-    const recentMessages = (
-      savedContextMessages.length > 0
-        ? [...savedContextMessages, latestUserMessage]
-        : requestMessages
-    ).slice(-MAX_CONTEXT_MESSAGES);
+    const recentMessages = stripAnsweredImages(
+      (
+        savedContextMessages.length > 0
+          ? [...savedContextMessages, latestUserMessage]
+          : requestMessages
+      ).slice(-MAX_CONTEXT_MESSAGES),
+    );
 
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
     const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns] = await Promise.all([
