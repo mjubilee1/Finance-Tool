@@ -372,8 +372,16 @@ export async function fetchUpcomingGoogleCalendarEvents(
 
 export async function createGoogleCalendarEvent(userId: string, input: CreateGoogleCalendarEventInput) {
   const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  if (!connection || connection.status !== "active") {
-    throw new Error("Connect Google Calendar before I can create events.");
+  if (!connection) {
+    throw new Error(
+      "Google Calendar is not connected yet. Open Overview and tap Connect Google Calendar, or go to /api/integrations/google-calendar/connect while logged in.",
+    );
+  }
+
+  if (connection.status !== "active") {
+    throw new Error(
+      "Google Calendar needs to be reconnected. Open Overview and tap Reconnect Google Calendar.",
+    );
   }
 
   if (!hasCalendarEventWriteScope(connection.scopes)) {
@@ -386,7 +394,9 @@ export async function createGoogleCalendarEvent(userId: string, input: CreateGoo
 
   const accessToken = await getActiveGoogleCalendarAccessToken(userId);
   if (!accessToken) {
-    throw new Error("Connect Google Calendar before I can create events.");
+    throw new Error(
+      "Google Calendar needs to be reconnected. Open Overview and tap Reconnect Google Calendar.",
+    );
   }
 
   const eventBody = input.allDay

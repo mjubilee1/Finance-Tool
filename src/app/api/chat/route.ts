@@ -762,6 +762,7 @@ export async function POST(req: Request) {
 
     let calendarEventCreated: GoogleCalendarEvent | null = null;
     let calendarEventError: string | null = null;
+    let calendarConnectRequired = false;
     if (chatResponse.calendarEvent) {
       const eventInput = buildCalendarEventInput(chatResponse.calendarEvent);
       if (!eventInput) {
@@ -781,6 +782,10 @@ export async function POST(req: Request) {
             calendarError instanceof Error
               ? calendarError.message
               : "Google Calendar could not create that event.";
+          calendarConnectRequired =
+            /connect google calendar|reconnect google calendar|not connected/i.test(
+              calendarEventError,
+            );
         }
       }
     }
@@ -841,6 +846,7 @@ export async function POST(req: Request) {
       goalSuggestion: chatResponse.goalSuggestion ?? null,
       calendarEventCreated,
       calendarEventError,
+      calendarConnectRequired,
       memoriesSaved: savedMemoryTitles,
       briefRefreshed,
       todayUpdated: todayApplied.length > 0,

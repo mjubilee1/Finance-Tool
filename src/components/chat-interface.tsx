@@ -11,6 +11,7 @@ import {
   VolumeX,
   LoaderCircle,
   ChevronDown,
+  CalendarDays,
 } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
@@ -28,6 +29,7 @@ type ChatMessage = {
   images?: string[];
   spotlight?: TransactionSpotlight | null;
   goalSuggestion?: GoalSuggestion | null;
+  calendarConnectRequired?: boolean;
 };
 
 type ChatHistoryResponse = {
@@ -441,6 +443,7 @@ export function ChatInterface({
           content: assistantMessage,
           spotlight: data.spotlight ?? null,
           goalSuggestion: data.goalSuggestion ?? null,
+          calendarConnectRequired: Boolean(data.calendarConnectRequired),
         },
       ]);
       void queryClient.invalidateQueries({ queryKey: ["chat-history"] });
@@ -666,9 +669,18 @@ export function ChatInterface({
                         </button>
                       ) : null}
                     </div>
-                    {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
-                    {m.goalSuggestion ? <GoalSuggestionCard suggestion={m.goalSuggestion} /> : null}
-                  </div>
+                  {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
+                  {m.goalSuggestion ? <GoalSuggestionCard suggestion={m.goalSuggestion} /> : null}
+                  {m.role === "assistant" && m.calendarConnectRequired ? (
+                    <a
+                      href="/api/integrations/google-calendar/connect"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white"
+                    >
+                      <CalendarDays size={14} />
+                      Connect Google Calendar
+                    </a>
+                  ) : null}
+                </div>
                 </div>
               ))}
               {isLoading ? (
