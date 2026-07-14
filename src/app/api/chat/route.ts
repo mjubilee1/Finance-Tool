@@ -240,13 +240,17 @@ async function loadCoachWeekUserPlanActivities(userId: string) {
         lte: now.plus({ days: 6 }).toISODate() ?? undefined,
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     select: {
+      id: true,
       date: true,
       title: true,
       domain: true,
       notes: true,
       minutesSpent: true,
+      status: true,
+      sortOrder: true,
+      timeLabel: true,
     },
   });
 }

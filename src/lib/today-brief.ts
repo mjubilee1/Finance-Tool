@@ -9,6 +9,13 @@ import { storeFinancialMemories } from "@/lib/financial-memory";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
 import { buildTodayPlan, type TodayPlanBlockKey } from "@/lib/today-plan";
 import { applyMentionsToActivityText } from "@/lib/growth-calendar-sync";
+import {
+  getPlannerDayLayout,
+  serializeUserPlanBlock,
+  systemPlanRef,
+  type PlannerBlockOverride,
+  type PlannerDayLayoutData,
+} from "@/lib/planner";
 
 type CfoBriefHeadline = {
   status: string | null;
@@ -43,13 +50,33 @@ export type TodayBriefContext = {
     notes: string | null;
   }>;
   userPlanBlocks: Array<{
+    id: string;
     title: string;
     domain: string;
     minutesSpent: number | null;
     notes: string | null;
+    status: "planned" | "done" | "skipped";
+    sortOrder: number;
+    timeLabel: string | null;
+    date: string;
+    ref: string;
   }>;
   completedBlockKeys: TodayPlanBlockKey[];
   skippedBlockKeys: TodayPlanBlockKey[];
+  plannerLayout: PlannerDayLayoutData;
+  planBlocks: Array<{
+    key: TodayPlanBlockKey;
+    label: string;
+    time: string;
+    fit: string;
+    why: string;
+    role: string;
+    priority: string;
+    evidence: string | null;
+    status: "planned" | "done" | "skipped" | "hidden";
+    ref: string;
+    hidden: boolean;
+  }>;
 };
 
 export type TodayUpdatesPayload = {
@@ -137,37 +164,39 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
   const today = now.toISODate()!;
   const shape = dayShapeFor(now.weekday);
 
-  const [metrics, recommendation, profile, snapshot, activities, gymMemories] = await Promise.all([
-    calculateGrowthMetrics(userId),
-    prisma.growthRecommendation.findUnique({
-      where: { userId_date: { userId, date: today } },
-    }),
-    prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
-    prisma.dailyFinancialSnapshot.findUnique({
-      where: { userId_date: { userId, date: today } },
-    }),
-    prisma.growthActivity.findMany({
-      where: { userId, date: today },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.financialMemory.findMany({
-      where: {
-        userId,
-        OR: [
-          { title: { contains: "gym", mode: "insensitive" } },
-          { content: { contains: "gym", mode: "insensitive" } },
-          { title: { contains: "workout", mode: "insensitive" } },
-          { content: { contains: "workout", mode: "insensitive" } },
-          { title: { contains: "fitness", mode: "insensitive" } },
-          { content: { contains: "fitness", mode: "insensitive" } },
-          { content: { contains: "training", mode: "insensitive" } },
-        ],
-      },
-      orderBy: [{ importanceScore: "desc" }, { updatedAt: "desc" }],
-      take: 4,
-      select: { title: true, content: true },
-    }),
-  ]);
+  const [metrics, recommendation, profile, snapshot, activities, gymMemories, plannerLayout] =
+    await Promise.all([
+      calculateGrowthMetrics(userId),
+      prisma.growthRecommendation.findUnique({
+        where: { userId_date: { userId, date: today } },
+      }),
+      prisma.lifeLeverageProfile.findUnique({ where: { userId } }),
+      prisma.dailyFinancialSnapshot.findUnique({
+        where: { userId_date: { userId, date: today } },
+      }),
+      prisma.growthActivity.findMany({
+        where: { userId, date: today },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      }),
+      prisma.financialMemory.findMany({
+        where: {
+          userId,
+          OR: [
+            { title: { contains: "gym", mode: "insensitive" } },
+            { content: { contains: "gym", mode: "insensitive" } },
+            { title: { contains: "workout", mode: "insensitive" } },
+            { content: { contains: "workout", mode: "insensitive" } },
+            { title: { contains: "fitness", mode: "insensitive" } },
+            { content: { contains: "fitness", mode: "insensitive" } },
+            { content: { contains: "training", mode: "insensitive" } },
+          ],
+        },
+        orderBy: [{ importanceScore: "desc" }, { updatedAt: "desc" }],
+        take: 4,
+        select: { title: true, content: true },
+      }),
+      getPlannerDayLayout(userId, today),
+    ]);
 
   const plan = buildTodayPlan(metrics, recommendation, profile, {
     memorySnippets: gymMemories.map((memory) => `${memory.title}: ${memory.content}`),
@@ -185,14 +214,58 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
   const skippedBlockKeys = new Set<TodayPlanBlockKey>();
 
   for (const activity of activities) {
+    if (activity.category === "user_plan") continue;
     const key = blockKeyFromActivity(activity);
     if (!key) continue;
-    if (isSkippedActivity(activity.notes, activity.title)) {
+    if (activity.status === "skipped" || isSkippedActivity(activity.notes, activity.title)) {
       skippedBlockKeys.add(key);
     } else {
+      // Logged activities count as done (legacy rows default to status "planned").
       completedBlockKeys.add(key);
     }
   }
+
+  for (const [key, override] of Object.entries(plannerLayout.overrides)) {
+    if (key !== "lyft" && key !== "gym" && key !== "leverage" && key !== "joy") continue;
+    const blockKey = key as TodayPlanBlockKey;
+    if (override.status === "done") {
+      completedBlockKeys.add(blockKey);
+      skippedBlockKeys.delete(blockKey);
+    } else if (override.status === "skipped") {
+      skippedBlockKeys.add(blockKey);
+      completedBlockKeys.delete(blockKey);
+    } else if (override.status === "planned") {
+      completedBlockKeys.delete(blockKey);
+      skippedBlockKeys.delete(blockKey);
+    }
+  }
+
+  const planBlocks = plan.blocks
+    .map((block) => {
+      const override = plannerLayout.overrides[block.key] as PlannerBlockOverride | undefined;
+      const status =
+        override?.status === "hidden"
+          ? "hidden"
+          : override?.status === "done" || completedBlockKeys.has(block.key)
+            ? "done"
+            : override?.status === "skipped" || skippedBlockKeys.has(block.key)
+              ? "skipped"
+              : "planned";
+      return {
+        key: block.key,
+        label: override?.label?.trim() || block.label,
+        time: override?.timeLabel?.trim() || block.time,
+        fit: block.fit,
+        why: override?.notes?.trim() || block.why,
+        role: block.role,
+        priority: block.priority,
+        evidence: block.evidence,
+        status: status as "planned" | "done" | "skipped" | "hidden",
+        ref: systemPlanRef(block.key),
+        hidden: status === "hidden",
+      };
+    })
+    .filter((block) => !block.hidden);
 
   return {
     date: today,
@@ -200,7 +273,18 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
     dayShape: shape,
     dayLabel: plan.dayLabel,
     dateLabel: plan.dateLabel,
-    plan,
+    plan: {
+      ...plan,
+      blocks: planBlocks.map((block) => {
+        const original = plan.blocks.find((item) => item.key === block.key)!;
+        return {
+          ...original,
+          label: block.label,
+          time: block.time,
+          why: block.why,
+        };
+      }),
+    },
     recommendation: recommendation
       ? {
           id: recommendation.id,
@@ -215,14 +299,11 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
     todayActivities,
     userPlanBlocks: activities
       .filter((activity) => activity.category === "user_plan")
-      .map((activity) => ({
-        title: activity.title,
-        domain: activity.domain,
-        minutesSpent: activity.minutesSpent,
-        notes: activity.notes,
-      })),
+      .map((activity) => serializeUserPlanBlock(activity)),
     completedBlockKeys: [...completedBlockKeys],
     skippedBlockKeys: [...skippedBlockKeys],
+    plannerLayout,
+    planBlocks,
   };
 }
 
@@ -357,7 +438,8 @@ export function formatTodayBriefForSpeech(
 
   if (brief.userPlanBlocks.length > 0) {
     for (const block of brief.userPlanBlocks) {
-      lines.push(`• Your block: ${block.title}`);
+      const status = block.status === "done" ? "done" : block.status === "skipped" ? "skipped" : "planned";
+      lines.push(`• Your block: ${block.title} — ${status}`);
     }
   }
 
