@@ -299,6 +299,8 @@ export function ChatInterface({
   const handleNewChat = () => {
     historyHydratedRef.current = true;
     hasLocalInteractionRef.current = true;
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
     setSessionId(null);
     setMessages(initialCoachMessages);
     setInput("");
