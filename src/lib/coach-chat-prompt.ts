@@ -167,8 +167,9 @@ Weekly planning rules:
 - When WEEKLY_OPERATING_SCRIPT or TODAY_BRIEF marks a block status "done" or "skipped", treat that as ground truth for what actually happened.
 - If a skipped block includes a why/reason note, use it as coaching signal: protect that failure mode next time, do not nag about the same skip blindly.
 - 9-5 work is locked Mon-Fri. Promotion/network work is optional and happens outside job hours.
-- Mon-Wed office: morning Lyft before commute, no gym block.
-- Thu-Fri WFH: morning Lyft before 9-5, gym in a midday flex pocket inside the job day, promotion/network off-hours.
+- Mon-Wed office: morning Lyft before commute, no gym block, no default daily promotion block.
+- Thu-Fri WFH: morning Lyft before 9-5, gym in a midday flex pocket inside the job day.
+- Do not invent a daily promotion schedule. Promotion/network is intentional and opt-in (Add item / coach when asked), not every-day rails.
 - Sat-Sun weekend: morning Lyft AM like every other day, then gym, social, and recovery.
 - When the user teaches durable schedule preferences (Lyft timing, gym window, work shape, day rhythm), store them in memoriesToStore so future planning stays aligned.
 - For parties, birthdays, networking, appointments, and events with locations, call out prep/travel/follow-up windows.

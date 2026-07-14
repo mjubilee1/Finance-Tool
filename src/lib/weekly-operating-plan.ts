@@ -217,18 +217,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         status: "planned",
       },
       {
-        id: `${day.toISODate()}-promotion`,
-        type: "focus",
-        priority: "optional",
-        label: "Extra promotion / network",
-        time: "Evening or off-hours",
-        why: "Promotion work is optional and happens outside 9-5 when you have bandwidth.",
-        source: "weekly_template",
-        sortKey: 18,
-        ref: weekPlanRef(`${day.toISODate()}-promotion`),
-        status: "planned",
-      },
-      {
         id: `${day.toISODate()}-evening`,
         type: "recovery",
         priority: "optional",
@@ -282,15 +270,15 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         status: "planned",
       },
       {
-        id: `${day.toISODate()}-promotion`,
-        type: "focus",
+        id: `${day.toISODate()}-evening`,
+        type: "recovery",
         priority: "optional",
-        label: "Extra promotion / network",
-        time: "Evening or off-hours",
-        why: "Promotion, startup, and networking are extras outside the locked job block.",
+        label: "Evening reset",
+        time: "After work",
+        why: "Optional recovery if cash and training are handled. Add promotion only when you deliberately protect it.",
         source: "weekly_template",
         sortKey: 18,
-        ref: weekPlanRef(`${day.toISODate()}-promotion`),
+        ref: weekPlanRef(`${day.toISODate()}-evening`),
         status: "planned",
       },
     ];
@@ -349,13 +337,13 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
 }
 
 function headlineFor(shape: DayShape) {
-  if (shape === "office") return "Office rails: 9-5 work is locked; extras happen after hours.";
+  if (shape === "office") return "Office rails: morning Lyft, 9-5 work locked.";
   if (shape === "wfh") return "WFH rails: morning Lyft, 9-5 work locked, gym in midday flex.";
   return "Weekend rails: morning Lyft AM, then gym, social, and recovery.";
 }
 
 function valueFocusFor(shape: DayShape) {
-  if (shape === "office") return "Protect 9-5 work; promotion and network are optional off-hours extras.";
+  if (shape === "office") return "Protect 9-5 work. Add promotion only when you deliberately protect it — not every day.";
   if (shape === "wfh") return "Morning Lyft, then 9-5 work; gym uses a midday flex pocket inside the job day.";
   return "Morning Lyft AM like every other day, then use the open day for gym, events, and recovery.";
 }
