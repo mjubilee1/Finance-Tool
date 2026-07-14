@@ -11,11 +11,29 @@ const contactInclude = {
   },
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const lite = searchParams.get("lite") === "1";
+
+    if (lite) {
+      const contacts = await prisma.growthContact.findMany({
+        where: { userId: session.user.id },
+        orderBy: [{ lastContactDate: "desc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          relationshipType: true,
+          lastContactDate: true,
+          status: true,
+        },
+      });
+      return NextResponse.json({ contacts });
     }
 
     const contacts = await prisma.growthContact.findMany({
