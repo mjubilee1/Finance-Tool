@@ -122,12 +122,18 @@ export function isGoogleCalendarConfigured() {
 }
 
 export function getGoogleCalendarRedirectUri(request: Request) {
-  if (process.env.GOOGLE_CALENDAR_REDIRECT_URI) {
-    return process.env.GOOGLE_CALENDAR_REDIRECT_URI;
-  }
-
   const requestUrl = new URL(request.url);
   const origin = (process.env.NEXTAUTH_URL || requestUrl.origin).replace(/\/$/, "");
+  const configured = process.env.GOOGLE_CALENDAR_REDIRECT_URI?.trim();
+
+  // Ignore localhost redirect URIs in production — common Vercel misconfig when .env is copied verbatim.
+  if (
+    configured &&
+    !(process.env.NODE_ENV === "production" && configured.includes("localhost"))
+  ) {
+    return configured;
+  }
+
   return `${origin}/api/integrations/google-calendar/callback`;
 }
 

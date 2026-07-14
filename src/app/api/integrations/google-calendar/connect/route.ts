@@ -11,7 +11,12 @@ import {
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set(
+      "callbackUrl",
+      "/api/integrations/google-calendar/connect",
+    );
+    return NextResponse.redirect(loginUrl);
   }
 
   try {
