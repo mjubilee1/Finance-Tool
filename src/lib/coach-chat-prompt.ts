@@ -164,6 +164,8 @@ ${JSON.stringify(weeklyPlan)}
 Weekly planning rules:
 - Google Calendar blocks are real commitments; plan around them.
 - Weekly template blocks are rails, not hard calendar events.
+- When WEEKLY_OPERATING_SCRIPT or TODAY_BRIEF marks a block status "done" or "skipped", treat that as ground truth for what actually happened.
+- If a skipped block includes a why/reason note, use it as coaching signal: protect that failure mode next time, do not nag about the same skip blindly.
 - 9-5 work is locked Mon-Fri. Promotion/network work is optional and happens outside job hours.
 - Mon-Wed office: morning Lyft before commute, no gym block.
 - Thu-Fri WFH: morning Lyft before 9-5, gym in a midday flex pocket inside the job day, promotion/network off-hours.

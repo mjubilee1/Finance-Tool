@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { GROWTH_DOMAINS } from "@/lib/growth-agent";
 import type { TodayPlanBlockKey } from "@/lib/today-plan";
+import { storeFinancialMemories } from "@/lib/financial-memory";
 
 export type PlannerItemStatus = "planned" | "done" | "skipped" | "hidden";
 
@@ -419,6 +420,28 @@ export async function updatePlannerItem(
     data,
   });
 
+  if (data.status === "skipped") {
+    const reason = (data.notes ?? existing.notes)?.trim();
+    if (reason) {
+      await storeFinancialMemories(
+        userId,
+        [
+          {
+            title: `Skipped plan item ${updated.date}`,
+            content: `User skipped custom plan item "${updated.title}" on ${updated.date}. Reason: ${reason}. Use this when coaching schedule tradeoffs.`,
+            importanceScore: 0.8,
+          },
+        ],
+        {
+          source: "planner",
+          type: "PLANNER_SKIP",
+          limit: 1,
+          minImportance: 0.5,
+        },
+      );
+    }
+  }
+
   if (data.date && data.date !== existing.date) {
     const fromLayout = await getPlannerDayLayout(userId, existing.date);
     const toLayout = await getPlannerDayLayout(userId, data.date);
@@ -490,6 +513,42 @@ export async function setSystemBlockOverride(
     } else if (patch.status === "planned") {
       await clearSystemBlockActivity(userId, date, blockKey);
     }
+  }
+
+  if (patch.status === "skipped" && nextOverride.notes?.trim()) {
+    await storeFinancialMemories(
+      userId,
+      [
+        {
+          title: `Skipped planner block ${date}`,
+          content: `User skipped "${nextOverride.label?.trim() || blockKey}" on ${date}. Reason: ${nextOverride.notes.trim()}. Use this when coaching schedule tradeoffs and what to protect next.`,
+          importanceScore: 0.82,
+        },
+      ],
+      {
+        source: "planner",
+        type: "PLANNER_SKIP",
+        limit: 1,
+        minImportance: 0.5,
+      },
+    );
+  } else if (patch.status === "done") {
+    await storeFinancialMemories(
+      userId,
+      [
+        {
+          title: `Completed planner block ${date}`,
+          content: `User completed "${nextOverride.label?.trim() || blockKey}" on ${date}. Credit the win and keep compounding around what worked.`,
+          importanceScore: 0.7,
+        },
+      ],
+      {
+        source: "planner",
+        type: "PLANNER_DONE",
+        limit: 1,
+        minImportance: 0.5,
+      },
+    );
   }
 
   return nextOverride;
