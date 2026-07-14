@@ -99,13 +99,18 @@ export async function getPlannerDayLayout(
   userId: string,
   date: string,
 ): Promise<PlannerDayLayoutData> {
-  const row = await prisma.plannerDayLayout.findUnique({
-    where: { userId_date: { userId, date } },
-  });
-  return {
-    order: parseOrderJson(row?.orderJson),
-    overrides: parseOverridesJson(row?.overridesJson),
-  };
+  try {
+    const row = await prisma.plannerDayLayout.findUnique({
+      where: { userId_date: { userId, date } },
+    });
+    return {
+      order: parseOrderJson(row?.orderJson),
+      overrides: parseOverridesJson(row?.overridesJson),
+    };
+  } catch (error) {
+    console.error("PlannerDayLayout unavailable; using empty layout:", error);
+    return { order: [], overrides: {} };
+  }
 }
 
 export async function getPlannerDayLayouts(
@@ -113,20 +118,120 @@ export async function getPlannerDayLayouts(
   startDate: string,
   endDate: string,
 ): Promise<Map<string, PlannerDayLayoutData>> {
-  const rows = await prisma.plannerDayLayout.findMany({
-    where: {
-      userId,
-      date: { gte: startDate, lte: endDate },
-    },
-  });
-  const map = new Map<string, PlannerDayLayoutData>();
-  for (const row of rows) {
-    map.set(row.date, {
-      order: parseOrderJson(row.orderJson),
-      overrides: parseOverridesJson(row.overridesJson),
+  try {
+    const rows = await prisma.plannerDayLayout.findMany({
+      where: {
+        userId,
+        date: { gte: startDate, lte: endDate },
+      },
     });
+    const map = new Map<string, PlannerDayLayoutData>();
+    for (const row of rows) {
+      map.set(row.date, {
+        order: parseOrderJson(row.orderJson),
+        overrides: parseOverridesJson(row.overridesJson),
+      });
+    }
+    return map;
+  } catch (error) {
+    console.error("PlannerDayLayout range unavailable; using empty layouts:", error);
+    return new Map();
   }
-  return map;
+}
+
+type LegacyGrowthActivityRow = {
+  id: string;
+  userId: string;
+  date: string;
+  domain: string;
+  category: string;
+  title: string;
+  notes: string | null;
+  leverage: string;
+  minutesSpent: number | null;
+  impactScore: number;
+  sourceCalendarEventId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** Load growth activities even when planner columns/migration are not applied yet. */
+export async function loadGrowthActivitiesForDate(userId: string, date: string) {
+  try {
+    return await prisma.growthActivity.findMany({
+      where: { userId, date },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+  } catch (error) {
+    console.error("GrowthActivity planner fields unavailable; legacy load:", error);
+    const rows = await prisma.$queryRaw<LegacyGrowthActivityRow[]>`
+      SELECT id, "userId", date, domain, category, title, notes, leverage,
+             "minutesSpent", "impactScore", "sourceCalendarEventId", "createdAt", "updatedAt"
+      FROM "GrowthActivity"
+      WHERE "userId" = ${userId} AND date = ${date}
+      ORDER BY "createdAt" ASC
+    `;
+    return rows.map((row) => ({
+      ...row,
+      status: "planned",
+      sortOrder: 100,
+      timeLabel: null as string | null,
+    }));
+  }
+}
+
+export async function loadUserPlanActivitiesBetween(
+  userId: string,
+  startDate: string,
+  endDate: string,
+) {
+  try {
+    return await prisma.growthActivity.findMany({
+      where: {
+        userId,
+        category: "user_plan",
+        date: { gte: startDate, lte: endDate },
+      },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        date: true,
+        title: true,
+        domain: true,
+        notes: true,
+        minutesSpent: true,
+        status: true,
+        sortOrder: true,
+        timeLabel: true,
+      },
+    });
+  } catch (error) {
+    console.error("user_plan activities with planner fields unavailable; legacy load:", error);
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        date: string;
+        title: string;
+        domain: string;
+        notes: string | null;
+        minutesSpent: number | null;
+      }>
+    >`
+      SELECT id, date, title, domain, notes, "minutesSpent"
+      FROM "GrowthActivity"
+      WHERE "userId" = ${userId}
+        AND category = 'user_plan'
+        AND date >= ${startDate}
+        AND date <= ${endDate}
+      ORDER BY "createdAt" ASC
+    `;
+    return rows.map((row) => ({
+      ...row,
+      status: "planned",
+      sortOrder: 100,
+      timeLabel: null as string | null,
+    }));
+  }
 }
 
 async function upsertPlannerDayLayout(

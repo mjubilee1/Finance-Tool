@@ -878,11 +878,13 @@ export function OverviewHome({
   const quote = getDailyAffirmation();
   const checkingCash = cashFlow.primaryCash ?? null;
 
-  const { data: todayOverview, isLoading: todayLoading } = useQuery({
+  const { data: todayOverview, isLoading: todayLoading, isError: todayError } = useQuery({
     queryKey: ["overview-today"],
     queryFn: async () => {
       const res = await fetch("/api/today");
-      if (!res.ok) return null;
+      if (!res.ok) {
+        throw new Error("Failed to load today's plan");
+      }
       return res.json() as Promise<TodayOverviewResponse>;
     },
     staleTime: 60_000,
@@ -1089,6 +1091,11 @@ export function OverviewHome({
 
         {todayLoading && !brief ? (
           <p className="text-sm text-[var(--muted)] py-6 text-center">Loading today&apos;s plan…</p>
+        ) : todayError && !brief ? (
+          <p className="text-sm text-rose-700 dark:text-rose-300 py-6 text-center">
+            Couldn&apos;t load today&apos;s plan. Try Reload — if this keeps happening, the planner
+            database migration may still need to run.
+          </p>
         ) : (
           <>
             <GoogleCalendarAgenda calendar={calendar} />

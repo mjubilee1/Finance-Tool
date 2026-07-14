@@ -8,34 +8,14 @@ import {
   getGoogleCalendarStatus,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
-import { prisma } from "@/lib/prisma";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
-import { getPlannerDayLayouts } from "@/lib/planner";
+import { getPlannerDayLayouts, loadUserPlanActivitiesBetween } from "@/lib/planner";
 import { DateTime } from "luxon";
 
 async function loadWeekUserPlanActivities(userId: string, start: DateTime) {
-  return prisma.growthActivity.findMany({
-    where: {
-      userId,
-      category: "user_plan",
-      date: {
-        gte: start.toISODate() ?? undefined,
-        lte: start.plus({ days: 6 }).toISODate() ?? undefined,
-      },
-    },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      date: true,
-      title: true,
-      domain: true,
-      notes: true,
-      minutesSpent: true,
-      status: true,
-      sortOrder: true,
-      timeLabel: true,
-    },
-  });
+  const startDate = start.toISODate()!;
+  const endDate = start.plus({ days: 6 }).toISODate()!;
+  return loadUserPlanActivitiesBetween(userId, startDate, endDate);
 }
 
 async function loadWeekCalendar(userId: string, now: DateTime) {
@@ -72,9 +52,15 @@ export async function GET() {
     const weekEnd = now.plus({ days: 6 }).toISODate()!;
     const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate] = await Promise.all([
       buildTodayBriefContext(session.user.id),
-      getTrendDigestForDate(session.user.id, today),
+      getTrendDigestForDate(session.user.id, today).catch((error) => {
+        console.error("Trend digest failed while loading today overview:", error);
+        return null;
+      }),
       loadWeekCalendar(session.user.id, now),
-      loadWeekUserPlanActivities(session.user.id, now),
+      loadWeekUserPlanActivities(session.user.id, now).catch((error) => {
+        console.error("Week user plan activities failed:", error);
+        return [];
+      }),
       getPlannerDayLayouts(session.user.id, today, weekEnd),
     ]);
 
