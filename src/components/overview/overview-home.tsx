@@ -226,6 +226,7 @@ type WeeklyOperatingPlanOverview = {
       ref: string;
       status?: "planned" | "done" | "skipped" | "hidden";
       activityId?: string;
+      domain?: string;
       calendarEventId?: string;
       location?: string | null;
       htmlLink?: string | null;

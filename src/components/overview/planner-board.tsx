@@ -61,6 +61,7 @@ export type WeekPlanBlock = {
   ref: string;
   status?: PlannerItemStatus;
   activityId?: string;
+  domain?: string;
   htmlLink?: string | null;
   editable?: boolean;
   priority: string;
@@ -932,7 +933,7 @@ export function WeekAheadPlanner({
                                     title: block.label,
                                     timeLabel: block.time === "Your block" ? "" : block.time,
                                     notes: block.why.includes(" · added to your plan") ? "" : block.why,
-                                    domain: "personal",
+                                    domain: block.domain || "personal",
                                     date: day.date,
                                   });
                                 }}

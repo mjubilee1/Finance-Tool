@@ -36,6 +36,7 @@ export type WeeklyOperatingBlock = {
   ref: string;
   status?: "planned" | "done" | "skipped" | "hidden";
   activityId?: string;
+  domain?: string;
   calendarEventId?: string;
   location?: string | null;
   htmlLink?: string | null;
@@ -180,6 +181,7 @@ function userPlanBlocksForDay(activities: UserPlanActivity[], date: string): Wee
           ? activity.status
           : ("planned" as const),
       activityId: activity.id,
+      domain: activity.domain,
       editable: true,
     }));
 }
