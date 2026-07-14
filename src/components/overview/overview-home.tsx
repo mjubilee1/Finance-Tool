@@ -281,16 +281,21 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
   const handleConnect = () => {
     window.location.assign("/api/integrations/google-calendar/connect");
   };
-  const needsReconnect = calendar.status === "needs_reconnect";
+  const needsReconnect = calendar.status === "needs_reconnect" || Boolean(calendar.error);
+  const showBanner = !calendar.connected || needsReconnect;
 
-  if (!calendar.connected) {
+  if (showBanner) {
     return (
       <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-[var(--ink)]">Connect Google Calendar</p>
+            <p className="text-sm font-semibold text-[var(--ink)]">
+              {needsReconnect ? "Reconnect Google Calendar" : "Connect Google Calendar"}
+            </p>
             <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
-              {needsReconnect
+              {calendar.error
+                ? calendar.error
+                : needsReconnect
                 ? "Saved calendar credentials can’t be used anymore. Reconnect so Coach can create events again."
                 : "Pull in appointments and let Coach create events from chat or voice."}
             </p>
@@ -311,10 +316,6 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
         ) : null}
       </div>
     );
-  }
-
-  if (calendar.error) {
-    return <p className="mb-3 text-xs text-amber-700 dark:text-amber-300">{calendar.error}</p>;
   }
 
   return null;
