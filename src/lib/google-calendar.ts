@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { decrypt, encrypt } from "@/lib/encryption";
+import {
+  calendarTokenDecryptErrorMessage,
+  decrypt,
+  encrypt,
+  isTokenDecryptError,
+} from "@/lib/encryption";
 
 export const GOOGLE_CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 export const GOOGLE_CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events";
@@ -91,6 +96,27 @@ function expiresAtFrom(expiresIn: number | undefined) {
   return new Date(Date.now() + Math.max(0, expiresIn - 60) * 1000);
 }
 
+function tryDecryptToken(ciphertext: string) {
+  try {
+    return decrypt(ciphertext);
+  } catch (error) {
+    if (isTokenDecryptError(error)) return null;
+    throw error;
+  }
+}
+
+async function markGoogleCalendarNeedsReconnect(userId: string) {
+  await prisma.googleCalendarConnection.update({
+    where: { userId },
+    data: { status: "needs_reconnect" },
+  });
+}
+
+async function failCalendarTokenDecrypt(userId: string): Promise<never> {
+  await markGoogleCalendarNeedsReconnect(userId);
+  throw new Error(calendarTokenDecryptErrorMessage());
+}
+
 export function isGoogleCalendarConfigured() {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
@@ -149,9 +175,13 @@ export async function saveGoogleCalendarConnection(userId: string, token: Google
   }
 
   const existing = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
+  const reusableRefreshToken =
+    existing?.encryptedRefreshToken && tryDecryptToken(existing.encryptedRefreshToken)
+      ? existing.encryptedRefreshToken
+      : null;
   const encryptedRefreshToken = token.refresh_token
     ? encrypt(token.refresh_token)
-    : existing?.encryptedRefreshToken ?? null;
+    : reusableRefreshToken;
 
   await prisma.googleCalendarConnection.upsert({
     where: { userId },
@@ -177,20 +207,36 @@ export async function saveGoogleCalendarConnection(userId: string, token: Google
 
 export async function getGoogleCalendarStatus(userId: string): Promise<GoogleCalendarStatus> {
   const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
-  const hasWriteScope = connection ? hasCalendarEventWriteScope(connection.scopes) : false;
+  if (!connection) {
+    return {
+      connected: false,
+      connectAvailable: isGoogleCalendarConfigured(),
+      status: "not_connected",
+      connectedAt: null,
+      lastSyncAt: null,
+    };
+  }
+
+  const hasWriteScope = hasCalendarEventWriteScope(connection.scopes);
+  const tokensReadable =
+    Boolean(tryDecryptToken(connection.encryptedAccessToken)) &&
+    (!connection.encryptedRefreshToken || Boolean(tryDecryptToken(connection.encryptedRefreshToken)));
+
+  if (!tokensReadable && connection.status === "active") {
+    await markGoogleCalendarNeedsReconnect(userId);
+  }
+
   const status =
-    connection?.status === "needs_reconnect" || (connection && !hasWriteScope)
+    !tokensReadable || connection.status === "needs_reconnect" || !hasWriteScope
       ? "needs_reconnect"
-      : connection
-        ? "active"
-        : "not_connected";
+      : "active";
 
   return {
-    connected: Boolean(connection && status === "active"),
+    connected: status === "active",
     connectAvailable: isGoogleCalendarConfigured(),
     status,
-    connectedAt: connection?.connectedAt.toISOString() ?? null,
-    lastSyncAt: connection?.lastSyncAt?.toISOString() ?? null,
+    connectedAt: connection.connectedAt.toISOString(),
+    lastSyncAt: connection.lastSyncAt?.toISOString() ?? null,
   };
 }
 
@@ -199,6 +245,11 @@ async function refreshGoogleCalendarAccessToken(
   encryptedRefreshToken: string,
   fallbackScopes: string[],
 ) {
+  const refreshToken = tryDecryptToken(encryptedRefreshToken);
+  if (!refreshToken) {
+    return failCalendarTokenDecrypt(userId);
+  }
+
   const { clientId, clientSecret } = getGoogleCalendarCredentials();
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
@@ -206,17 +257,14 @@ async function refreshGoogleCalendarAccessToken(
     body: new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: decrypt(encryptedRefreshToken),
+      refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
   });
 
   const token = (await response.json().catch(() => null)) as GoogleTokenResponse | null;
   if (!response.ok || !token?.access_token) {
-    await prisma.googleCalendarConnection.update({
-      where: { userId },
-      data: { status: "needs_reconnect" },
-    });
+    await markGoogleCalendarNeedsReconnect(userId);
     throw new Error("Google Calendar needs to be reconnected.");
   }
 
@@ -239,14 +287,15 @@ async function getActiveGoogleCalendarAccessToken(userId: string) {
 
   const expiresAt = connection.accessTokenExpiresAt?.getTime();
   if (expiresAt && expiresAt > Date.now() + 60_000) {
-    return decrypt(connection.encryptedAccessToken);
+    const accessToken = tryDecryptToken(connection.encryptedAccessToken);
+    if (!accessToken) {
+      return failCalendarTokenDecrypt(userId);
+    }
+    return accessToken;
   }
 
   if (!connection.encryptedRefreshToken) {
-    await prisma.googleCalendarConnection.update({
-      where: { userId },
-      data: { status: "needs_reconnect" },
-    });
+    await markGoogleCalendarNeedsReconnect(userId);
     throw new Error("Google Calendar needs to be reconnected.");
   }
 

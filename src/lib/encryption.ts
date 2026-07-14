@@ -20,6 +20,10 @@ export function tokenDecryptErrorMessage() {
   return "Could not read saved bank credentials. This usually means the bank was linked in a different environment (e.g. production) than the one you're using now, or NEXTAUTH_SECRET / TOKEN_ENCRYPTION_KEY differs between them. Use the same encryption key everywhere that shares one database, or reconnect banks from this environment.";
 }
 
+export function calendarTokenDecryptErrorMessage() {
+  return "Reconnect Google Calendar on Overview. The saved calendar token can’t be read here — usually NEXTAUTH_SECRET or TOKEN_ENCRYPTION_KEY changed (or differs from the environment where Calendar was connected).";
+}
+
 function getCipherKey(key: string) {
   return crypto.createHash("sha256").update(key).digest();
 }

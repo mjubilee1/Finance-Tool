@@ -291,7 +291,7 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
             <p className="text-sm font-semibold text-[var(--ink)]">Connect Google Calendar</p>
             <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
               {needsReconnect
-                ? "The saved calendar token needs fresh Google approval so Coach can create events."
+                ? "Saved calendar credentials can’t be used anymore. Reconnect so Coach can create events again."
                 : "Pull in appointments and let Coach create events from chat or voice."}
             </p>
           </div>
