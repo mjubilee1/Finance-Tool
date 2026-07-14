@@ -197,7 +197,7 @@ export function ChatComposer({
       : "Ask your coach, paste a screenshot, or tap the mic";
 
   return (
-    <div className="border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] p-3 sm:p-4">
+    <div className="border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] p-2 sm:p-3">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -295,12 +295,8 @@ export function ChatComposer({
       </form>
 
       {composerError ? (
-        <p className="mt-2 px-1 text-xs text-rose-600 dark:text-rose-300">{composerError}</p>
-      ) : (
-        <p className="mt-2 px-1 text-center text-[11px] leading-relaxed text-[var(--ink-soft)]">
-          Paste screenshots directly into the box. Mic sits on the right — speak, edit, then send.
-        </p>
-      )}
+        <p className="mt-1.5 px-1 text-xs text-rose-600 dark:text-rose-300">{composerError}</p>
+      ) : null}
     </div>
   );
 }

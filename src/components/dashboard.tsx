@@ -628,22 +628,28 @@ export function Dashboard() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
+        <div
+          className={`flex-1 overflow-x-hidden ${
+            activeTab === "chat"
+              ? "flex min-h-0 flex-col overflow-hidden p-3 md:p-8"
+              : "overflow-y-auto p-4 md:p-8"
+          }`}
+        >
           {/* h-full only for chat — on other tabs it pads the scroll area and leaves a huge empty gap under the last card */}
           <div
             className={`max-w-4xl mx-auto w-full min-w-0 flex flex-col ${
-              activeTab === "chat" ? "h-full" : ""
+              activeTab === "chat" ? "min-h-0 flex-1" : ""
             }`}
           >
             
             {/* View: CHAT */}
             {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col h-full min-h-0">
-                <div className="mb-6 hidden md:block">
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="mb-3 hidden shrink-0 md:block">
                   <h1 className="text-2xl app-display text-slate-900 tracking-tight">Coach</h1>
                   <p className="text-slate-500 mt-1">Ask about money, career, body, what to buy, or what to protect today.</p>
                 </div>
-                <div className="flex-1 h-full min-h-[640px]">
+                <div className="min-h-0 flex-1">
                   <ChatInterface
                     seedPrompt={chatSeedPrompt}
                     onSeedPromptUsed={() => setChatSeedPrompt(null)}
