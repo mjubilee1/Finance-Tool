@@ -2,7 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { User, BrainCircuit, Clock3, MessageSquarePlus, Volume2, VolumeX, LoaderCircle } from "lucide-react";
+import {
+  User,
+  BrainCircuit,
+  Clock3,
+  MessageSquarePlus,
+  Volume2,
+  VolumeX,
+  LoaderCircle,
+  ChevronDown,
+} from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
 import { SpendingRadar } from "./chat/spending-radar";
@@ -100,6 +109,9 @@ export function ChatInterface({
   const queryClient = useQueryClient();
   const historyHydratedRef = useRef(false);
   const hasLocalInteractionRef = useRef(false);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const [messages, setMessages] = useState<ChatMessage[]>(initialCoachMessages);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [activeCoachTab, setActiveCoachTab] = useState<"chat" | "history">("chat");
@@ -109,6 +121,7 @@ export function ChatInterface({
   const [loadingHistorySessionId, setLoadingHistorySessionId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [readAloudEnabled, setReadAloudEnabled] = useState(false);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const readAloudBaselineRef = useRef(0);
   const prevMessageCountRef = useRef(initialCoachMessages.length);
 
@@ -185,6 +198,41 @@ export function ChatInterface({
     prevMessageCountRef.current = messages.length;
   }, [messages, readAloudEnabled, speak]);
 
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = "smooth") => {
+    const container = messagesScrollRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
+
+  const updateStickToBottom = () => {
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const nearBottom = distanceFromBottom < 96;
+    stickToBottomRef.current = nearBottom;
+    setShowJumpToBottom(!nearBottom);
+  };
+
+  const jumpToBottom = () => {
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+    scrollMessagesToBottom("smooth");
+  };
+
+  useEffect(() => {
+    if (activeCoachTab !== "chat") return;
+    if (!stickToBottomRef.current) {
+      setShowJumpToBottom(true);
+      return;
+    }
+    scrollMessagesToBottom("auto");
+    setShowJumpToBottom(false);
+  }, [messages, isLoading, activeCoachTab]);
+
   const toggleReadAloud = () => {
     setReadAloudEnabled((current) => {
       const next = !current;
@@ -230,6 +278,8 @@ export function ChatInterface({
       const history = await fetchChatHistory(historySessionId);
       historyHydratedRef.current = true;
       hasLocalInteractionRef.current = true;
+      stickToBottomRef.current = true;
+      setShowJumpToBottom(false);
       applyChatHistory(history);
       setActiveCoachTab("chat");
     } catch (err) {
@@ -249,6 +299,8 @@ export function ChatInterface({
   const handleNewChat = () => {
     historyHydratedRef.current = true;
     hasLocalInteractionRef.current = true;
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
     setSessionId(null);
     setMessages(initialCoachMessages);
     setInput("");
@@ -324,6 +376,8 @@ export function ChatInterface({
 
     const nextMessages: ChatMessage[] = [...messages, userChatMessage];
     hasLocalInteractionRef.current = true;
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
     setMessages(nextMessages);
     setIsLoading(true);
 
@@ -406,22 +460,24 @@ export function ChatInterface({
   };
 
   return (
-    <div className="space-y-4">
-      <SpendingRadar
-        alerts={radarData?.alerts ?? []}
-        estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
-        isLoading={radarLoading}
-        dismissingId={dismissingId}
-        onAskAbout={handleAskAboutAlert}
-        onDismiss={handleDismissAlert}
-      />
+    <div className="flex h-full min-h-0 flex-col gap-2 sm:gap-3">
+      <div className="shrink-0">
+        <SpendingRadar
+          alerts={radarData?.alerts ?? []}
+          estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
+          isLoading={radarLoading}
+          dismissingId={dismissingId}
+          onAskAbout={handleAskAboutAlert}
+          onDismiss={handleDismissAlert}
+        />
+      </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="inline-flex w-full rounded-2xl bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-1 ring-1 ring-[var(--card-border)] sm:w-auto">
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="inline-flex min-w-0 flex-1 rounded-xl bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-0.5 ring-1 ring-[var(--card-border)] sm:flex-none">
           <button
             type="button"
             onClick={() => setActiveCoachTab("chat")}
-            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${
+            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition sm:flex-none sm:px-3.5 ${
               activeCoachTab === "chat"
                 ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
@@ -432,7 +488,7 @@ export function ChatInterface({
           <button
             type="button"
             onClick={() => setActiveCoachTab("history")}
-            className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none ${
+            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition sm:flex-none sm:px-3.5 ${
               activeCoachTab === "history"
                 ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
@@ -442,37 +498,40 @@ export function ChatInterface({
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={toggleReadAloud}
-            className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold ring-1 transition disabled:opacity-60 ${
+            className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-sm font-semibold ring-1 transition disabled:opacity-60 sm:px-3 ${
               readAloudEnabled
                 ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[var(--accent)] dark:text-[var(--accent-bright)]"
                 : "bg-[var(--card)] text-[var(--ink)] ring-[var(--card-border)] hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]"
             }`}
             disabled={isLoading}
             title={readAloudEnabled ? "Stop reading responses aloud" : "Read coach responses aloud"}
+            aria-label={readAloudEnabled ? "Read aloud on" : "Read aloud off"}
           >
             {readAloudEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            {readAloudEnabled ? "Read aloud on" : "Read aloud off"}
+            <span className="hidden sm:inline">{readAloudEnabled ? "Read aloud on" : "Read aloud off"}</span>
           </button>
 
           <button
             type="button"
             onClick={handleNewChat}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/15 disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--accent)] px-2.5 py-1.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/15 disabled:opacity-60 sm:px-3"
             disabled={isLoading}
+            title="New chat"
+            aria-label="New chat"
           >
             <MessageSquarePlus size={16} />
-            New chat
+            <span className="hidden sm:inline">New chat</span>
           </button>
         </div>
       </div>
 
       {activeCoachTab === "history" ? (
-        <div className="h-[500px] app-card overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[var(--card-border)] px-4 py-3 sm:px-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden app-card">
+          <div className="flex shrink-0 items-center justify-between border-b border-[var(--card-border)] px-4 py-2.5 sm:px-5">
             <div>
               <p className="text-sm font-semibold text-[var(--ink)]">Coach history</p>
               <p className="text-xs text-[var(--muted)]">Open a past session and continue from there.</p>
@@ -480,7 +539,7 @@ export function ChatInterface({
             <Clock3 size={18} className="text-[var(--muted)]" />
           </div>
 
-          <div className="h-[calc(500px-65px)] overflow-y-auto p-4 sm:p-5">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
             {chatHistory?.sessions.length ? (
               <div className="space-y-3">
                 {chatHistory.sessions.map((historySession) => {
@@ -533,117 +592,139 @@ export function ChatInterface({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col h-[500px] app-card overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    m.role === "user"
-                      ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
-                      : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]"
-                  }`}
-                >
-                  {m.role === "user" ? <User size={16} /> : <BrainCircuit size={16} />}
-                </div>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                    m.role === "user"
-                      ? "bg-[var(--accent)] text-white shadow-sm shadow-blue-600/15"
-                      : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink)] ring-1 ring-[var(--card-border)]"
-                  }`}
-                >
-                  {m.images?.length ? (
-                    <div className={`flex flex-wrap gap-2 ${m.content ? "mb-3" : ""}`}>
-                      {m.images.map((image, imageIndex) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={`${image.slice(0, 24)}-${imageIndex}`}
-                          src={image}
-                          alt={`Uploaded photo ${imageIndex + 1}`}
-                          className="max-h-40 rounded-xl object-cover ring-1 ring-white/20"
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
-                    {m.role === "assistant" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearSpeechError();
-                          if (isSpeaking && speakingMessageIndex === i) {
-                            stopSpeech();
-                            return;
-                          }
-                          void speak(m.content, { messageIndex: i });
-                        }}
-                        disabled={isLoadingSpeech && speakingMessageIndex === i}
-                        className="shrink-0 rounded-lg p-1.5 text-[var(--muted)] transition hover:bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] hover:text-[var(--ink)] disabled:opacity-50"
-                        title={
-                          isSpeaking && speakingMessageIndex === i
-                            ? "Stop reading"
-                            : "Read this message aloud"
-                        }
-                        aria-label={
-                          isSpeaking && speakingMessageIndex === i
-                            ? "Stop reading"
-                            : "Read this message aloud"
-                        }
-                      >
-                        {isLoadingSpeech && speakingMessageIndex === i ? (
-                          <LoaderCircle size={15} className="animate-spin" />
-                        ) : isSpeaking && speakingMessageIndex === i ? (
-                          <VolumeX size={15} />
-                        ) : (
-                          <Volume2 size={15} />
-                        )}
-                      </button>
-                    ) : null}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden app-card">
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={messagesScrollRef}
+              onScroll={updateStickToBottom}
+              className="h-full space-y-4 overflow-y-auto overscroll-contain p-3 sm:p-5"
+            >
+              {messages.map((m, i) => (
+                <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      m.role === "user"
+                        ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
+                        : "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]"
+                    }`}
+                  >
+                    {m.role === "user" ? <User size={16} /> : <BrainCircuit size={16} />}
                   </div>
-                  {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
-                  {m.goalSuggestion ? <GoalSuggestionCard suggestion={m.goalSuggestion} /> : null}
-                </div>
-              </div>
-            ))}
-            {isLoading ? (
-              <div className="flex gap-3 flex-row">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]">
-                  <BrainCircuit size={16} />
-                </div>
-                <div className="bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] ring-1 ring-[var(--card-border)] text-[var(--ink)] rounded-2xl px-4 py-3 flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce" />
                   <div
-                    className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  />
-                  <div
-                    className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  />
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                      m.role === "user"
+                        ? "bg-[var(--accent)] text-white shadow-sm shadow-blue-600/15"
+                        : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--ink)] ring-1 ring-[var(--card-border)]"
+                    }`}
+                  >
+                    {m.images?.length ? (
+                      <div className={`flex flex-wrap gap-2 ${m.content ? "mb-3" : ""}`}>
+                        {m.images.map((image, imageIndex) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={`${image.slice(0, 24)}-${imageIndex}`}
+                            src={image}
+                            alt={`Uploaded photo ${imageIndex + 1}`}
+                            className="max-h-40 rounded-xl object-cover ring-1 ring-white/20"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                      {m.role === "assistant" ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearSpeechError();
+                            if (isSpeaking && speakingMessageIndex === i) {
+                              stopSpeech();
+                              return;
+                            }
+                            void speak(m.content, { messageIndex: i });
+                          }}
+                          disabled={isLoadingSpeech && speakingMessageIndex === i}
+                          className="shrink-0 rounded-lg p-1.5 text-[var(--muted)] transition hover:bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] hover:text-[var(--ink)] disabled:opacity-50"
+                          title={
+                            isSpeaking && speakingMessageIndex === i
+                              ? "Stop reading"
+                              : "Read this message aloud"
+                          }
+                          aria-label={
+                            isSpeaking && speakingMessageIndex === i
+                              ? "Stop reading"
+                              : "Read this message aloud"
+                          }
+                        >
+                          {isLoadingSpeech && speakingMessageIndex === i ? (
+                            <LoaderCircle size={15} className="animate-spin" />
+                          ) : isSpeaking && speakingMessageIndex === i ? (
+                            <VolumeX size={15} />
+                          ) : (
+                            <Volume2 size={15} />
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+                    {m.spotlight ? <TransactionSpotlightCard spotlight={m.spotlight} /> : null}
+                    {m.goalSuggestion ? <GoalSuggestionCard suggestion={m.goalSuggestion} /> : null}
+                  </div>
                 </div>
+              ))}
+              {isLoading ? (
+                <div className="flex gap-3 flex-row">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--accent)]">
+                    <BrainCircuit size={16} />
+                  </div>
+                  <div className="bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] ring-1 ring-[var(--card-border)] text-[var(--ink)] rounded-2xl px-4 py-3 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce" />
+                    <div
+                      className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
+                      style={{ animationDelay: "0.1s" }}
+                    />
+                    <div
+                      className="w-1.5 h-1.5 bg-[var(--muted)] rounded-full animate-bounce"
+                      style={{ animationDelay: "0.2s" }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <div ref={messagesEndRef} aria-hidden className="h-px w-full shrink-0" />
+            </div>
+
+            {showJumpToBottom ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
+                <button
+                  type="button"
+                  onClick={jumpToBottom}
+                  className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-[var(--ink)] px-3 py-1.5 text-xs font-semibold text-[var(--card-solid)] shadow-lg shadow-black/20 ring-1 ring-white/10 transition hover:brightness-110"
+                >
+                  <ChevronDown size={14} />
+                  Jump to latest
+                </button>
               </div>
             ) : null}
           </div>
 
           {speechError ? (
-            <p className="border-t border-[var(--card-border)] px-4 py-2 text-xs text-rose-600 dark:text-rose-300">
+            <p className="shrink-0 border-t border-[var(--card-border)] px-4 py-2 text-xs text-rose-600 dark:text-rose-300">
               {speechError}
             </p>
           ) : null}
 
-          <ChatComposer
-            value={input}
-            onChange={setInput}
-            pendingImages={pendingImages}
-            onPendingImagesChange={setPendingImages}
-            onSubmit={() => {
-              void sendMessage();
-            }}
-            disabled={isLoading}
-            isLoading={isLoading}
-          />
+          <div className="shrink-0">
+            <ChatComposer
+              value={input}
+              onChange={setInput}
+              pendingImages={pendingImages}
+              onPendingImagesChange={setPendingImages}
+              onSubmit={() => {
+                void sendMessage();
+              }}
+              disabled={isLoading}
+              isLoading={isLoading}
+            />
+          </div>
         </div>
       )}
     </div>

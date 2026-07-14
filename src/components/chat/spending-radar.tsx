@@ -83,15 +83,10 @@ export function SpendingRadar({
 
   if (isLoading) {
     return (
-      <div className="app-card p-5 animate-pulse">
-        <div className="h-4 w-40 rounded mb-4 bg-[color-mix(in_srgb,var(--ink)_12%,transparent)]" />
-        <div className="flex gap-3 overflow-hidden">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-32 w-72 shrink-0 rounded-2xl bg-[color-mix(in_srgb,var(--ink)_8%,transparent)]"
-            />
-          ))}
+      <div className="app-card px-3 py-2.5 animate-pulse sm:px-4">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 shrink-0 rounded-xl bg-[color-mix(in_srgb,var(--ink)_12%,transparent)]" />
+          <div className="h-3 w-44 rounded bg-[color-mix(in_srgb,var(--ink)_10%,transparent)]" />
         </div>
       </div>
     );
@@ -99,17 +94,17 @@ export function SpendingRadar({
 
   if (alerts.length === 0) {
     return (
-      <div className="app-hero-gradient app-card p-5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[var(--accent-soft)] flex items-center justify-center ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
-            <Sparkles size={18} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
+      <div className="app-hero-gradient app-card px-3 py-2 sm:px-4 sm:py-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
+            <Sparkles size={14} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
           </div>
-          <div>
-            <p className="font-semibold text-[var(--ink)]">Spending radar is clear</p>
-            <p className="text-sm text-[var(--muted)] mt-0.5">
-              No mystery or unusually high charges need review right now.
-            </p>
-          </div>
+          <p className="min-w-0 text-sm font-semibold text-[var(--ink)]">
+            Spending radar is clear
+            <span className="mt-0.5 block font-normal text-xs text-[var(--muted)] sm:mt-0 sm:ml-2 sm:inline">
+              Nothing unusual needs review.
+            </span>
+          </p>
         </div>
       </div>
     );
