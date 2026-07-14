@@ -1,9 +1,9 @@
-import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import {
   buildGoogleCalendarAuthUrl,
+  createGoogleCalendarOAuthState,
   disconnectGoogleCalendar,
   getGoogleCalendarRedirectUri,
   getGoogleCalendarStatus,
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       await disconnectGoogleCalendar(session.user.id);
     }
 
-    const state = randomBytes(24).toString("hex");
+    const state = createGoogleCalendarOAuthState();
     const redirectUri = getGoogleCalendarRedirectUri(request);
     const authUrl = buildGoogleCalendarAuthUrl(state, redirectUri);
     const response = NextResponse.redirect(authUrl);

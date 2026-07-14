@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
@@ -469,6 +469,7 @@ export function OverviewHome({
   const queryClient = useQueryClient();
   const [showCashDetails, setShowCashDetails] = useState(false);
   const [moveBusy, setMoveBusy] = useState<"done" | "skipped" | "recommend" | null>(null);
+  const [calendarConnectMessage, setCalendarConnectMessage] = useState<string | null>(null);
   const cfoBrief = aiInsight.cfoBrief;
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
@@ -499,6 +500,33 @@ export function OverviewHome({
   const calendar = todayOverview?.calendar ?? null;
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const timelineItems = buildTimelineItems(systemBlocks, userBlocks, calendarEvents, brief?.dayShape);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("google_calendar");
+    if (!status) return;
+
+    const reason = params.get("google_calendar_reason");
+    if (status === "connected") {
+      setCalendarConnectMessage("Google Calendar connected. Coach can create events now.");
+      void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+    } else {
+      const reasonCopy =
+        reason === "state"
+          ? "OAuth session expired or cookies were blocked. Try Connect again."
+          : reason === "denied"
+            ? "Google access was denied."
+            : reason === "exchange"
+              ? "Google token exchange failed. Check GOOGLE_CLIENT_SECRET and redirect URI on Vercel."
+              : "Google Calendar connection failed. Try Connect again.";
+      setCalendarConnectMessage(reasonCopy);
+    }
+
+    params.delete("google_calendar");
+    params.delete("google_calendar_reason");
+    const next = params.toString();
+    window.history.replaceState({}, "", next ? `${window.location.pathname}?${next}` : window.location.pathname);
+  }, [queryClient]);
 
   const updateMoveStatus = async (id: string, status: "done" | "skipped") => {
     setMoveBusy(status);
@@ -535,6 +563,18 @@ export function OverviewHome({
       {isBriefPending ? (
         <div className="rounded-xl bg-amber-500/15 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/35">
           Cash is ready. Money brief still generating — Refresh if it doesn&apos;t show soon.
+        </div>
+      ) : null}
+
+      {calendarConnectMessage ? (
+        <div
+          className={`rounded-xl px-4 py-3 text-sm ring-1 ${
+            calendarConnectMessage.startsWith("Google Calendar connected")
+              ? "bg-teal-500/15 text-teal-950 dark:text-teal-100 ring-teal-400/35"
+              : "bg-amber-500/15 text-amber-950 dark:text-amber-100 ring-amber-400/35"
+          }`}
+        >
+          {calendarConnectMessage}
         </div>
       ) : null}
 

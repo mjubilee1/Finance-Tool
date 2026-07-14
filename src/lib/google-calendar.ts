@@ -1,9 +1,42 @@
+import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { decrypt, encrypt, isTokenDecryptError } from "@/lib/encryption";
 
 export const GOOGLE_CALENDAR_READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 export const GOOGLE_CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 export const GOOGLE_CALENDAR_OAUTH_STATE_COOKIE = "google_calendar_oauth_state";
+
+function oauthStateSecret() {
+  return process.env.NEXTAUTH_SECRET || process.env.TOKEN_ENCRYPTION_KEY || "";
+}
+
+export function createGoogleCalendarOAuthState() {
+  const nonce = randomBytes(24).toString("hex");
+  const secret = oauthStateSecret();
+  if (!secret) return nonce;
+  const signature = createHmac("sha256", secret).update(nonce).digest("hex");
+  return `${nonce}.${signature}`;
+}
+
+export function verifyGoogleCalendarOAuthState(state: string | null | undefined) {
+  if (!state) return false;
+
+  const secret = oauthStateSecret();
+  if (!secret) return false;
+
+  const dot = state.lastIndexOf(".");
+  if (dot <= 0) return false;
+
+  const nonce = state.slice(0, dot);
+  const signature = state.slice(dot + 1);
+  const expected = createHmac("sha256", secret).update(nonce).digest("hex");
+
+  try {
+    return timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -162,7 +195,6 @@ export async function getGoogleCalendarStatus(userId: string): Promise<GoogleCal
 
 export function getGoogleCalendarRedirectUri(request: Request) {
   const requestUrl = new URL(request.url);
-  const origin = (process.env.NEXTAUTH_URL || requestUrl.origin).replace(/\/$/, "");
   const configured = process.env.GOOGLE_CALENDAR_REDIRECT_URI?.trim();
 
   // Ignore localhost redirect URIs in production — common Vercel misconfig when .env is copied verbatim.
@@ -172,6 +204,13 @@ export function getGoogleCalendarRedirectUri(request: Request) {
   ) {
     return configured;
   }
+
+  const requestOrigin = requestUrl.origin.replace(/\/$/, "");
+  const nextAuthOrigin = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
+  const origin =
+    process.env.NODE_ENV === "production" && nextAuthOrigin?.includes("localhost")
+      ? requestOrigin
+      : nextAuthOrigin || requestOrigin;
 
   return `${origin}/api/integrations/google-calendar/callback`;
 }
@@ -208,7 +247,11 @@ export async function exchangeGoogleCalendarCode(code: string, redirectUri: stri
 
   const token = (await response.json().catch(() => null)) as GoogleTokenResponse | null;
   if (!response.ok || !token?.access_token) {
-    throw new Error("Google Calendar authorization failed.");
+    const detail =
+      token?.error_description?.trim() ||
+      token?.error?.trim() ||
+      `HTTP ${response.status}`;
+    throw new Error(`Google Calendar authorization failed: ${detail}`);
   }
 
   return token;

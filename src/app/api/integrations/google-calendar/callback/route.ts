@@ -6,11 +6,19 @@ import {
   getGoogleCalendarRedirectUri,
   GOOGLE_CALENDAR_OAUTH_STATE_COOKIE,
   saveGoogleCalendarConnection,
+  verifyGoogleCalendarOAuthState,
 } from "@/lib/google-calendar";
 
-function appRedirect(request: NextRequest, status: "connected" | "error") {
+function appRedirect(
+  request: NextRequest,
+  status: "connected" | "error",
+  reason?: string,
+) {
   const url = new URL("/", request.url);
   url.searchParams.set("google_calendar", status);
+  if (reason) {
+    url.searchParams.set("google_calendar_reason", reason);
+  }
   const response = NextResponse.redirect(url);
   response.cookies.delete(GOOGLE_CALENDAR_OAUTH_STATE_COOKIE);
   return response;
@@ -23,15 +31,19 @@ export async function GET(request: NextRequest) {
   }
 
   const state = request.nextUrl.searchParams.get("state");
-  const expectedState = request.cookies.get(GOOGLE_CALENDAR_OAUTH_STATE_COOKIE)?.value;
-  if (!state || !expectedState || state !== expectedState) {
-    return appRedirect(request, "error");
+  const cookieState = request.cookies.get(GOOGLE_CALENDAR_OAUTH_STATE_COOKIE)?.value;
+  const stateValid =
+    verifyGoogleCalendarOAuthState(state) ||
+    Boolean(state && cookieState && state === cookieState);
+
+  if (!stateValid) {
+    return appRedirect(request, "error", "state");
   }
 
   const code = request.nextUrl.searchParams.get("code");
   const oauthError = request.nextUrl.searchParams.get("error");
   if (!code || oauthError) {
-    return appRedirect(request, "error");
+    return appRedirect(request, "error", oauthError ? "denied" : "code");
   }
 
   try {
@@ -39,7 +51,9 @@ export async function GET(request: NextRequest) {
     const token = await exchangeGoogleCalendarCode(code, redirectUri);
     await saveGoogleCalendarConnection(session.user.id, token);
     return appRedirect(request, "connected");
-  } catch {
-    return appRedirect(request, "error");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "exchange";
+    console.error("Google Calendar callback failed:", message);
+    return appRedirect(request, "error", "exchange");
   }
 }
