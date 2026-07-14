@@ -2,6 +2,14 @@ import { DateTime } from "luxon";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { dayShapeFor, type DayShape } from "@/lib/joy-ideas-shared";
 import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
+import {
+  applyCustomOrder,
+  calendarPlanRef,
+  userPlanRef,
+  weekPlanRef,
+  type PlannerBlockOverride,
+  type PlannerDayLayoutData,
+} from "@/lib/planner";
 
 export type WeeklyOperatingBlockType =
   | "calendar"
@@ -25,9 +33,14 @@ export type WeeklyOperatingBlock = {
   why: string;
   source: "weekly_template" | "google_calendar" | "user_plan";
   sortKey: number;
+  ref: string;
+  status?: "planned" | "done" | "skipped" | "hidden";
+  activityId?: string;
+  domain?: string;
   calendarEventId?: string;
   location?: string | null;
   htmlLink?: string | null;
+  editable?: boolean;
 };
 
 export type WeeklyOperatingDay = {
@@ -48,17 +61,22 @@ export type WeeklyOperatingPlan = {
 };
 
 type UserPlanActivity = {
+  id: string;
   date: string;
   title: string;
   domain: string;
   notes: string | null;
   minutesSpent: number | null;
+  status: string;
+  sortOrder: number;
+  timeLabel: string | null;
 };
 
 type BuildWeeklyOperatingPlanOptions = {
   start?: DateTime;
   calendarEvents?: GoogleCalendarEvent[];
   userPlanActivities?: UserPlanActivity[];
+  layoutsByDate?: Map<string, PlannerDayLayoutData>;
 };
 
 const SOCIAL_EVENT_RE = /\b(birthday|party|dinner|date|wedding|network|meetup|event|brunch|happy hour)\b/i;
@@ -107,8 +125,9 @@ function eventPrepBlock(event: GoogleCalendarEvent): WeeklyOperatingBlock | null
     "cash/time buffer",
   ].filter(Boolean);
 
+  const id = `prep-${event.id}`;
   return {
-    id: `prep-${event.id}`,
+    id,
     type: "prep",
     priority: "prep",
     label: `Prep for ${event.title}`,
@@ -116,25 +135,54 @@ function eventPrepBlock(event: GoogleCalendarEvent): WeeklyOperatingBlock | null
     why: `Check ${prepParts.join(", ")} so the event does not sneak up on the day.`,
     source: "weekly_template",
     sortKey,
+    ref: weekPlanRef(id),
+    status: "planned",
     calendarEventId: event.id,
     location: event.location,
     htmlLink: event.htmlLink,
+    editable: false,
   };
 }
 
+function applyOverride(
+  block: WeeklyOperatingBlock,
+  overrides: Record<string, PlannerBlockOverride>,
+): WeeklyOperatingBlock | null {
+  const override = overrides[block.id] ?? overrides[block.ref.replace(/^week:/, "")] ?? undefined;
+  if (!override) return block;
+  if (override.status === "hidden") return null;
+  return {
+    ...block,
+    label: override.label?.trim() || block.label,
+    time: override.timeLabel?.trim() || block.time,
+    why: override.notes?.trim() || block.why,
+    status: override.status ?? block.status ?? "planned",
+  };
+}
 
 function userPlanBlocksForDay(activities: UserPlanActivity[], date: string): WeeklyOperatingBlock[] {
   return activities
     .filter((activity) => activity.date === date)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
     .map((activity, index) => ({
-      id: `user-plan-${date}-${index}`,
+      id: activity.id,
       type: "free" as const,
       priority: "optional" as const,
       label: activity.title,
-      time: activity.minutesSpent ? `${activity.minutesSpent} min` : "Your block",
+      time:
+        activity.timeLabel?.trim() ||
+        (activity.minutesSpent ? `${activity.minutesSpent} min` : "Your block"),
       why: activity.notes?.trim() || `${activity.domain} · added to your plan`,
       source: "user_plan" as const,
       sortKey: 12 + index / 10,
+      ref: userPlanRef(activity.id),
+      status:
+        activity.status === "done" || activity.status === "skipped" || activity.status === "planned"
+          ? activity.status
+          : ("planned" as const),
+      activityId: activity.id,
+      domain: activity.domain,
+      editable: true,
     }));
 }
 
@@ -150,6 +198,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: `Useful only if it helps cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee without stealing the workday.`,
         source: "weekly_template",
         sortKey: 6.5,
+        ref: weekPlanRef(`${day.toISODate()}-lyft`),
+        status: "planned",
+        editable: true,
       },
       {
         id: `${day.toISODate()}-work`,
@@ -160,6 +211,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: "W2 job is the locked block Mon-Fri. Midday is desk-only.",
         source: "weekly_template",
         sortKey: 9,
+        ref: weekPlanRef(`${day.toISODate()}-work`),
+        status: "planned",
+        editable: true,
       },
       {
         id: `${day.toISODate()}-promotion`,
@@ -170,6 +224,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: "Promotion work is optional and happens outside 9-5 when you have bandwidth.",
         source: "weekly_template",
         sortKey: 18,
+        ref: weekPlanRef(`${day.toISODate()}-promotion`),
+        status: "planned",
+        editable: true,
       },
       {
         id: `${day.toISODate()}-evening`,
@@ -180,6 +237,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: "Use the evening intentionally: recovery if the floor is handled, Lyft only if the fee math needs it.",
         source: "weekly_template",
         sortKey: 19,
+        ref: weekPlanRef(`${day.toISODate()}-evening`),
+        status: "planned",
+        editable: true,
       },
     ];
   }
@@ -195,6 +255,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: `Thu-Fri rhythm: drive before the locked job block; count profit only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee.`,
         source: "weekly_template",
         sortKey: 6.5,
+        ref: weekPlanRef(`${day.toISODate()}-lyft`),
+        status: "planned",
+        editable: true,
       },
       {
         id: `${day.toISODate()}-work`,
@@ -205,6 +268,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: "W2 job stays locked. WFH flex pockets — like gym — sit inside this block when meetings allow.",
         source: "weekly_template",
         sortKey: 9,
+        ref: weekPlanRef(`${day.toISODate()}-work`),
+        status: "planned",
+        editable: true,
       },
       {
         id: `${day.toISODate()}-training`,
@@ -215,6 +281,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: "On Thu-Fri WFH, fit training inside 9-5 using a flex pocket — not after the whole day is gone.",
         source: "weekly_template",
         sortKey: 12,
+        ref: weekPlanRef(`${day.toISODate()}-training`),
+        status: "planned",
+        editable: true,
       },
       {
         id: `${day.toISODate()}-promotion`,
@@ -225,6 +294,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         why: "Promotion, startup, and networking are extras outside the locked job block.",
         source: "weekly_template",
         sortKey: 18,
+        ref: weekPlanRef(`${day.toISODate()}-promotion`),
+        status: "planned",
+        editable: true,
       },
     ];
   }
@@ -239,6 +311,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       why: `Weekend rhythm matches weekdays: morning Lyft first, then count profit only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee.`,
       source: "weekly_template",
       sortKey: 6.5,
+      ref: weekPlanRef(`${day.toISODate()}-lyft`),
+      status: "planned",
+      editable: true,
     },
     {
       id: `${day.toISODate()}-review`,
@@ -249,6 +324,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       why: "Review what is ahead, what needs prep, and which blocks actually create value.",
       source: "weekly_template",
       sortKey: day.weekday === 7 ? 9 : 8,
+      ref: weekPlanRef(`${day.toISODate()}-review`),
+      status: "planned",
+      editable: true,
     },
     {
       id: `${day.toISODate()}-training`,
@@ -259,6 +337,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       why: "A longer body/recovery block fits better on weekends than office days.",
       source: "weekly_template",
       sortKey: 11,
+      ref: weekPlanRef(`${day.toISODate()}-training`),
+      status: "planned",
+      editable: true,
     },
     {
       id: `${day.toISODate()}-social`,
@@ -269,6 +350,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       why: "Use open weekend space for relationships, events, or high-quality recovery.",
       source: "weekly_template",
       sortKey: 16,
+      ref: weekPlanRef(`${day.toISODate()}-social`),
+      status: "planned",
+      editable: true,
     },
   ];
 }
@@ -304,6 +388,7 @@ export function buildWeeklyOperatingPlan(
     const day = start.plus({ days: index });
     const date = day.toISODate()!;
     const shape = dayShapeFor(day.weekday);
+    const layout = options.layoutsByDate?.get(date);
     const calendarBlocks = (eventsByDate.get(date) ?? []).map((event) => ({
       id: `calendar-${event.id}`,
       type: "calendar" as const,
@@ -313,14 +398,28 @@ export function buildWeeklyOperatingPlan(
       why: "Real Google Calendar commitment; plan around it.",
       source: "google_calendar" as const,
       sortKey: eventSortKey(event),
+      ref: calendarPlanRef(event.id),
+      status: "planned" as const,
       calendarEventId: event.id,
       location: event.location,
       htmlLink: event.htmlLink,
+      editable: false,
     }));
     const prepBlocks = (eventsByDate.get(date) ?? [])
       .map(eventPrepBlock)
       .filter((block): block is WeeklyOperatingBlock => Boolean(block));
     const userBlocks = userPlanBlocksForDay(options.userPlanActivities ?? [], date);
+
+    const merged = [
+      ...defaultBlocksFor(day, shape),
+      ...userBlocks,
+      ...prepBlocks,
+      ...calendarBlocks,
+    ]
+      .map((block) => applyOverride(block, layout?.overrides ?? {}))
+      .filter((block): block is WeeklyOperatingBlock => Boolean(block));
+
+    const ordered = applyCustomOrder(merged, layout?.order ?? []).slice(0, 10);
 
     return {
       date,
@@ -329,9 +428,7 @@ export function buildWeeklyOperatingPlan(
       dayShape: shape,
       headline: headlineFor(shape),
       valueFocus: valueFocusFor(shape),
-      blocks: [...defaultBlocksFor(day, shape), ...userBlocks, ...prepBlocks, ...calendarBlocks]
-        .sort((a, b) => a.sortKey - b.sortKey)
-        .slice(0, 8),
+      blocks: ordered,
     };
   });
 

@@ -12,7 +12,6 @@ import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   CalendarDays,
-  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -23,6 +22,7 @@ import {
   SkipForward,
   Sparkles,
 } from "lucide-react";
+import { TodayPlannerList, WeekAheadPlanner } from "./planner-board";
 
 function DailySpendTooltip({
   active,
@@ -113,6 +113,7 @@ type RecurringReview = {
 
 type TodayOverviewResponse = {
   brief: {
+    date: string;
     dayShape: "office" | "wfh" | "weekend";
     dayLabel: string;
     dateLabel: string;
@@ -143,13 +144,36 @@ type TodayOverviewResponse = {
       systemImpact: string | null;
     };
     userPlanBlocks: Array<{
+      id: string;
       title: string;
       domain: string;
       minutesSpent: number | null;
       notes: string | null;
+      status: "planned" | "done" | "skipped";
+      sortOrder: number;
+      timeLabel: string | null;
+      date: string;
+      ref: string;
     }>;
     completedBlockKeys: string[];
     skippedBlockKeys: string[];
+    plannerLayout: {
+      order: string[];
+      overrides: Record<string, unknown>;
+    };
+    planBlocks: Array<{
+      key: string;
+      label: string;
+      time: string;
+      fit: string;
+      why: string;
+      role: string;
+      priority: string;
+      evidence: string | null;
+      status: "planned" | "done" | "skipped" | "hidden";
+      ref: string;
+      hidden: boolean;
+    }>;
   };
   calendar: GoogleCalendarOverview | null;
   weekPlan?: WeeklyOperatingPlanOverview | null;
@@ -199,20 +223,17 @@ type WeeklyOperatingPlanOverview = {
       why: string;
       source: "weekly_template" | "google_calendar" | "user_plan";
       sortKey: number;
+      ref: string;
+      status?: "planned" | "done" | "skipped" | "hidden";
+      activityId?: string;
+      domain?: string;
       calendarEventId?: string;
       location?: string | null;
       htmlLink?: string | null;
+      editable?: boolean;
     }>;
   }>;
 };
-
-type PlanBlock = TodayOverviewResponse["brief"]["plan"]["blocks"][number];
-type UserPlanBlock = TodayOverviewResponse["brief"]["userPlanBlocks"][number];
-type CalendarEvent = GoogleCalendarOverview["events"][number];
-type TimelineItem =
-  | { type: "plan"; block: PlanBlock; blockIndex: number; sortKey: number }
-  | { type: "calendar"; event: CalendarEvent; sortKey: number }
-  | { type: "user"; block: UserPlanBlock; blockIndex: number; sortKey: number };
 
 function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]) {
   if (event.allDay) return "All day";
@@ -226,53 +247,9 @@ function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]
   return endLabel ? `${startLabel}-${endLabel}` : startLabel;
 }
 
-function calendarEventSortKey(event: CalendarEvent) {
-  if (event.allDay) return 0.5;
-
-  const start = DateTime.fromISO(event.start);
-  if (!start.isValid) return 23.9;
-
-  return start.hour + start.minute / 60;
-}
-
 function formatPlanRole(role: string) {
   if (role === "focus") return "Focus block";
   return `${role.charAt(0).toUpperCase()}${role.slice(1)} block`;
-}
-
-function planBlockSortKey(block: PlanBlock, dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined) {
-  if (block.key === "lyft") return dayShape === "office" ? 7.5 : 16;
-  if (block.key === "gym") return dayShape === "weekend" ? 11 : 17.5;
-  if (block.key === "leverage") return dayShape === "office" ? 13 : 10;
-  if (block.key === "joy") return dayShape === "weekend" ? 16 : 20;
-  return 23;
-}
-
-function buildTimelineItems(
-  systemBlocks: PlanBlock[],
-  userBlocks: UserPlanBlock[],
-  calendarEvents: CalendarEvent[],
-  dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined,
-): TimelineItem[] {
-  return [
-    ...systemBlocks.map((block, blockIndex) => ({
-      type: "plan" as const,
-      block,
-      blockIndex,
-      sortKey: planBlockSortKey(block, dayShape),
-    })),
-    ...calendarEvents.map((event) => ({
-      type: "calendar" as const,
-      event,
-      sortKey: calendarEventSortKey(event),
-    })),
-    ...userBlocks.map((block, blockIndex) => ({
-      type: "user" as const,
-      block,
-      blockIndex,
-      sortKey: 24 + blockIndex / 10,
-    })),
-  ].sort((a, b) => a.sortKey - b.sortKey);
 }
 
 function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview | null }) {
@@ -319,107 +296,6 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
   }
 
   return null;
-}
-
-function weeklyBlockTone(block: WeeklyOperatingPlanOverview["days"][number]["blocks"][number]) {
-  if (block.source === "google_calendar") {
-    return "bg-teal-500/10 text-teal-700 ring-teal-400/30 dark:text-teal-300";
-  }
-  if (block.source === "user_plan") {
-    return "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]";
-  }
-  if (block.priority === "protect") {
-    return "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_24%,transparent)] dark:text-[var(--accent-bright)]";
-  }
-  if (block.priority === "prep") {
-    return "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]";
-  }
-  if (block.priority === "locked") {
-    return "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-[var(--ink-soft)] ring-[var(--card-border)]";
-  }
-  return "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] text-[var(--muted)] ring-[var(--card-border)]";
-}
-
-function WeekAhead({ weekPlan }: { weekPlan: WeeklyOperatingPlanOverview | null | undefined }) {
-  if (!weekPlan?.days.length) return null;
-
-  return (
-    <div className="rounded-2xl bg-[var(--card-solid)] p-5 ring-1 ring-[var(--card-border)]">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
-            Week ahead
-          </p>
-          <h2 className="text-lg font-semibold text-[var(--ink)] mt-1">Your operating script</h2>
-          <p className="text-sm text-[var(--muted)] mt-0.5">
-            Calendar commitments plus the default rails for work, Lyft, body, network, and prep.
-          </p>
-        </div>
-        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
-          {weekPlan.startDate} → {weekPlan.endDate}
-        </span>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {weekPlan.days.map((day) => {
-          const visibleBlocks = day.blocks
-            .filter((block) =>
-              block.source === "google_calendar" ||
-              block.source === "user_plan" ||
-              block.priority === "protect" ||
-              block.priority === "prep" ||
-              block.type === "cash" ||
-              block.type === "work",
-            )
-            .slice(0, 4);
-
-          return (
-            <div key={day.date} className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--ink)]">
-                    {day.weekdayLabel} · {day.dateLabel}
-                  </p>
-                  <p className="text-xs text-[var(--muted)] mt-0.5">{DAY_SHAPE_LABEL[day.dayShape]}</p>
-                </div>
-                <span className="rounded-full bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                  {day.blocks.some((block) => block.source === "google_calendar")
-                    ? "Booked"
-                    : day.blocks.some((block) => block.source === "user_plan")
-                      ? "Custom"
-                      : "Rails"}
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-[var(--ink-soft)]">{day.valueFocus}</p>
-
-              <div className="mt-3 space-y-2">
-                {visibleBlocks.map((block) => (
-                  <div key={block.id} className={`rounded-lg px-2.5 py-2 ring-1 ${weeklyBlockTone(block)}`}>
-                    <div className="flex items-baseline justify-between gap-2">
-                      {block.htmlLink ? (
-                        <a
-                          href={block.htmlLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="truncate text-xs font-semibold hover:brightness-110"
-                        >
-                          {block.label}
-                        </a>
-                      ) : (
-                        <p className="truncate text-xs font-semibold">{block.label}</p>
-                      )}
-                      <p className="shrink-0 text-[10px] font-medium tabular-nums opacity-80">{block.time}</p>
-                    </div>
-                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug opacity-80">{block.why}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 type Props = {
@@ -492,14 +368,26 @@ export function OverviewHome({
   });
 
   const brief = todayOverview?.brief;
-  const completed = new Set(brief?.completedBlockKeys ?? []);
-  const skipped = new Set(brief?.skippedBlockKeys ?? []);
-  const systemBlocks = brief?.plan.blocks ?? [];
+  const systemBlocks = brief?.planBlocks ?? brief?.plan.blocks.map((block) => ({
+    ...block,
+    status: (brief.completedBlockKeys.includes(block.key)
+      ? "done"
+      : brief.skippedBlockKeys.includes(block.key)
+        ? "skipped"
+        : "planned") as "planned" | "done" | "skipped" | "hidden",
+    ref: `system:${block.key}`,
+    hidden: false,
+  })) ?? [];
   const userBlocks = brief?.userPlanBlocks ?? [];
   const leverageBlock = systemBlocks.find((block) => block.key === "leverage");
   const calendar = todayOverview?.calendar ?? null;
   const calendarEvents = calendar?.connected ? calendar.events : [];
-  const timelineItems = buildTimelineItems(systemBlocks, userBlocks, calendarEvents, brief?.dayShape);
+  const plannerOrder = brief?.plannerLayout?.order ?? [];
+  const todayDate = brief?.date ?? now.toISODate()!;
+  const refreshPlanner = () => {
+    void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+    void queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -670,135 +558,16 @@ export function OverviewHome({
           <>
             <GoogleCalendarAgenda calendar={calendar} />
 
-            <ol className="space-y-0">
-              {timelineItems.map((item, index) => {
-                const showConnector = index < timelineItems.length - 1;
-
-                if (item.type === "calendar") {
-                  return (
-                    <li key={`calendar-${item.event.id}`} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-teal-500/10 text-teal-700 ring-1 ring-teal-400/35 dark:text-teal-300">
-                          <CalendarDays size={14} />
-                        </div>
-                        {showConnector ? (
-                          <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
-                        ) : null}
-                      </div>
-                      <div className="flex-1 pb-4">
-                        <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] px-3 py-2 -mt-1 ring-1 ring-[var(--card-border)]">
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            {item.event.htmlLink ? (
-                              <a
-                                href={item.event.htmlLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-[var(--ink)] hover:text-[var(--accent)]"
-                              >
-                                {item.event.title}
-                              </a>
-                            ) : (
-                              <p className="font-semibold text-[var(--ink)]">{item.event.title}</p>
-                            )}
-                            <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
-                              {formatCalendarEventTime(item.event)}
-                            </p>
-                          </div>
-                          <p className="text-xs text-[var(--muted)] mt-1 leading-snug">
-                            Google Calendar{item.event.location ? ` · ${item.event.location}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                }
-
-                if (item.type === "user") {
-                  const block = item.block;
-
-                  return (
-                    <li key={`user-${block.title}-${item.blockIndex}`} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 bg-[color-mix(in_srgb,var(--ember)_18%,transparent)] text-[var(--ember-strong)] ring-1 ring-[color-mix(in_srgb,var(--ember)_35%,transparent)]">
-                          +
-                        </div>
-                        {showConnector ? (
-                          <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
-                        ) : null}
-                      </div>
-                      <div className="flex-1 pb-2">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <p className="font-semibold text-[var(--ink)]">{block.title}</p>
-                          {block.minutesSpent != null ? (
-                            <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
-                              {block.minutesSpent} min
-                            </p>
-                          ) : null}
-                        </div>
-                        <p className="text-xs text-[var(--muted)] mt-0.5 capitalize">{block.domain} · your block</p>
-                        {block.notes ? (
-                          <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.notes}</p>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                }
-
-                const block = item.block;
-                const isDone = completed.has(block.key);
-                const isSkipped = skipped.has(block.key);
-                const isFocus = block.key === "leverage";
-
-                return (
-                  <li key={block.key} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ${
-                          isDone
-                            ? "bg-teal-500/20 text-teal-700 ring-teal-400/40"
-                            : isSkipped
-                              ? "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--muted)] ring-[var(--card-border)]"
-                              : isFocus
-                                ? "bg-[var(--accent)] text-white ring-[var(--accent)]"
-                                : "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
-                        }`}
-                      >
-                        {isDone ? <Check size={14} /> : item.blockIndex + 1}
-                      </div>
-                      {showConnector ? (
-                        <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
-                      ) : null}
-                    </div>
-                    <div
-                      className={`flex-1 pb-4 ${
-                        isSkipped ? "opacity-50" : ""
-                      } ${isFocus && !isDone && !isSkipped ? "rounded-xl bg-[var(--accent-soft)] px-3 py-2 -mt-1 ring-1 ring-[color-mix(in_srgb,var(--accent)_22%,transparent)]" : ""}`}
-                    >
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="font-semibold text-[var(--ink)]">
-                          {block.label}
-                          {isFocus && !isDone ? (
-                            <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-[var(--accent-strong)]">
-                              Protect
-                            </span>
-                          ) : null}
-                        </p>
-                        <p className="text-xs font-medium tabular-nums text-[var(--muted)]">{block.time}</p>
-                      </div>
-                      <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.why}</p>
-                      <p className="text-xs text-[var(--muted)] mt-1 leading-snug">
-                        {block.priority} · {block.fit}
-                      </p>
-                      {isSkipped ? (
-                        <p className="text-xs text-[var(--muted)] mt-1">Skipped</p>
-                      ) : isDone ? (
-                        <p className="text-xs text-teal-700 dark:text-teal-300 mt-1">Done</p>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
+            <TodayPlannerList
+              date={todayDate}
+              dayShape={brief?.dayShape}
+              systemBlocks={systemBlocks}
+              userBlocks={userBlocks}
+              calendarEvents={calendarEvents}
+              plannerOrder={plannerOrder}
+              formatCalendarEventTime={formatCalendarEventTime}
+              onChanged={refreshPlanner}
+            />
           </>
         )}
 
@@ -881,7 +650,7 @@ export function OverviewHome({
         </div>
       </div>
 
-      <WeekAhead weekPlan={todayOverview?.weekPlan} />
+      <WeekAheadPlanner weekPlan={todayOverview?.weekPlan} onChanged={refreshPlanner} />
 
       <button
         type="button"

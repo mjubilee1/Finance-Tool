@@ -10,6 +10,7 @@ import {
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
+import { getPlannerDayLayouts } from "@/lib/planner";
 import { DateTime } from "luxon";
 
 async function loadWeekUserPlanActivities(userId: string, start: DateTime) {
@@ -22,13 +23,17 @@ async function loadWeekUserPlanActivities(userId: string, start: DateTime) {
         lte: start.plus({ days: 6 }).toISODate() ?? undefined,
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     select: {
+      id: true,
       date: true,
       title: true,
       domain: true,
       notes: true,
       minutesSpent: true,
+      status: true,
+      sortOrder: true,
+      timeLabel: true,
     },
   });
 }
@@ -64,11 +69,13 @@ export async function GET() {
 
     const now = DateTime.local();
     const today = now.toISODate()!;
-    const [brief, digest, weekCalendar, userPlanActivities] = await Promise.all([
+    const weekEnd = now.plus({ days: 6 }).toISODate()!;
+    const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate] = await Promise.all([
       buildTodayBriefContext(session.user.id),
       getTrendDigestForDate(session.user.id, today),
       loadWeekCalendar(session.user.id, now),
       loadWeekUserPlanActivities(session.user.id, now),
+      getPlannerDayLayouts(session.user.id, today, weekEnd),
     ]);
 
     const serialized = digest ? serializeTrendDigest(digest) : null;
@@ -86,6 +93,7 @@ export async function GET() {
       start: now,
       calendarEvents: weekCalendarData.events,
       userPlanActivities,
+      layoutsByDate,
     });
 
     return NextResponse.json({
@@ -101,6 +109,8 @@ export async function GET() {
         userPlanBlocks: brief.userPlanBlocks,
         completedBlockKeys: brief.completedBlockKeys,
         skippedBlockKeys: brief.skippedBlockKeys,
+        plannerLayout: brief.plannerLayout,
+        planBlocks: brief.planBlocks,
       },
       // Existing digest only — never block Overview on regenerating Trends.
       trendTldr: serialized
