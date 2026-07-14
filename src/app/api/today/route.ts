@@ -3,7 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { buildTodayBriefContext } from "@/lib/today-brief";
 import { getTrendDigestForDate, isTechTrendTheme, serializeTrendDigest } from "@/lib/trends";
-import { fetchUpcomingGoogleCalendarEvents, type GoogleCalendarEvent } from "@/lib/google-calendar";
+import {
+  fetchUpcomingGoogleCalendarEvents,
+  getGoogleCalendarStatus,
+  type GoogleCalendarEvent,
+} from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { DateTime } from "luxon";
@@ -36,8 +40,13 @@ async function loadWeekCalendar(userId: string, now: DateTime) {
       timeMax: now.plus({ days: 6 }).endOf("day").toJSDate(),
       maxResults: 40,
     });
-  } catch {
-    return null;
+  } catch (error) {
+    const status = await getGoogleCalendarStatus(userId);
+    return {
+      ...status,
+      events: [] as GoogleCalendarEvent[],
+      error: error instanceof Error ? error.message : "Could not load Google Calendar.",
+    };
   }
 }
 

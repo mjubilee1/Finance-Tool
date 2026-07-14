@@ -1,13 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppVersion } from "@/components/app-version";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-export default function LoginPage() {
+function safeCallbackPath(value: string | null) {
+  if (!value) return "/";
+  try {
+    if (value.startsWith("/") && !value.startsWith("//")) return value;
+    const url = new URL(value);
+    if (typeof window !== "undefined" && url.origin === window.location.origin) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    // ignore invalid callback URLs
+  }
+  return "/";
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,7 +41,7 @@ export default function LoginPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
         });
-        
+
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || "Registration failed");
@@ -43,10 +58,10 @@ export default function LoginPage() {
         throw new Error(result.error);
       }
 
-      router.push("/");
+      router.push(safeCallbackPath(searchParams.get("callbackUrl")));
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -94,16 +109,14 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
-          )}
+          {error && <p className="text-red-500 text-sm">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-zinc-900 text-white py-3 rounded-xl font-medium hover:opacity-90 disabled:opacity-50 mt-4"
           >
-            {loading ? "Please wait..." : (isLogin ? "Sign in" : "Sign up")}
+            {loading ? "Please wait..." : isLogin ? "Sign in" : "Sign up"}
           </button>
         </form>
 
@@ -119,5 +132,13 @@ export default function LoginPage() {
         <AppVersion className="mt-6 text-center" />
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-[100dvh] app-page" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

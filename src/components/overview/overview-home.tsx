@@ -281,43 +281,43 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
   const handleConnect = () => {
     window.location.assign("/api/integrations/google-calendar/connect");
   };
-  const needsReconnect = calendar.status === "needs_reconnect";
+  const needsReconnect = calendar.status === "needs_reconnect" || Boolean(calendar.error);
+  const showConnectBanner = !calendar.connected || needsReconnect;
 
-  if (!calendar.connected) {
-    return (
-      <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-[var(--ink)]">Connect Google Calendar</p>
-            <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
-              {needsReconnect
-                ? "Saved calendar credentials can’t be used anymore. Reconnect so Coach can create events again."
-                : "Pull in appointments and let Coach create events from chat or voice."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleConnect}
-            disabled={!calendar.connectAvailable}
-            className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {needsReconnect ? "Reconnect" : "Connect"}
-          </button>
-        </div>
-        {!calendar.connectAvailable ? (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-            Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable this.
+  if (!showConnectBanner) return null;
+
+  return (
+    <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--ink)]">
+            {needsReconnect ? "Reconnect Google Calendar" : "Connect Google Calendar"}
           </p>
-        ) : null}
+          <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
+            {needsReconnect
+              ? "Saved calendar credentials can’t be used anymore. Reconnect so Coach can create events again."
+              : "Pull in appointments and let Coach create events from chat or voice."}
+          </p>
+          {calendar.error ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{calendar.error}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={handleConnect}
+          disabled={!calendar.connectAvailable}
+          className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {needsReconnect ? "Reconnect" : "Connect"}
+        </button>
       </div>
-    );
-  }
-
-  if (calendar.error) {
-    return <p className="mb-3 text-xs text-amber-700 dark:text-amber-300">{calendar.error}</p>;
-  }
-
-  return null;
+      {!calendar.connectAvailable ? (
+        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+          Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable this.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function weeklyBlockTone(block: WeeklyOperatingPlanOverview["days"][number]["blocks"][number]) {
