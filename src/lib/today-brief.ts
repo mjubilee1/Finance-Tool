@@ -431,13 +431,25 @@ export function formatTodayBriefForSpeech(
       : brief.completedBlockKeys.includes(block.key)
         ? "done"
         : "planned";
-    lines.push(`• ${block.label} (${block.time}) — ${status}. ${block.why}`);
+    if (status === "skipped") {
+      lines.push(
+        `• ${block.label} (${block.time}) — skipped.${block.why?.trim() ? ` Why: ${block.why.trim()}` : ""}`,
+      );
+    } else {
+      lines.push(`• ${block.label} (${block.time}) — ${status}. ${block.why}`);
+    }
   }
 
   if (brief.userPlanBlocks.length > 0) {
     for (const block of brief.userPlanBlocks) {
       const status = block.status === "done" ? "done" : block.status === "skipped" ? "skipped" : "planned";
-      lines.push(`• Your block: ${block.title} — ${status}`);
+      if (status === "skipped") {
+        lines.push(
+          `• Your block: ${block.title} — skipped.${block.notes?.trim() ? ` Why: ${block.notes.trim()}` : ""}`,
+        );
+      } else {
+        lines.push(`• Your block: ${block.title} — ${status}`);
+      }
     }
   }
 

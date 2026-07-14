@@ -264,12 +264,23 @@ function PlannerActionButton({
   onClick,
   disabled,
   children,
+  tone = "neutral",
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
   children: ReactNode;
+  tone?: "neutral" | "success" | "danger" | "accent";
 }) {
+  const toneClass =
+    tone === "success"
+      ? "bg-teal-500/25 text-teal-100 ring-teal-300/55"
+      : tone === "danger"
+        ? "bg-rose-500/25 text-rose-100 ring-rose-300/55"
+        : tone === "accent"
+          ? "bg-[var(--accent-soft)] text-[var(--accent-bright)] ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+          : "bg-[color-mix(in_srgb,var(--ink)_14%,transparent)] text-[var(--ink)] ring-[color-mix(in_srgb,var(--ink)_32%,transparent)]";
+
   return (
     <button
       type="button"
@@ -277,10 +288,60 @@ function PlannerActionButton({
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:brightness-110 disabled:opacity-40"
+      className={`inline-flex h-9 min-w-9 touch-manipulation items-center justify-center gap-1 rounded-full px-2.5 text-[11px] font-semibold ring-1 hover:brightness-110 disabled:opacity-40 ${toneClass}`}
     >
       {children}
     </button>
+  );
+}
+
+function SkipReasonForm({
+  label,
+  reason,
+  onReasonChange,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  label: string;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="mt-2 space-y-2 rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-rose-400/35">
+      <p className="text-xs font-semibold text-[var(--ink)]">Didn&apos;t do: {label}</p>
+      <p className="text-[11px] leading-snug text-[var(--muted)]">
+        Optional — why not? Coach uses this to give better schedule advice next time.
+      </p>
+      <textarea
+        value={reason}
+        onChange={(e) => onReasonChange(e.target.value)}
+        placeholder="Ex: too tired after work, client call ran late, cash was covered already"
+        rows={2}
+        className="w-full rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={busy}
+          className="rounded-full bg-rose-500/90 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+        >
+          Save skipped
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -520,6 +581,13 @@ function WeekAhead({
   const [busy, setBusy] = useState<string | null>(null);
   const [addingDate, setAddingDate] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [skipTarget, setSkipTarget] = useState<{
+    date: string;
+    blockKey: string;
+    activityId?: string;
+    label: string;
+  } | null>(null);
+  const [skipReason, setSkipReason] = useState("");
   const [form, setForm] = useState<PlannerFormState>({
     title: "",
     timeLabel: "",
@@ -545,18 +613,18 @@ function WeekAhead({
   };
 
   return (
-    <div className="rounded-2xl bg-[var(--card-solid)] p-5 ring-1 ring-[var(--card-border)]">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
+    <div className="rounded-2xl bg-[var(--card-solid)] p-4 sm:p-5 ring-1 ring-[var(--card-border)]">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
             Week ahead
           </p>
-          <h2 className="text-lg font-semibold text-[var(--ink)] mt-1">Your operating script</h2>
-          <p className="text-sm text-[var(--muted)] mt-0.5">
-            Calendar commitments plus the default rails for work, Lyft, body, network, and prep.
+          <h2 className="mt-1 text-lg font-semibold text-[var(--ink)]">Your operating script</h2>
+          <p className="mt-0.5 text-sm text-[var(--muted)]">
+            Check off what landed, skip what didn&apos;t, and leave a quick why so Coach gets sharper.
           </p>
         </div>
-        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+        <span className="w-fit shrink-0 rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)] ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)] dark:text-[var(--accent-bright)]">
           {weekPlan.startDate} → {weekPlan.endDate}
         </span>
       </div>
@@ -623,31 +691,43 @@ function WeekAhead({
               <div className="mt-3 space-y-2">
                 {visibleBlocks.map((block, index) => {
                   const isDone = block.status === "done";
+                  const isSkipped = block.status === "skipped";
                   const ref = block.ref || `week:${block.id}`;
                   const isUser = block.source === "user_plan" && block.activityId;
+                  const skipKey = `${day.date}:${block.id}`;
+                  const isSkipping =
+                    skipTarget?.date === day.date &&
+                    skipTarget.blockKey === block.id;
                   return (
                     <div key={block.id} className={`rounded-lg px-2.5 py-2 ring-1 ${weeklyBlockTone(block)}`}>
-                      <div className="flex items-baseline justify-between gap-2">
-                        {block.htmlLink ? (
-                          <a
-                            href={block.htmlLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={`truncate text-xs font-semibold hover:brightness-110 ${isDone ? "line-through opacity-70" : ""}`}
-                          >
-                            {block.label}
-                          </a>
-                        ) : (
-                          <p className={`truncate text-xs font-semibold ${isDone ? "line-through opacity-70" : ""}`}>
-                            {block.label}
-                          </p>
-                        )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          {block.htmlLink ? (
+                            <a
+                              href={block.htmlLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`block text-xs font-semibold leading-snug hover:brightness-110 ${isDone ? "line-through opacity-70" : ""} ${isSkipped ? "opacity-70" : ""}`}
+                            >
+                              {block.label}
+                            </a>
+                          ) : (
+                            <p className={`text-xs font-semibold leading-snug ${isDone ? "line-through opacity-70" : ""} ${isSkipped ? "opacity-70" : ""}`}>
+                              {block.label}
+                            </p>
+                          )}
+                        </div>
                         <p className="shrink-0 text-[10px] font-medium tabular-nums opacity-80">{block.time}</p>
                       </div>
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug opacity-80">{block.why}</p>
+                      <p className="mt-0.5 line-clamp-3 text-[11px] leading-snug opacity-80">{block.why}</p>
+                      {isDone ? (
+                        <p className="mt-1 text-[11px] font-semibold text-teal-300">Done</p>
+                      ) : isSkipped ? (
+                        <p className="mt-1 text-[11px] font-semibold text-rose-300">Skipped</p>
+                      ) : null}
 
                       {block.source !== "google_calendar" ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="mt-2 flex flex-wrap gap-1.5">
                           <PlannerActionButton
                             label="Move up"
                             disabled={index === 0 || busy !== null}
@@ -661,7 +741,7 @@ function WeekAhead({
                               })
                             }
                           >
-                            <ArrowUp size={11} />
+                            <ArrowUp size={14} />
                           </PlannerActionButton>
                           <PlannerActionButton
                             label="Move down"
@@ -676,10 +756,11 @@ function WeekAhead({
                               })
                             }
                           >
-                            <ArrowDown size={11} />
+                            <ArrowDown size={14} />
                           </PlannerActionButton>
                           <PlannerActionButton
-                            label={isDone ? "Mark not done" : "Mark done"}
+                            label={isDone ? "Undo done" : "Mark done"}
+                            tone="success"
                             disabled={busy !== null}
                             onClick={() =>
                               void run(`week-done-${ref}`, async () => {
@@ -699,14 +780,54 @@ function WeekAhead({
                               })
                             }
                           >
-                            <Check size={11} />
+                            <Check size={14} />
+                            <span className="hidden sm:inline">Done</span>
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label={isSkipped ? "Undo skipped" : "Didn't do"}
+                            tone="danger"
+                            disabled={busy !== null}
+                            onClick={() => {
+                              if (isSkipped) {
+                                void run(`week-unskip-${skipKey}`, async () => {
+                                  if (isUser) {
+                                    await plannerRequest("PATCH", {
+                                      id: block.activityId,
+                                      status: "planned",
+                                    });
+                                  } else {
+                                    await plannerRequest("PATCH", {
+                                      action: "system",
+                                      date: day.date,
+                                      blockKey: block.id,
+                                      status: "planned",
+                                    });
+                                  }
+                                });
+                                return;
+                              }
+                              setEditingId(null);
+                              setAddingDate(null);
+                              setSkipTarget({
+                                date: day.date,
+                                blockKey: block.id,
+                                activityId: block.activityId,
+                                label: block.label,
+                              });
+                              setSkipReason("");
+                            }}
+                          >
+                            <X size={14} />
+                            <span className="hidden sm:inline">Skip</span>
                           </PlannerActionButton>
                           {isUser ? (
                             <>
                               <PlannerActionButton
                                 label="Edit"
+                                tone="accent"
                                 disabled={busy !== null}
                                 onClick={() => {
+                                  setSkipTarget(null);
                                   setEditingId(block.activityId!);
                                   setAddingDate(null);
                                   setForm({
@@ -718,7 +839,7 @@ function WeekAhead({
                                   });
                                 }}
                               >
-                                <Pencil size={11} />
+                                <Pencil size={14} />
                               </PlannerActionButton>
                               <PlannerActionButton
                                 label="Remove"
@@ -729,28 +850,46 @@ function WeekAhead({
                                   })
                                 }
                               >
-                                <Trash2 size={11} />
+                                <Trash2 size={14} />
                               </PlannerActionButton>
                             </>
-                          ) : block.source === "weekly_template" ? (
-                            <PlannerActionButton
-                              label="Remove from day"
-                              disabled={busy !== null}
-                              onClick={() =>
-                                void run(`week-hide-${block.id}`, async () => {
-                                  await plannerRequest("PATCH", {
-                                    action: "system",
-                                    date: day.date,
-                                    blockKey: block.id,
-                                    status: "hidden",
-                                  });
-                                })
-                              }
-                            >
-                              <X size={11} />
-                            </PlannerActionButton>
                           ) : null}
                         </div>
+                      ) : null}
+
+                      {isSkipping ? (
+                        <SkipReasonForm
+                          label={block.label}
+                          reason={skipReason}
+                          onReasonChange={setSkipReason}
+                          busy={busy !== null}
+                          onCancel={() => {
+                            setSkipTarget(null);
+                            setSkipReason("");
+                          }}
+                          onSave={() =>
+                            void run(`week-skip-${skipKey}`, async () => {
+                              const notes = skipReason.trim() || "Skipped from week planner.";
+                              if (skipTarget?.activityId) {
+                                await plannerRequest("PATCH", {
+                                  id: skipTarget.activityId,
+                                  status: "skipped",
+                                  notes,
+                                });
+                              } else {
+                                await plannerRequest("PATCH", {
+                                  action: "system",
+                                  date: day.date,
+                                  blockKey: block.id,
+                                  status: "skipped",
+                                  notes,
+                                });
+                              }
+                              setSkipTarget(null);
+                              setSkipReason("");
+                            })
+                          }
+                        />
                       ) : null}
 
                       {editingId && block.activityId === editingId ? (
@@ -861,6 +1000,12 @@ export function OverviewHome({
   const [plannerError, setPlannerError] = useState<string | null>(null);
   const [addingItem, setAddingItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [todaySkipTarget, setTodaySkipTarget] = useState<{
+    kind: "system" | "user";
+    key: string;
+    label: string;
+  } | null>(null);
+  const [todaySkipReason, setTodaySkipReason] = useState("");
   const [plannerForm, setPlannerForm] = useState<PlannerFormState>({
     title: "",
     timeLabel: "",
@@ -1158,10 +1303,10 @@ export function OverviewHome({
                           </p>
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
-                              <ArrowUp size={12} />
+                              <ArrowUp size={14} />
                             </PlannerActionButton>
                             <PlannerActionButton label="Move down" disabled={!canMoveDown || plannerBusy !== null} onClick={() => moveItem(1)}>
-                              <ArrowDown size={12} />
+                              <ArrowDown size={14} />
                             </PlannerActionButton>
                           </div>
                         </div>
@@ -1210,22 +1355,61 @@ export function OverviewHome({
                           </p>
                         </div>
                         <p className="text-xs text-[var(--muted)] mt-0.5 capitalize">
-                          {block.domain} · your block{isDone ? " · done" : ""}
+                          {block.domain} · your block
+                          {isDone ? " · done" : block.status === "skipped" ? " · skipped" : ""}
                         </p>
                         {block.notes ? (
                           <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.notes}</p>
                         ) : null}
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
-                            <ArrowUp size={12} />
+                            <ArrowUp size={14} />
                           </PlannerActionButton>
                           <PlannerActionButton label="Move down" disabled={!canMoveDown || plannerBusy !== null} onClick={() => moveItem(1)}>
-                            <ArrowDown size={12} />
+                            <ArrowDown size={14} />
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label={isDone ? "Undo done" : "Mark done"}
+                            tone="success"
+                            disabled={plannerBusy !== null}
+                            onClick={() =>
+                              void runPlanner(`user-done-${block.id}`, async () => {
+                                await plannerRequest("PATCH", {
+                                  id: block.id,
+                                  status: isDone ? "planned" : "done",
+                                });
+                              })
+                            }
+                          >
+                            <Check size={14} />
+                            <span className="sm:inline">Done</span>
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label={block.status === "skipped" ? "Undo skipped" : "Didn't do"}
+                            tone="danger"
+                            disabled={plannerBusy !== null}
+                            onClick={() => {
+                              if (block.status === "skipped") {
+                                void runPlanner(`user-unskip-${block.id}`, async () => {
+                                  await plannerRequest("PATCH", { id: block.id, status: "planned" });
+                                });
+                                return;
+                              }
+                              setEditingItemId(null);
+                              setAddingItem(false);
+                              setTodaySkipTarget({ kind: "user", key: block.id, label: block.title });
+                              setTodaySkipReason("");
+                            }}
+                          >
+                            <X size={14} />
+                            <span className="sm:inline">Skip</span>
                           </PlannerActionButton>
                           <PlannerActionButton
                             label="Edit"
+                            tone="accent"
                             disabled={plannerBusy !== null}
                             onClick={() => {
+                              setTodaySkipTarget(null);
                               setEditingItemId(block.id);
                               setAddingItem(false);
                               setPlannerForm({
@@ -1237,7 +1421,7 @@ export function OverviewHome({
                               });
                             }}
                           >
-                            <Pencil size={12} />
+                            <Pencil size={14} />
                           </PlannerActionButton>
                           <PlannerActionButton
                             label="Remove"
@@ -1249,9 +1433,32 @@ export function OverviewHome({
                               })
                             }
                           >
-                            <Trash2 size={12} />
+                            <Trash2 size={14} />
                           </PlannerActionButton>
                         </div>
+                        {todaySkipTarget?.kind === "user" && todaySkipTarget.key === block.id ? (
+                          <SkipReasonForm
+                            label={block.title}
+                            reason={todaySkipReason}
+                            onReasonChange={setTodaySkipReason}
+                            busy={plannerBusy !== null}
+                            onCancel={() => {
+                              setTodaySkipTarget(null);
+                              setTodaySkipReason("");
+                            }}
+                            onSave={() =>
+                              void runPlanner(`user-skip-${block.id}`, async () => {
+                                await plannerRequest("PATCH", {
+                                  id: block.id,
+                                  status: "skipped",
+                                  notes: todaySkipReason.trim() || block.notes || "Skipped from today planner.",
+                                });
+                                setTodaySkipTarget(null);
+                                setTodaySkipReason("");
+                              })
+                            }
+                          />
+                        ) : null}
                         {isEditing ? (
                           <PlannerItemForm
                             form={plannerForm}
@@ -1344,28 +1551,80 @@ export function OverviewHome({
                       ) : null}
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
-                          <ArrowUp size={12} />
+                          <ArrowUp size={14} />
                         </PlannerActionButton>
                         <PlannerActionButton label="Move down" disabled={!canMoveDown || plannerBusy !== null} onClick={() => moveItem(1)}>
-                          <ArrowDown size={12} />
+                          <ArrowDown size={14} />
                         </PlannerActionButton>
                         <PlannerActionButton
-                          label="Remove from today"
+                          label={isDone ? "Undo done" : "Mark done"}
+                          tone="success"
                           disabled={plannerBusy !== null}
                           onClick={() =>
-                            void runPlanner(`sys-hide-${block.key}`, async () => {
+                            void runPlanner(`sys-done-${block.key}`, async () => {
                               await plannerRequest("PATCH", {
                                 action: "system",
                                 date: todayDate,
                                 blockKey: block.key,
-                                status: "hidden",
+                                status: isDone ? "planned" : "done",
                               });
                             })
                           }
                         >
-                          <X size={12} />
+                          <Check size={14} />
+                          <span className="sm:inline">Done</span>
+                        </PlannerActionButton>
+                        <PlannerActionButton
+                          label={isSkipped ? "Undo skipped" : "Didn't do"}
+                          tone="danger"
+                          disabled={plannerBusy !== null}
+                          onClick={() => {
+                            if (isSkipped) {
+                              void runPlanner(`sys-unskip-${block.key}`, async () => {
+                                await plannerRequest("PATCH", {
+                                  action: "system",
+                                  date: todayDate,
+                                  blockKey: block.key,
+                                  status: "planned",
+                                });
+                              });
+                              return;
+                            }
+                            setEditingItemId(null);
+                            setAddingItem(false);
+                            setTodaySkipTarget({ kind: "system", key: block.key, label: block.label });
+                            setTodaySkipReason("");
+                          }}
+                        >
+                          <X size={14} />
+                          <span className="sm:inline">Skip</span>
                         </PlannerActionButton>
                       </div>
+                      {todaySkipTarget?.kind === "system" && todaySkipTarget.key === block.key ? (
+                        <SkipReasonForm
+                          label={block.label}
+                          reason={todaySkipReason}
+                          onReasonChange={setTodaySkipReason}
+                          busy={plannerBusy !== null}
+                          onCancel={() => {
+                            setTodaySkipTarget(null);
+                            setTodaySkipReason("");
+                          }}
+                          onSave={() =>
+                            void runPlanner(`sys-skip-${block.key}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: todayDate,
+                                blockKey: block.key,
+                                status: "skipped",
+                                notes: todaySkipReason.trim() || "Skipped from today planner.",
+                              });
+                              setTodaySkipTarget(null);
+                              setTodaySkipReason("");
+                            })
+                          }
+                        />
+                      ) : null}
                     </div>
                   </li>
                 );
