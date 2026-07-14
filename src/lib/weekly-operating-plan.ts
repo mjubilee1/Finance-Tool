@@ -5,6 +5,7 @@ import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 import {
   applyCustomOrder,
   calendarPlanRef,
+  resolvePlannerOverride,
   userPlanRef,
   weekPlanRef,
   type PlannerBlockOverride,
@@ -144,9 +145,10 @@ function eventPrepBlock(event: GoogleCalendarEvent): WeeklyOperatingBlock | null
 
 function applyOverride(
   block: WeeklyOperatingBlock,
+  date: string,
   overrides: Record<string, PlannerBlockOverride>,
 ): WeeklyOperatingBlock | null {
-  const override = overrides[block.id] ?? undefined;
+  const override = resolvePlannerOverride(overrides, date, block.id);
   if (!override) return block;
   if (override.status === "hidden") return null;
   return {
@@ -404,7 +406,7 @@ export function buildWeeklyOperatingPlan(
       ...prepBlocks,
       ...calendarBlocks,
     ]
-      .map((block) => applyOverride(block, layout?.overrides ?? {}))
+      .map((block) => applyOverride(block, date, layout?.overrides ?? {}))
       .filter((block): block is WeeklyOperatingBlock => Boolean(block));
 
     const ordered = applyCustomOrder(
