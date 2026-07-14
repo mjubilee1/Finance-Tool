@@ -21,6 +21,31 @@ import type { GoalSuggestion } from "@/lib/goal-suggestion";
 import { ChatComposer } from "./chat/chat-composer";
 import { useCoachSpeech } from "@/hooks/use-coach-speech";
 import { READ_ALOUD_STORAGE_KEY } from "@/lib/coach-speech";
+import { fetchWithRetry, friendlyChatFetchError } from "@/lib/fetch-with-retry";
+
+/** Once a session exists, the API already loads prior turns from the DB. */
+function buildChatRequestMessages(messages: ChatMessage[], hasSession: boolean): ChatMessage[] {
+  if (hasSession) {
+    const latestUser = [...messages].reverse().find((message) => message.role === "user");
+    return latestUser
+      ? [
+          {
+            role: latestUser.role,
+            content: latestUser.content,
+            images: latestUser.images,
+          },
+        ]
+      : [];
+  }
+
+  const latestUserIndex = messages.findLastIndex((message) => message.role === "user");
+  return messages.map((message, index) => ({
+    role: message.role,
+    content: message.content,
+    // Avoid re-uploading earlier screenshots on flaky mobile connections.
+    images: index === latestUserIndex ? message.images : undefined,
+  }));
+}
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -382,17 +407,17 @@ export function ChatInterface({
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetchWithRetry("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId,
-          messages: nextMessages.map(({ role, content, images: messageImages }) => ({
-            role,
-            content,
-            images: messageImages,
-          })),
+          messages: buildChatRequestMessages(nextMessages, Boolean(sessionId)),
         }),
+        // Only retry thrown network failures (e.g. Safari "Load failed"), not HTTP
+        // errors — the coach may create calendar events before responding.
+        retries: 2,
+        retryDelayMs: 800,
       });
       const data = await res.json();
 
@@ -450,8 +475,7 @@ export function ChatInterface({
         ...prev,
         {
           role: "assistant",
-          content:
-            err instanceof Error ? err.message : "Sorry, I encountered an error answering your question.",
+          content: friendlyChatFetchError(err),
         },
       ]);
     } finally {
