@@ -33,14 +33,13 @@ export type WeeklyOperatingBlock = {
   why: string;
   source: "weekly_template" | "google_calendar" | "user_plan";
   sortKey: number;
-  ref: string;
+  ref?: string;
   status?: "planned" | "done" | "skipped" | "hidden";
   activityId?: string;
   domain?: string;
   calendarEventId?: string;
   location?: string | null;
   htmlLink?: string | null;
-  editable?: boolean;
 };
 
 export type WeeklyOperatingDay = {
@@ -61,15 +60,15 @@ export type WeeklyOperatingPlan = {
 };
 
 type UserPlanActivity = {
-  id: string;
+  id?: string;
   date: string;
   title: string;
   domain: string;
   notes: string | null;
   minutesSpent: number | null;
-  status: string;
-  sortOrder: number;
-  timeLabel: string | null;
+  status?: string;
+  sortOrder?: number;
+  timeLabel?: string | null;
 };
 
 type BuildWeeklyOperatingPlanOptions = {
@@ -140,7 +139,6 @@ function eventPrepBlock(event: GoogleCalendarEvent): WeeklyOperatingBlock | null
     calendarEventId: event.id,
     location: event.location,
     htmlLink: event.htmlLink,
-    editable: false,
   };
 }
 
@@ -148,7 +146,7 @@ function applyOverride(
   block: WeeklyOperatingBlock,
   overrides: Record<string, PlannerBlockOverride>,
 ): WeeklyOperatingBlock | null {
-  const override = overrides[block.id] ?? overrides[block.ref.replace(/^week:/, "")] ?? undefined;
+  const override = overrides[block.id] ?? undefined;
   if (!override) return block;
   if (override.status === "hidden") return null;
   return {
@@ -163,27 +161,30 @@ function applyOverride(
 function userPlanBlocksForDay(activities: UserPlanActivity[], date: string): WeeklyOperatingBlock[] {
   return activities
     .filter((activity) => activity.date === date)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
-    .map((activity, index) => ({
-      id: activity.id,
-      type: "free" as const,
-      priority: "optional" as const,
-      label: activity.title,
-      time:
-        activity.timeLabel?.trim() ||
-        (activity.minutesSpent ? `${activity.minutesSpent} min` : "Your block"),
-      why: activity.notes?.trim() || `${activity.domain} · added to your plan`,
-      source: "user_plan" as const,
-      sortKey: 12 + index / 10,
-      ref: userPlanRef(activity.id),
-      status:
+    .sort((a, b) => (a.sortOrder ?? 100) - (b.sortOrder ?? 100))
+    .map((activity, index) => {
+      const id = activity.id ?? `user-plan-${date}-${index}`;
+      const status =
         activity.status === "done" || activity.status === "skipped" || activity.status === "planned"
           ? activity.status
-          : ("planned" as const),
-      activityId: activity.id,
-      domain: activity.domain,
-      editable: true,
-    }));
+          : ("planned" as const);
+      return {
+        id,
+        type: "free" as const,
+        priority: "optional" as const,
+        label: activity.title,
+        time:
+          activity.timeLabel?.trim() ||
+          (activity.minutesSpent ? `${activity.minutesSpent} min` : "Your block"),
+        why: activity.notes?.trim() || `${activity.domain} · added to your plan`,
+        source: "user_plan" as const,
+        sortKey: 12 + index / 10,
+        ref: activity.id ? userPlanRef(activity.id) : weekPlanRef(id),
+        status,
+        activityId: activity.id,
+        domain: activity.domain,
+      };
+    });
 }
 
 function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[] {
@@ -200,7 +201,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 6.5,
         ref: weekPlanRef(`${day.toISODate()}-lyft`),
         status: "planned",
-        editable: true,
       },
       {
         id: `${day.toISODate()}-work`,
@@ -213,7 +213,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 9,
         ref: weekPlanRef(`${day.toISODate()}-work`),
         status: "planned",
-        editable: true,
       },
       {
         id: `${day.toISODate()}-promotion`,
@@ -226,7 +225,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 18,
         ref: weekPlanRef(`${day.toISODate()}-promotion`),
         status: "planned",
-        editable: true,
       },
       {
         id: `${day.toISODate()}-evening`,
@@ -239,7 +237,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 19,
         ref: weekPlanRef(`${day.toISODate()}-evening`),
         status: "planned",
-        editable: true,
       },
     ];
   }
@@ -257,7 +254,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 6.5,
         ref: weekPlanRef(`${day.toISODate()}-lyft`),
         status: "planned",
-        editable: true,
       },
       {
         id: `${day.toISODate()}-work`,
@@ -270,7 +266,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 9,
         ref: weekPlanRef(`${day.toISODate()}-work`),
         status: "planned",
-        editable: true,
       },
       {
         id: `${day.toISODate()}-training`,
@@ -283,7 +278,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 12,
         ref: weekPlanRef(`${day.toISODate()}-training`),
         status: "planned",
-        editable: true,
       },
       {
         id: `${day.toISODate()}-promotion`,
@@ -296,7 +290,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         sortKey: 18,
         ref: weekPlanRef(`${day.toISODate()}-promotion`),
         status: "planned",
-        editable: true,
       },
     ];
   }
@@ -313,7 +306,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       sortKey: 6.5,
       ref: weekPlanRef(`${day.toISODate()}-lyft`),
       status: "planned",
-      editable: true,
     },
     {
       id: `${day.toISODate()}-review`,
@@ -326,7 +318,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       sortKey: day.weekday === 7 ? 9 : 8,
       ref: weekPlanRef(`${day.toISODate()}-review`),
       status: "planned",
-      editable: true,
     },
     {
       id: `${day.toISODate()}-training`,
@@ -339,7 +330,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       sortKey: 11,
       ref: weekPlanRef(`${day.toISODate()}-training`),
       status: "planned",
-      editable: true,
     },
     {
       id: `${day.toISODate()}-social`,
@@ -352,7 +342,6 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       sortKey: 16,
       ref: weekPlanRef(`${day.toISODate()}-social`),
       status: "planned",
-      editable: true,
     },
   ];
 }
@@ -403,7 +392,6 @@ export function buildWeeklyOperatingPlan(
       calendarEventId: event.id,
       location: event.location,
       htmlLink: event.htmlLink,
-      editable: false,
     }));
     const prepBlocks = (eventsByDate.get(date) ?? [])
       .map(eventPrepBlock)
@@ -419,7 +407,13 @@ export function buildWeeklyOperatingPlan(
       .map((block) => applyOverride(block, layout?.overrides ?? {}))
       .filter((block): block is WeeklyOperatingBlock => Boolean(block));
 
-    const ordered = applyCustomOrder(merged, layout?.order ?? []).slice(0, 10);
+    const ordered = applyCustomOrder(
+      merged.map((block) => ({
+        ...block,
+        ref: block.ref ?? weekPlanRef(block.id),
+      })),
+      layout?.order ?? [],
+    ).slice(0, 8);
 
     return {
       date,

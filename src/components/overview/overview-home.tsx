@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
@@ -11,18 +11,24 @@ import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Flame,
   MessageSquare,
+  Pencil,
+  Plus,
   Quote,
   RefreshCw,
   SkipForward,
   Sparkles,
+  Trash2,
+  X,
 } from "lucide-react";
-import { TodayPlannerList, WeekAheadPlanner } from "./planner-board";
 
 function DailySpendTooltip({
   active,
@@ -113,7 +119,6 @@ type RecurringReview = {
 
 type TodayOverviewResponse = {
   brief: {
-    date: string;
     dayShape: "office" | "wfh" | "weekend";
     dayLabel: string;
     dateLabel: string;
@@ -143,6 +148,7 @@ type TodayOverviewResponse = {
       todaysMove: string | null;
       systemImpact: string | null;
     };
+    date?: string;
     userPlanBlocks: Array<{
       id: string;
       title: string;
@@ -157,23 +163,10 @@ type TodayOverviewResponse = {
     }>;
     completedBlockKeys: string[];
     skippedBlockKeys: string[];
-    plannerLayout: {
+    plannerLayout?: {
       order: string[];
       overrides: Record<string, unknown>;
     };
-    planBlocks: Array<{
-      key: string;
-      label: string;
-      time: string;
-      fit: string;
-      why: string;
-      role: string;
-      priority: string;
-      evidence: string | null;
-      status: "planned" | "done" | "skipped" | "hidden";
-      ref: string;
-      hidden: boolean;
-    }>;
   };
   calendar: GoogleCalendarOverview | null;
   weekPlan?: WeeklyOperatingPlanOverview | null;
@@ -223,17 +216,150 @@ type WeeklyOperatingPlanOverview = {
       why: string;
       source: "weekly_template" | "google_calendar" | "user_plan";
       sortKey: number;
-      ref: string;
+      ref?: string;
       status?: "planned" | "done" | "skipped" | "hidden";
       activityId?: string;
       domain?: string;
       calendarEventId?: string;
       location?: string | null;
       htmlLink?: string | null;
-      editable?: boolean;
     }>;
   }>;
 };
+
+type PlanBlock = TodayOverviewResponse["brief"]["plan"]["blocks"][number];
+type UserPlanBlock = TodayOverviewResponse["brief"]["userPlanBlocks"][number];
+type CalendarEvent = GoogleCalendarOverview["events"][number];
+type TimelineItem =
+  | { type: "plan"; block: PlanBlock; blockIndex: number; sortKey: number; ref: string }
+  | { type: "calendar"; event: CalendarEvent; sortKey: number; ref: string }
+  | { type: "user"; block: UserPlanBlock; blockIndex: number; sortKey: number; ref: string };
+
+type PlannerFormState = {
+  title: string;
+  timeLabel: string;
+  notes: string;
+  domain: string;
+  date: string;
+};
+
+const PLANNER_DOMAINS = ["personal", "career", "fitness", "financial", "social", "startup"] as const;
+
+async function plannerRequest(method: string, body?: Record<string, unknown>, id?: string) {
+  const url = id ? `/api/planner?id=${encodeURIComponent(id)}` : "/api/planner";
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error || "Planner request failed");
+  }
+  return res.json();
+}
+
+function PlannerActionButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:brightness-110 disabled:opacity-40"
+    >
+      {children}
+    </button>
+  );
+}
+
+function PlannerItemForm({
+  form,
+  onChange,
+  onSave,
+  onCancel,
+  busy,
+  saveLabel,
+}: {
+  form: PlannerFormState;
+  onChange: (next: PlannerFormState) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+  saveLabel: string;
+}) {
+  return (
+    <div className="mt-2 space-y-2 rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
+      <input
+        value={form.title}
+        onChange={(e) => onChange({ ...form, title: e.target.value })}
+        placeholder="What to protect or do"
+        className="w-full rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          value={form.timeLabel}
+          onChange={(e) => onChange({ ...form, timeLabel: e.target.value })}
+          placeholder="Time (optional)"
+          className="rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+        />
+        <select
+          value={form.domain}
+          onChange={(e) => onChange({ ...form, domain: e.target.value })}
+          className="rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+        >
+          {PLANNER_DOMAINS.map((domain) => (
+            <option key={domain} value={domain}>
+              {domain}
+            </option>
+          ))}
+        </select>
+      </div>
+      <input
+        type="date"
+        value={form.date}
+        onChange={(e) => onChange({ ...form, date: e.target.value })}
+        className="w-full rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+      />
+      <textarea
+        value={form.notes}
+        onChange={(e) => onChange({ ...form, notes: e.target.value })}
+        placeholder="Notes (optional)"
+        rows={2}
+        className="w-full rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={busy || !form.title.trim()}
+          className="rounded-full app-btn-primary px-3 py-1.5 text-xs disabled:opacity-60"
+        >
+          {saveLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]) {
   if (event.allDay) return "All day";
@@ -247,9 +373,76 @@ function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]
   return endLabel ? `${startLabel}-${endLabel}` : startLabel;
 }
 
+function calendarEventSortKey(event: CalendarEvent) {
+  if (event.allDay) return 0.5;
+
+  const start = DateTime.fromISO(event.start);
+  if (!start.isValid) return 23.9;
+
+  return start.hour + start.minute / 60;
+}
+
 function formatPlanRole(role: string) {
   if (role === "focus") return "Focus block";
   return `${role.charAt(0).toUpperCase()}${role.slice(1)} block`;
+}
+
+function planBlockSortKey(block: PlanBlock, dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined) {
+  if (block.key === "lyft") return dayShape === "office" ? 7.5 : 16;
+  if (block.key === "gym") return dayShape === "weekend" ? 11 : 17.5;
+  if (block.key === "leverage") return dayShape === "office" ? 13 : 10;
+  if (block.key === "joy") return dayShape === "weekend" ? 16 : 20;
+  return 23;
+}
+
+function buildTimelineItems(
+  systemBlocks: PlanBlock[],
+  userBlocks: UserPlanBlock[],
+  calendarEvents: CalendarEvent[],
+  dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined,
+  customOrder: string[] = [],
+): TimelineItem[] {
+  const base: TimelineItem[] = [
+    ...systemBlocks.map((block, blockIndex) => ({
+      type: "plan" as const,
+      block,
+      blockIndex,
+      sortKey: planBlockSortKey(block, dayShape),
+      ref: `system:${block.key}`,
+    })),
+    ...calendarEvents.map((event) => ({
+      type: "calendar" as const,
+      event,
+      sortKey: calendarEventSortKey(event),
+      ref: `calendar:${event.id}`,
+    })),
+    ...userBlocks.map((block, blockIndex) => ({
+      type: "user" as const,
+      block,
+      blockIndex,
+      sortKey: 24 + blockIndex / 10,
+      ref: block.ref || `user:${block.id}`,
+    })),
+  ];
+
+  if (!customOrder.length) {
+    return base.sort((a, b) => a.sortKey - b.sortKey);
+  }
+
+  const byRef = new Map(base.map((item) => [item.ref, item]));
+  const used = new Set<string>();
+  const ordered: TimelineItem[] = [];
+  for (const ref of customOrder) {
+    const item = byRef.get(ref);
+    if (!item || used.has(ref)) continue;
+    ordered.push(item);
+    used.add(ref);
+  }
+  for (const item of base.sort((a, b) => a.sortKey - b.sortKey)) {
+    if (used.has(item.ref)) continue;
+    ordered.push(item);
+  }
+  return ordered;
 }
 
 function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview | null }) {
@@ -296,6 +489,324 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
   }
 
   return null;
+}
+
+function weeklyBlockTone(block: WeeklyOperatingPlanOverview["days"][number]["blocks"][number]) {
+  if (block.source === "google_calendar") {
+    return "bg-teal-500/10 text-teal-700 ring-teal-400/30 dark:text-teal-300";
+  }
+  if (block.source === "user_plan") {
+    return "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]";
+  }
+  if (block.priority === "protect") {
+    return "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_24%,transparent)] dark:text-[var(--accent-bright)]";
+  }
+  if (block.priority === "prep") {
+    return "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_30%,transparent)]";
+  }
+  if (block.priority === "locked") {
+    return "bg-[color-mix(in_srgb,var(--ink)_7%,transparent)] text-[var(--ink-soft)] ring-[var(--card-border)]";
+  }
+  return "bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] text-[var(--muted)] ring-[var(--card-border)]";
+}
+
+function WeekAhead({
+  weekPlan,
+  onChanged,
+}: {
+  weekPlan: WeeklyOperatingPlanOverview | null | undefined;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [addingDate, setAddingDate] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<PlannerFormState>({
+    title: "",
+    timeLabel: "",
+    notes: "",
+    domain: "personal",
+    date: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  if (!weekPlan?.days.length) return null;
+
+  const run = async (key: string, work: () => Promise<void>) => {
+    setBusy(key);
+    setError(null);
+    try {
+      await work();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl bg-[var(--card-solid)] p-5 ring-1 ring-[var(--card-border)]">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+            Week ahead
+          </p>
+          <h2 className="text-lg font-semibold text-[var(--ink)] mt-1">Your operating script</h2>
+          <p className="text-sm text-[var(--muted)] mt-0.5">
+            Calendar commitments plus the default rails for work, Lyft, body, network, and prep.
+          </p>
+        </div>
+        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+          {weekPlan.startDate} → {weekPlan.endDate}
+        </span>
+      </div>
+
+      {error ? (
+        <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-400/30 dark:text-rose-300">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {weekPlan.days.map((day) => {
+          const visibleBlocks = day.blocks
+            .filter((block) =>
+              block.source === "google_calendar" ||
+              block.source === "user_plan" ||
+              block.priority === "protect" ||
+              block.priority === "prep" ||
+              block.type === "cash" ||
+              block.type === "work",
+            )
+            .slice(0, 6);
+          const refs = visibleBlocks.map((block) => block.ref || `week:${block.id}`);
+
+          return (
+            <div key={day.date} className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] p-3 ring-1 ring-[var(--card-border)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--ink)]">
+                    {day.weekdayLabel} · {day.dateLabel}
+                  </p>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">{DAY_SHAPE_LABEL[day.dayShape]}</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-full bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                    {day.blocks.some((block) => block.source === "google_calendar")
+                      ? "Booked"
+                      : day.blocks.some((block) => block.source === "user_plan")
+                        ? "Custom"
+                        : "Rails"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingDate(day.date);
+                      setEditingId(null);
+                      setForm({
+                        title: "",
+                        timeLabel: "",
+                        notes: "",
+                        domain: "personal",
+                        date: day.date,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] hover:brightness-110"
+                  >
+                    <Plus size={10} />
+                    Add
+                  </button>
+                </div>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-[var(--ink-soft)]">{day.valueFocus}</p>
+
+              <div className="mt-3 space-y-2">
+                {visibleBlocks.map((block, index) => {
+                  const isDone = block.status === "done";
+                  const ref = block.ref || `week:${block.id}`;
+                  const isUser = block.source === "user_plan" && block.activityId;
+                  return (
+                    <div key={block.id} className={`rounded-lg px-2.5 py-2 ring-1 ${weeklyBlockTone(block)}`}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        {block.htmlLink ? (
+                          <a
+                            href={block.htmlLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`truncate text-xs font-semibold hover:brightness-110 ${isDone ? "line-through opacity-70" : ""}`}
+                          >
+                            {block.label}
+                          </a>
+                        ) : (
+                          <p className={`truncate text-xs font-semibold ${isDone ? "line-through opacity-70" : ""}`}>
+                            {block.label}
+                          </p>
+                        )}
+                        <p className="shrink-0 text-[10px] font-medium tabular-nums opacity-80">{block.time}</p>
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug opacity-80">{block.why}</p>
+
+                      {block.source !== "google_calendar" ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <PlannerActionButton
+                            label="Move up"
+                            disabled={index === 0 || busy !== null}
+                            onClick={() =>
+                              void run(`week-up-${ref}`, async () => {
+                                const order = [...refs];
+                                const i = order.indexOf(ref);
+                                if (i <= 0) return;
+                                [order[i - 1], order[i]] = [order[i], order[i - 1]];
+                                await plannerRequest("PATCH", { action: "reorder", date: day.date, order });
+                              })
+                            }
+                          >
+                            <ArrowUp size={11} />
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label="Move down"
+                            disabled={index === visibleBlocks.length - 1 || busy !== null}
+                            onClick={() =>
+                              void run(`week-down-${ref}`, async () => {
+                                const order = [...refs];
+                                const i = order.indexOf(ref);
+                                if (i < 0 || i >= order.length - 1) return;
+                                [order[i], order[i + 1]] = [order[i + 1], order[i]];
+                                await plannerRequest("PATCH", { action: "reorder", date: day.date, order });
+                              })
+                            }
+                          >
+                            <ArrowDown size={11} />
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label={isDone ? "Mark not done" : "Mark done"}
+                            disabled={busy !== null}
+                            onClick={() =>
+                              void run(`week-done-${ref}`, async () => {
+                                if (isUser) {
+                                  await plannerRequest("PATCH", {
+                                    id: block.activityId,
+                                    status: isDone ? "planned" : "done",
+                                  });
+                                } else {
+                                  await plannerRequest("PATCH", {
+                                    action: "system",
+                                    date: day.date,
+                                    blockKey: block.id,
+                                    status: isDone ? "planned" : "done",
+                                  });
+                                }
+                              })
+                            }
+                          >
+                            <Check size={11} />
+                          </PlannerActionButton>
+                          {isUser ? (
+                            <>
+                              <PlannerActionButton
+                                label="Edit"
+                                disabled={busy !== null}
+                                onClick={() => {
+                                  setEditingId(block.activityId!);
+                                  setAddingDate(null);
+                                  setForm({
+                                    title: block.label,
+                                    timeLabel: block.time === "Your block" ? "" : block.time,
+                                    notes: block.why.includes(" · added to your plan") ? "" : block.why,
+                                    domain: block.domain || "personal",
+                                    date: day.date,
+                                  });
+                                }}
+                              >
+                                <Pencil size={11} />
+                              </PlannerActionButton>
+                              <PlannerActionButton
+                                label="Remove"
+                                disabled={busy !== null}
+                                onClick={() =>
+                                  void run(`week-del-${block.activityId}`, async () => {
+                                    await plannerRequest("DELETE", undefined, block.activityId);
+                                  })
+                                }
+                              >
+                                <Trash2 size={11} />
+                              </PlannerActionButton>
+                            </>
+                          ) : block.source === "weekly_template" ? (
+                            <PlannerActionButton
+                              label="Remove from day"
+                              disabled={busy !== null}
+                              onClick={() =>
+                                void run(`week-hide-${block.id}`, async () => {
+                                  await plannerRequest("PATCH", {
+                                    action: "system",
+                                    date: day.date,
+                                    blockKey: block.id,
+                                    status: "hidden",
+                                  });
+                                })
+                              }
+                            >
+                              <X size={11} />
+                            </PlannerActionButton>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {editingId && block.activityId === editingId ? (
+                        <PlannerItemForm
+                          form={form}
+                          onChange={setForm}
+                          busy={busy !== null}
+                          saveLabel="Save"
+                          onCancel={() => setEditingId(null)}
+                          onSave={() =>
+                            void run(`week-edit-${block.activityId}`, async () => {
+                              await plannerRequest("PATCH", {
+                                id: block.activityId,
+                                title: form.title,
+                                domain: form.domain,
+                                notes: form.notes || null,
+                                timeLabel: form.timeLabel || null,
+                                date: form.date,
+                              });
+                              setEditingId(null);
+                            })
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {addingDate === day.date ? (
+                <PlannerItemForm
+                  form={form}
+                  onChange={setForm}
+                  busy={busy !== null}
+                  saveLabel="Add to day"
+                  onCancel={() => setAddingDate(null)}
+                  onSave={() =>
+                    void run("week-create", async () => {
+                      await plannerRequest("POST", {
+                        date: form.date || day.date,
+                        title: form.title,
+                        domain: form.domain,
+                        notes: form.notes || null,
+                        timeLabel: form.timeLabel || null,
+                      });
+                      setAddingDate(null);
+                    })
+                  }
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 type Props = {
@@ -346,6 +857,17 @@ export function OverviewHome({
   const [showCashDetails, setShowCashDetails] = useState(false);
   const [moveBusy, setMoveBusy] = useState<"done" | "skipped" | "recommend" | null>(null);
   const [calendarConnectMessage, setCalendarConnectMessage] = useState<string | null>(null);
+  const [plannerBusy, setPlannerBusy] = useState<string | null>(null);
+  const [plannerError, setPlannerError] = useState<string | null>(null);
+  const [addingItem, setAddingItem] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [plannerForm, setPlannerForm] = useState<PlannerFormState>({
+    title: "",
+    timeLabel: "",
+    notes: "",
+    domain: "personal",
+    date: DateTime.local().toISODate()!,
+  });
   const cfoBrief = aiInsight.cfoBrief;
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
@@ -368,25 +890,38 @@ export function OverviewHome({
   });
 
   const brief = todayOverview?.brief;
-  const systemBlocks = brief?.planBlocks ?? brief?.plan.blocks.map((block) => ({
-    ...block,
-    status: (brief.completedBlockKeys.includes(block.key)
-      ? "done"
-      : brief.skippedBlockKeys.includes(block.key)
-        ? "skipped"
-        : "planned") as "planned" | "done" | "skipped" | "hidden",
-    ref: `system:${block.key}`,
-    hidden: false,
-  })) ?? [];
+  const completed = new Set(brief?.completedBlockKeys ?? []);
+  const skipped = new Set(brief?.skippedBlockKeys ?? []);
+  const systemBlocks = brief?.plan.blocks ?? [];
   const userBlocks = brief?.userPlanBlocks ?? [];
   const leverageBlock = systemBlocks.find((block) => block.key === "leverage");
   const calendar = todayOverview?.calendar ?? null;
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const plannerOrder = brief?.plannerLayout?.order ?? [];
   const todayDate = brief?.date ?? now.toISODate()!;
+  const timelineItems = buildTimelineItems(
+    systemBlocks,
+    userBlocks,
+    calendarEvents,
+    brief?.dayShape,
+    plannerOrder,
+  );
   const refreshPlanner = () => {
     void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
     void queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+  };
+
+  const runPlanner = async (key: string, work: () => Promise<void>) => {
+    setPlannerBusy(key);
+    setPlannerError(null);
+    try {
+      await work();
+      refreshPlanner();
+    } catch (err) {
+      setPlannerError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setPlannerBusy(null);
+    }
   };
 
   useEffect(() => {
@@ -558,16 +1093,325 @@ export function OverviewHome({
           <>
             <GoogleCalendarAgenda calendar={calendar} />
 
-            <TodayPlannerList
-              date={todayDate}
-              dayShape={brief?.dayShape}
-              systemBlocks={systemBlocks}
-              userBlocks={userBlocks}
-              calendarEvents={calendarEvents}
-              plannerOrder={plannerOrder}
-              formatCalendarEventTime={formatCalendarEventTime}
-              onChanged={refreshPlanner}
-            />
+            {plannerError ? (
+              <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-400/30 dark:text-rose-300">
+                {plannerError}
+              </p>
+            ) : null}
+
+            <ol className="space-y-0">
+              {timelineItems.map((item, index) => {
+                const showConnector = index < timelineItems.length - 1;
+                const canMoveUp = index > 0;
+                const canMoveDown = index < timelineItems.length - 1;
+                const moveItem = (direction: -1 | 1) =>
+                  void runPlanner(`move-${item.ref}`, async () => {
+                    const refs = timelineItems.map((row) => row.ref);
+                    const i = refs.indexOf(item.ref);
+                    const next = i + direction;
+                    if (i < 0 || next < 0 || next >= refs.length) return;
+                    const order = [...refs];
+                    const [removed] = order.splice(i, 1);
+                    order.splice(next, 0, removed);
+                    await plannerRequest("PATCH", { action: "reorder", date: todayDate, order });
+                  });
+
+                if (item.type === "calendar") {
+                  return (
+                    <li key={`calendar-${item.event.id}`} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-teal-500/10 text-teal-700 ring-1 ring-teal-400/35 dark:text-teal-300">
+                          <CalendarDays size={14} />
+                        </div>
+                        {showConnector ? (
+                          <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
+                        ) : null}
+                      </div>
+                      <div className="flex-1 pb-4">
+                        <div className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_3%,transparent)] px-3 py-2 -mt-1 ring-1 ring-[var(--card-border)]">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            {item.event.htmlLink ? (
+                              <a
+                                href={item.event.htmlLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-[var(--ink)] hover:text-[var(--accent)]"
+                              >
+                                {item.event.title}
+                              </a>
+                            ) : (
+                              <p className="font-semibold text-[var(--ink)]">{item.event.title}</p>
+                            )}
+                            <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
+                              {formatCalendarEventTime(item.event)}
+                            </p>
+                          </div>
+                          <p className="text-xs text-[var(--muted)] mt-1 leading-snug">
+                            Google Calendar{item.event.location ? ` · ${item.event.location}` : ""}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
+                              <ArrowUp size={12} />
+                            </PlannerActionButton>
+                            <PlannerActionButton label="Move down" disabled={!canMoveDown || plannerBusy !== null} onClick={() => moveItem(1)}>
+                              <ArrowDown size={12} />
+                            </PlannerActionButton>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                }
+
+                if (item.type === "user") {
+                  const block = item.block;
+                  const isDone = block.status === "done";
+                  const isEditing = editingItemId === block.id;
+
+                  return (
+                    <li key={`user-${block.id}`} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <button
+                          type="button"
+                          aria-label={isDone ? "Mark not done" : "Mark done"}
+                          disabled={plannerBusy !== null}
+                          onClick={() =>
+                            void runPlanner(`user-done-${block.id}`, async () => {
+                              await plannerRequest("PATCH", {
+                                id: block.id,
+                                status: isDone ? "planned" : "done",
+                              });
+                            })
+                          }
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ${
+                            isDone
+                              ? "bg-teal-500/20 text-teal-700 ring-teal-400/40"
+                              : "bg-[color-mix(in_srgb,var(--ember)_18%,transparent)] text-[var(--ember-strong)] ring-[color-mix(in_srgb,var(--ember)_35%,transparent)]"
+                          }`}
+                        >
+                          {isDone ? <Check size={14} /> : "+"}
+                        </button>
+                        {showConnector ? (
+                          <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
+                        ) : null}
+                      </div>
+                      <div className={`flex-1 pb-2 ${isDone ? "opacity-70" : ""}`}>
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className={`font-semibold text-[var(--ink)] ${isDone ? "line-through" : ""}`}>{block.title}</p>
+                          <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
+                            {block.timeLabel || (block.minutesSpent != null ? `${block.minutesSpent} min` : "")}
+                          </p>
+                        </div>
+                        <p className="text-xs text-[var(--muted)] mt-0.5 capitalize">
+                          {block.domain} · your block{isDone ? " · done" : ""}
+                        </p>
+                        {block.notes ? (
+                          <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.notes}</p>
+                        ) : null}
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
+                            <ArrowUp size={12} />
+                          </PlannerActionButton>
+                          <PlannerActionButton label="Move down" disabled={!canMoveDown || plannerBusy !== null} onClick={() => moveItem(1)}>
+                            <ArrowDown size={12} />
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label="Edit"
+                            disabled={plannerBusy !== null}
+                            onClick={() => {
+                              setEditingItemId(block.id);
+                              setAddingItem(false);
+                              setPlannerForm({
+                                title: block.title,
+                                timeLabel: block.timeLabel ?? "",
+                                notes: block.notes ?? "",
+                                domain: block.domain,
+                                date: block.date || todayDate,
+                              });
+                            }}
+                          >
+                            <Pencil size={12} />
+                          </PlannerActionButton>
+                          <PlannerActionButton
+                            label="Remove"
+                            disabled={plannerBusy !== null}
+                            onClick={() =>
+                              void runPlanner(`user-del-${block.id}`, async () => {
+                                await plannerRequest("DELETE", undefined, block.id);
+                                if (editingItemId === block.id) setEditingItemId(null);
+                              })
+                            }
+                          >
+                            <Trash2 size={12} />
+                          </PlannerActionButton>
+                        </div>
+                        {isEditing ? (
+                          <PlannerItemForm
+                            form={plannerForm}
+                            onChange={setPlannerForm}
+                            busy={plannerBusy !== null}
+                            saveLabel="Save"
+                            onCancel={() => setEditingItemId(null)}
+                            onSave={() =>
+                              void runPlanner(`user-edit-${block.id}`, async () => {
+                                await plannerRequest("PATCH", {
+                                  id: block.id,
+                                  title: plannerForm.title,
+                                  domain: plannerForm.domain,
+                                  notes: plannerForm.notes || null,
+                                  timeLabel: plannerForm.timeLabel || null,
+                                  date: plannerForm.date || todayDate,
+                                });
+                                setEditingItemId(null);
+                              })
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                }
+
+                const block = item.block;
+                const isDone = completed.has(block.key);
+                const isSkipped = skipped.has(block.key);
+                const isFocus = block.key === "leverage";
+
+                return (
+                  <li key={block.key} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        aria-label={isDone ? "Mark not done" : "Mark done"}
+                        disabled={plannerBusy !== null}
+                        onClick={() =>
+                          void runPlanner(`sys-done-${block.key}`, async () => {
+                            await plannerRequest("PATCH", {
+                              action: "system",
+                              date: todayDate,
+                              blockKey: block.key,
+                              status: isDone ? "planned" : "done",
+                            });
+                          })
+                        }
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ${
+                          isDone
+                            ? "bg-teal-500/20 text-teal-700 ring-teal-400/40"
+                            : isSkipped
+                              ? "bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-[var(--muted)] ring-[var(--card-border)]"
+                              : isFocus
+                                ? "bg-[var(--accent)] text-white ring-[var(--accent)]"
+                                : "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
+                        }`}
+                      >
+                        {isDone ? <Check size={14} /> : item.blockIndex + 1}
+                      </button>
+                      {showConnector ? (
+                        <div className="w-px flex-1 min-h-[1.25rem] bg-[var(--card-border)] my-1" />
+                      ) : null}
+                    </div>
+                    <div
+                      className={`flex-1 pb-4 ${
+                        isSkipped ? "opacity-50" : ""
+                      } ${isFocus && !isDone && !isSkipped ? "rounded-xl bg-[var(--accent-soft)] px-3 py-2 -mt-1 ring-1 ring-[color-mix(in_srgb,var(--accent)_22%,transparent)]" : ""}`}
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className={`font-semibold text-[var(--ink)] ${isDone ? "line-through" : ""}`}>
+                          {block.label}
+                          {isFocus && !isDone ? (
+                            <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-[var(--accent-strong)]">
+                              Protect
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs font-medium tabular-nums text-[var(--muted)]">{block.time}</p>
+                      </div>
+                      <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.why}</p>
+                      <p className="text-xs text-[var(--muted)] mt-1 leading-snug">
+                        {block.priority} · {block.fit}
+                      </p>
+                      {isSkipped ? (
+                        <p className="text-xs text-[var(--muted)] mt-1">Skipped</p>
+                      ) : isDone ? (
+                        <p className="text-xs text-teal-700 dark:text-teal-300 mt-1">Done</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
+                          <ArrowUp size={12} />
+                        </PlannerActionButton>
+                        <PlannerActionButton label="Move down" disabled={!canMoveDown || plannerBusy !== null} onClick={() => moveItem(1)}>
+                          <ArrowDown size={12} />
+                        </PlannerActionButton>
+                        <PlannerActionButton
+                          label="Remove from today"
+                          disabled={plannerBusy !== null}
+                          onClick={() =>
+                            void runPlanner(`sys-hide-${block.key}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: todayDate,
+                                blockKey: block.key,
+                                status: "hidden",
+                              });
+                            })
+                          }
+                        >
+                          <X size={12} />
+                        </PlannerActionButton>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+
+            {addingItem ? (
+              <PlannerItemForm
+                form={plannerForm}
+                onChange={setPlannerForm}
+                busy={plannerBusy !== null}
+                saveLabel="Add to plan"
+                onCancel={() => setAddingItem(false)}
+                onSave={() =>
+                  void runPlanner("create", async () => {
+                    await plannerRequest("POST", {
+                      date: plannerForm.date || todayDate,
+                      title: plannerForm.title,
+                      domain: plannerForm.domain,
+                      notes: plannerForm.notes || null,
+                      timeLabel: plannerForm.timeLabel || null,
+                    });
+                    setAddingItem(false);
+                    setPlannerForm({
+                      title: "",
+                      timeLabel: "",
+                      notes: "",
+                      domain: "personal",
+                      date: todayDate,
+                    });
+                  })
+                }
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingItem(true);
+                  setEditingItemId(null);
+                  setPlannerForm({
+                    title: "",
+                    timeLabel: "",
+                    notes: "",
+                    domain: "personal",
+                    date: todayDate,
+                  });
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110"
+              >
+                <Plus size={14} />
+                Add item
+              </button>
+            )}
           </>
         )}
 
@@ -650,7 +1494,7 @@ export function OverviewHome({
         </div>
       </div>
 
-      <WeekAheadPlanner weekPlan={todayOverview?.weekPlan} onChanged={refreshPlanner} />
+      <WeekAhead weekPlan={todayOverview?.weekPlan} onChanged={refreshPlanner} />
 
       <button
         type="button"
