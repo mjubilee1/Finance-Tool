@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Mic, MicOff, Plus, X } from "lucide-react";
 import { readImageAsDataUrl } from "@/lib/chat-images";
+import { ContactMentionMenu } from "@/components/contact-mention-menu";
+import { useContactMention } from "@/hooks/use-contact-mention";
 
 type Props = {
   value: string;
@@ -34,6 +36,12 @@ export function ChatComposer({
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
+
+  const mention = useContactMention({
+    value,
+    onChange,
+    textareaRef,
+  });
 
   useEffect(() => {
     return () => {
@@ -194,17 +202,29 @@ export function ChatComposer({
     ? "Transcribing voice..."
     : isRecording
       ? "Listening..."
-      : "Ask your coach, paste a screenshot, or tap the mic";
+      : "Ask your coach, @tag a contact, paste a screenshot, or tap the mic";
 
   return (
     <div className="border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] p-2 sm:p-3">
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (mention.showMenu) return;
           if (canSend) onSubmit();
         }}
-        className="rounded-2xl ring-1 ring-[var(--card-border)] bg-[var(--card)] shadow-sm"
+        className="relative rounded-2xl ring-1 ring-[var(--card-border)] bg-[var(--card)] shadow-sm"
       >
+        {mention.showMenu ? (
+          <ContactMentionMenu
+            contacts={mention.suggestions}
+            activeIndex={mention.activeIndex}
+            onSelect={mention.applyMention}
+            onHover={mention.setActiveIndex}
+            emptyLabel={
+              mention.isLoadingContacts ? "Loading contacts..." : "No matching contacts"
+            }
+          />
+        ) : null}
         {pendingImages.length > 0 ? (
           <div className="flex flex-wrap gap-2 border-b border-[var(--card-border)] px-3 py-2.5">
             {pendingImages.map((image, index) => (
@@ -254,9 +274,16 @@ export function ChatComposer({
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              onChange(event.target.value);
+              mention.syncCursor(event.target.selectionStart, event.target.value);
+            }}
+            onClick={(event) => mention.syncCursor(event.currentTarget.selectionStart)}
+            onKeyUp={(event) => mention.syncCursor(event.currentTarget.selectionStart)}
+            onSelect={(event) => mention.syncCursor(event.currentTarget.selectionStart)}
             onPaste={handlePaste}
             onKeyDown={(event) => {
+              if (mention.onKeyDown(event)) return;
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 if (canSend) onSubmit();

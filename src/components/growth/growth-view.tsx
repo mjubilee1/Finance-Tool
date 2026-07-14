@@ -28,6 +28,7 @@ import {
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
 import { VoiceToTextButton } from "@/components/voice-to-text-button";
+import { ActivityTitleInput } from "@/components/growth/activity-title-input";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
 import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-notes";
 import { GOOD_WEEK_CHECKLIST } from "@/lib/life-os-north-star";
@@ -1323,21 +1324,12 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         </p>
         {showActivityForm ? (
           <form onSubmit={submitActivity} className="grid sm:grid-cols-2 gap-2 mb-4 p-3 rounded-xl bg-slate-50">
-            <div className="flex items-start gap-2 min-w-0 sm:col-span-2">
-              <textarea
-                required
-                className="app-input min-w-0 flex-1 px-3 py-2 text-sm min-h-[72px] resize-y"
-                placeholder="What did you do? e.g. Network mixer @Jane Smith — tap mic to speak…"
-                value={activityForm.title}
-                onChange={(e) => setActivityForm({ ...activityForm, title: e.target.value })}
-              />
-              <VoiceToTextButton
-                value={activityForm.title}
-                onChange={(title) => setActivityForm((prev) => ({ ...prev, title }))}
-                disabled={busy === "activity"}
-                aria-label="Speak activity"
-              />
-            </div>
+            <ActivityTitleInput
+              value={activityForm.title}
+              onChange={(title) => setActivityForm((prev) => ({ ...prev, title }))}
+              contacts={contacts}
+              disabled={busy === "activity"}
+            />
             <label className="block min-w-0">
               <span className="text-[11px] font-semibold text-slate-500">Domain</span>
               <select
