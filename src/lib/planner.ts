@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { GROWTH_DOMAINS } from "@/lib/growth-agent";
 import type { TodayPlanBlockKey } from "@/lib/today-plan";
 import { storeFinancialMemories } from "@/lib/financial-memory";
+import { buildLyftEarningsNote, getLyftWeekRange, parseLyftGrossEarnings } from "@/lib/lyft";
 
 export type PlannerItemStatus = "planned" | "done" | "skipped" | "hidden";
 
@@ -10,6 +11,8 @@ export type PlannerBlockOverride = {
   label?: string | null;
   timeLabel?: string | null;
   notes?: string | null;
+  /** Ephemeral — used when marking Lyft done; not persisted on the layout. */
+  lyftGrossEarnings?: number | null;
 };
 
 export type PlannerDayLayoutData = {
@@ -546,6 +549,13 @@ export async function setSystemBlockOverride(
   };
   if (patch.status === undefined && prev.status) nextOverride.status = prev.status;
 
+  // Don't persist one-off earnings amount on the layout override blob.
+  const lyftGrossEarnings =
+    typeof patch.lyftGrossEarnings === "number" && Number.isFinite(patch.lyftGrossEarnings)
+      ? patch.lyftGrossEarnings
+      : null;
+  delete nextOverride.lyftGrossEarnings;
+
   const overrides = { ...layout.overrides };
   for (const key of aliasKeys) {
     overrides[key] = nextOverride;
@@ -559,7 +569,10 @@ export async function setSystemBlockOverride(
   const todayKey = aliasKeys.find((key) => isPlannerSystemKey(key));
   if (todayKey && isPlannerSystemKey(todayKey)) {
     if (patch.status === "done" || patch.status === "skipped") {
-      await ensureSystemBlockActivity(userId, date, todayKey, patch.status, nextOverride);
+      await ensureSystemBlockActivity(userId, date, todayKey, patch.status, {
+        ...nextOverride,
+        lyftGrossEarnings,
+      });
     } else if (patch.status === "planned") {
       await clearSystemBlockActivity(userId, date, todayKey);
     }
@@ -653,10 +666,39 @@ async function ensureSystemBlockActivity(
     status === "skipped"
       ? `Skipped ${override.label?.trim() || meta.label}`
       : override.label?.trim() || meta.label;
-  const notes =
+  const baseNotes =
     status === "skipped"
       ? override.notes?.trim() || `Skipped from planner. planner:${blockKey}`
       : override.notes?.trim() || `Completed from planner. planner:${blockKey}`;
+
+  let notes = baseNotes;
+  if (
+    blockKey === "lyft" &&
+    status === "done" &&
+    typeof override.lyftGrossEarnings === "number" &&
+    Number.isFinite(override.lyftGrossEarnings) &&
+    override.lyftGrossEarnings >= 0
+  ) {
+    const { startIso, endIso } = getLyftWeekRange(date);
+    const weekActivities = await prisma.growthActivity.findMany({
+      where: {
+        userId,
+        category: "lyft",
+        date: { gte: startIso, lte: endIso },
+        ...(existing ? { id: { not: existing.id } } : {}),
+      },
+      select: { date: true, category: true, title: true, notes: true },
+    });
+    const existingWeekGross = weekActivities.reduce(
+      (sum, activity) => sum + (parseLyftGrossEarnings(activity) ?? 0),
+      0,
+    );
+    notes = buildLyftEarningsNote({
+      grossEarnings: override.lyftGrossEarnings,
+      existingWeekGross,
+      baseNote: baseNotes,
+    });
+  }
 
   if (existing) {
     await prisma.growthActivity.update({

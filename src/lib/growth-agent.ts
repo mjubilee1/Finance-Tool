@@ -105,7 +105,7 @@ Active-context rules:
 - Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
 - Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person; Mon–Wed often already include ~5am + ~2hr morning Lyft before commute.
 - Name when an action fits (desk lunch message, Thu deep block, evening/weekend Lyft or meet).
-- Often weigh: drive Lyft today (cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee → Capital One surplus) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost — e.g. "skip grinding 6 Lyft hours for ~$100 if a network/promotion block compounds more; cover the fee floor first, then protect leverage."
+- Often weigh: drive Lyft today (cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee → Capital One surplus toward $200–$400/week / $800–$1600/month profit) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost — e.g. "skip grinding 6 Lyft hours for ~$100 if a network/promotion block compounds more; cover the fee floor first, then protect leverage. If weekly profit is already hit, take the break."
 - Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
 - Default discretionary target ~$40 most days (food/fun; gas/Lyft outside); celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.

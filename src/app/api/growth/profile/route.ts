@@ -43,6 +43,8 @@ export async function PATCH(request: Request) {
       targetWeight: optionalNumber(body.targetWeight),
       fitnessGoal: optionalString(body.fitnessGoal),
       lyftHourlyNet: optionalNumber(body.lyftHourlyNet),
+      lyftWeeklyProfitTarget: optionalNumber(body.lyftWeeklyProfitTarget),
+      lyftMonthlyProfitTarget: optionalNumber(body.lyftMonthlyProfitTarget),
       joyOptions: joyOptionsFrom(body.joyOptions),
       notes: optionalString(body.notes),
     };

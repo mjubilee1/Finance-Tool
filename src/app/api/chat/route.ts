@@ -22,6 +22,7 @@ import {
 } from "@/lib/today-brief";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { loadUserPlanActivitiesBetween } from "@/lib/planner";
+import { loadLyftPaceForUser } from "@/lib/lyft-pace";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -636,10 +637,14 @@ export async function POST(req: Request) {
     })();
 
     const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const [todayBrief, weekCalendarEvents, userPlanActivities] = await Promise.all([
+    const [todayBrief, weekCalendarEvents, userPlanActivities, lyftPace] = await Promise.all([
       buildTodayBriefContext(session.user.id),
       loadCoachWeekCalendarEvents(session.user.id),
       loadCoachWeekUserPlanActivities(session.user.id),
+      loadLyftPaceForUser(session.user.id).catch((error) => {
+        console.error("Lyft pace failed while building coach prompt:", error);
+        return null;
+      }),
     ]);
     const weeklyPlan = buildWeeklyOperatingPlan({
       start: DateTime.local(),
@@ -652,6 +657,7 @@ export async function POST(req: Request) {
       userName: session.user.name ?? null,
       todayBrief,
       weeklyPlan,
+      lyftPace,
       calendarContext: {
         nowIso: DateTime.local().setZone(DEFAULT_CALENDAR_TIME_ZONE).toISO() ?? new Date().toISOString(),
         timeZone: DEFAULT_CALENDAR_TIME_ZONE,

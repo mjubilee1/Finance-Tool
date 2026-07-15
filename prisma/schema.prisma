@@ -427,19 +427,23 @@ model GrowthOpportunity {
 }
 
 model LifeLeverageProfile {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  promotionTarget       String?
-  promotionDeadline     String?
-  promotionUpsideAnnual Float?
-  currentWeight         Float?
-  targetWeight          Float?
-  fitnessGoal           String?
-  lyftHourlyNet         Float?
-  joyOptions            String[]
-  notes                 String?  @db.Text
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  promotionTarget          String?
+  promotionDeadline        String?
+  promotionUpsideAnnual    Float?
+  currentWeight            Float?
+  targetWeight             Float?
+  fitnessGoal              String?
+  lyftHourlyNet            Float?
+  /// Weekly Lyft profit goal after the $334 Hertz fee (default band $200–$400).
+  lyftWeeklyProfitTarget   Float?
+  /// Monthly Lyft profit goal after fees (default band $800–$1600).
+  lyftMonthlyProfitTarget  Float?
+  joyOptions               String[]
+  notes                    String?  @db.Text
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
