@@ -17,7 +17,7 @@ export type PlannerDayLayoutData = {
   overrides: Record<string, PlannerBlockOverride>;
 };
 
-export const PLANNER_SYSTEM_KEYS = ["lyft", "gym", "leverage", "joy"] as const;
+export const PLANNER_SYSTEM_KEYS = ["lyft", "work", "gym", "leverage", "joy"] as const;
 export type PlannerSystemKey = (typeof PLANNER_SYSTEM_KEYS)[number];
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,6 +40,7 @@ export function plannerOverrideAliasKeys(date: string, blockKey: string): string
 
   const todayToWeek: Record<PlannerSystemKey, string[]> = {
     lyft: [`${date}-lyft`],
+    work: [`${date}-work`],
     gym: [`${date}-training`],
     leverage: [`${date}-promotion`],
     joy: [`${date}-evening`, `${date}-social`],
@@ -50,6 +51,7 @@ export function plannerOverrideAliasKeys(date: string, blockKey: string): string
   }
 
   if (blockKey === `${date}-lyft` || blockKey.endsWith("-lyft")) keys.add("lyft");
+  if (blockKey === `${date}-work` || blockKey.endsWith("-work")) keys.add("work");
   if (blockKey === `${date}-training` || blockKey.endsWith("-training")) keys.add("gym");
   if (blockKey === `${date}-promotion` || blockKey.endsWith("-promotion")) keys.add("leverage");
   if (
@@ -624,6 +626,7 @@ async function ensureSystemBlockActivity(
     { domain: string; category: string; label: string; leverage: string }
   > = {
     lyft: { domain: "financial", category: "lyft", label: "Lyft", leverage: "immediate_income" },
+    work: { domain: "career", category: "work", label: "9-5 work", leverage: "immediate_income" },
     gym: { domain: "fitness", category: "gym", label: "Gym", leverage: "long_term_leverage" },
     leverage: {
       domain: "career",

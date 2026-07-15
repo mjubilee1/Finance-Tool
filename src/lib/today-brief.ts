@@ -144,6 +144,9 @@ function blockKeyFromActivity(
 ): TodayPlanBlockKey | null {
   const haystack = `${activity.title} ${activity.notes ?? ""} ${activity.category}`.toLowerCase();
   if (activity.category === "lyft" || haystack.includes("lyft")) return "lyft";
+  if (activity.category === "work" || /\b9-5\b|\b9–5\b|\bw2\b|\bjob day\b/.test(haystack)) {
+    return "work";
+  }
   if (activity.category === "gym" || haystack.includes("gym")) return "gym";
   if (activity.category === "joy" || haystack.includes("joy")) return "joy";
   if (
@@ -224,7 +227,9 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
   }
 
   for (const [key, override] of Object.entries(plannerLayout.overrides)) {
-    if (key !== "lyft" && key !== "gym" && key !== "leverage" && key !== "joy") continue;
+    if (key !== "lyft" && key !== "work" && key !== "gym" && key !== "leverage" && key !== "joy") {
+      continue;
+    }
     const blockKey = key as TodayPlanBlockKey;
     if (override.status === "done") {
       completedBlockKeys.add(blockKey);
@@ -239,7 +244,7 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
   }
 
   // Also pick up week-template aliases (e.g. 2026-07-14-lyft) onto today keys.
-  for (const key of ["lyft", "gym", "leverage", "joy"] as const) {
+  for (const key of ["lyft", "work", "gym", "leverage", "joy"] as const) {
     const override = resolvePlannerOverride(plannerLayout.overrides, today, key);
     if (!override?.status) continue;
     if (override.status === "done") {
@@ -364,7 +369,7 @@ export async function applyTodayUpdates(
   }
 
   if (updates.skipPlanBlock) {
-    const allowed: TodayPlanBlockKey[] = ["lyft", "gym", "leverage", "joy"];
+    const allowed: TodayPlanBlockKey[] = ["lyft", "work", "gym", "leverage", "joy"];
     if (allowed.includes(updates.skipPlanBlock)) {
       const block = planBlockDefaults(updates.skipPlanBlock, todayBrief.plan);
       const reason = updates.skipReason?.trim() || "User reported skipping this planned block.";

@@ -36,7 +36,7 @@ Rules:
 - Revise the REST OF TODAY — what still matters given the skip.
 - If they skipped morning Lyft on an office day, weigh evening Lyft vs leverage without nagging.
 - Populate todayUpdates so the app can log it:
-  - skipPlanBlock: "lyft" | "gym" | "leverage" | "joy" when they skipped a default block
+  - skipPlanBlock: "lyft" | "work" | "gym" | "leverage" | "joy" when they skipped a default block
   - skipReason: short plain-English reason
   - regenerateTodaysMove: true when the highest-leverage move should change for the rest of today
   - markMoveStatus: "skipped" only if they are skipping the current growth move itself
@@ -230,7 +230,7 @@ Return JSON only with this exact shape:
 
 todayUpdates rules:
 - Use null/false defaults when the user is not changing today's plan.
-- skipPlanBlock must be one of: "lyft", "gym", "leverage", "joy", or null.
+- skipPlanBlock must be one of: "lyft", "work", "gym", "leverage", "joy", or null.
 - markMoveStatus must be "skipped", "done", or null.
 - logActivity when set: { "title", "domain", "category", "date", "leverage", "minutesSpent", "notes" }
 - Use @Name in logActivity.title or notes to link a contact (e.g. "Coffee with @Jane Smith").

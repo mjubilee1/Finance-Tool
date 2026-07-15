@@ -450,8 +450,9 @@ function formatPlanRole(role: string) {
 
 function planBlockSortKey(block: PlanBlock, dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined) {
   if (block.key === "lyft") return dayShape === "office" ? 7.5 : 16;
+  if (block.key === "work") return 9;
   if (block.key === "gym") return dayShape === "weekend" ? 11 : 17.5;
-  if (block.key === "leverage") return dayShape === "office" ? 13 : 10;
+  if (block.key === "leverage") return dayShape === "office" ? 18 : 10;
   if (block.key === "joy") return dayShape === "weekend" ? 16 : 20;
   return 23;
 }
@@ -1560,6 +1561,11 @@ export function OverviewHome({
                           {isFocus && !isDone ? (
                             <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-[var(--accent-strong)]">
                               Protect
+                            </span>
+                          ) : null}
+                          {block.key === "work" && !isDone && !isSkipped ? (
+                            <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-[var(--muted)]">
+                              Locked
                             </span>
                           ) : null}
                         </p>
