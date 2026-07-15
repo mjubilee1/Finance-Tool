@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
+import { calendarDateTime, userNow } from "@/lib/user-timezone";
 import { dayShapeFor, type DayShape } from "@/lib/joy-ideas-shared";
 import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 import {
@@ -85,8 +86,8 @@ const DRESS_RE = /\b(dress|outfit|attire|white|black tie|formal|casual)\b/i;
 function formatEventTime(event: GoogleCalendarEvent) {
   if (event.allDay) return "All day";
 
-  const start = DateTime.fromISO(event.start);
-  const end = event.end ? DateTime.fromISO(event.end) : null;
+  const start = calendarDateTime(event.start);
+  const end = event.end ? calendarDateTime(event.end) : null;
   if (!start.isValid) return "Time TBD";
 
   const startLabel = start.toLocaleString(DateTime.TIME_SIMPLE);
@@ -97,14 +98,14 @@ function formatEventTime(event: GoogleCalendarEvent) {
 function eventSortKey(event: GoogleCalendarEvent) {
   if (event.allDay) return 0.5;
 
-  const start = DateTime.fromISO(event.start);
+  const start = calendarDateTime(event.start);
   if (!start.isValid) return 23.9;
 
   return start.hour + start.minute / 60;
 }
 
 function eventDateKey(event: GoogleCalendarEvent) {
-  const start = DateTime.fromISO(event.start);
+  const start = calendarDateTime(event.start);
   return start.isValid ? start.toISODate() : null;
 }
 
@@ -116,7 +117,7 @@ function isPrepWorthyEvent(event: GoogleCalendarEvent) {
 function eventPrepBlock(event: GoogleCalendarEvent): WeeklyOperatingBlock | null {
   if (!isPrepWorthyEvent(event)) return null;
 
-  const eventStart = DateTime.fromISO(event.start);
+  const eventStart = calendarDateTime(event.start);
   const sortKey = eventStart.isValid ? Math.max(0.25, eventSortKey(event) - 1.5) : 17.5;
   const hasDressSignal = DRESS_RE.test(event.title);
   const prepParts = [
@@ -363,7 +364,7 @@ function valueFocusFor(shape: DayShape) {
 export function buildWeeklyOperatingPlan(
   options: BuildWeeklyOperatingPlanOptions = {},
 ): WeeklyOperatingPlan {
-  const start = (options.start ?? DateTime.local()).startOf("day");
+  const start = (options.start ?? userNow()).startOf("day");
   const end = start.plus({ days: 6 });
   const eventsByDate = new Map<string, GoogleCalendarEvent[]>();
 
@@ -429,7 +430,7 @@ export function buildWeeklyOperatingPlan(
   });
 
   return {
-    generatedAt: DateTime.local().toISO() ?? new Date().toISOString(),
+    generatedAt: userNow().toISO() ?? new Date().toISOString(),
     startDate: start.toISODate()!,
     endDate: end.toISODate()!,
     days,

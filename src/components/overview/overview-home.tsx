@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
+import { calendarDateTime } from "@/lib/user-timezone";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
 import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint } from "@/lib/cash-flow";
@@ -425,8 +426,8 @@ function PlannerItemForm({
 function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]) {
   if (event.allDay) return "All day";
 
-  const start = DateTime.fromISO(event.start);
-  const end = event.end ? DateTime.fromISO(event.end) : null;
+  const start = calendarDateTime(event.start);
+  const end = event.end ? calendarDateTime(event.end) : null;
   if (!start.isValid) return "Time TBD";
 
   const startLabel = start.toLocaleString(DateTime.TIME_SIMPLE);
@@ -437,7 +438,7 @@ function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]
 function calendarEventSortKey(event: CalendarEvent) {
   if (event.allDay) return 0.5;
 
-  const start = DateTime.fromISO(event.start);
+  const start = calendarDateTime(event.start);
   if (!start.isValid) return 23.9;
 
   return start.hour + start.minute / 60;
