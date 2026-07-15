@@ -4,10 +4,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
+import { calendarDateTime } from "@/lib/user-timezone";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
-import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint } from "@/lib/cash-flow";
+import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint } from "@/lib/cash-flow";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
+import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
 import { LyftPaceCard, type LyftPaceSnapshot } from "./lyft-pace-card";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -491,8 +493,8 @@ function PlannerItemForm({
 function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]) {
   if (event.allDay) return "All day";
 
-  const start = DateTime.fromISO(event.start);
-  const end = event.end ? DateTime.fromISO(event.end) : null;
+  const start = calendarDateTime(event.start);
+  const end = event.end ? calendarDateTime(event.end) : null;
   if (!start.isValid) return "Time TBD";
 
   const startLabel = start.toLocaleString(DateTime.TIME_SIMPLE);
@@ -503,7 +505,7 @@ function formatCalendarEventTime(event: GoogleCalendarOverview["events"][number]
 function calendarEventSortKey(event: CalendarEvent) {
   if (event.allDay) return 0.5;
 
-  const start = DateTime.fromISO(event.start);
+  const start = calendarDateTime(event.start);
   if (!start.isValid) return 23.9;
 
   return start.hour + start.minute / 60;
@@ -1128,6 +1130,7 @@ type Props = {
   nextBriefLabel: string | null;
   refreshHours?: number;
   dailySpendSeries: DailySpendPoint[];
+  monthlyCashFlowSeries?: MonthlyCashFlowPoint[];
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
@@ -1149,6 +1152,7 @@ export function OverviewHome({
   nextBriefLabel,
   refreshHours,
   dailySpendSeries,
+  monthlyCashFlowSeries = [],
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
@@ -1386,6 +1390,10 @@ export function OverviewHome({
           </p>
         </div>
       </div>
+
+      {monthlyCashFlowSeries.length > 0 ? (
+        <MonthlyCashFlowChart months={monthlyCashFlowSeries} />
+      ) : null}
 
       {/* Today's schedule — main stage */}
       <div

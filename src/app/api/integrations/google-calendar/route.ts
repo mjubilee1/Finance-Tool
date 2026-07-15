@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { userNow } from "@/lib/user-timezone";
 import {
   disconnectGoogleCalendar,
   fetchUpcomingGoogleCalendarEvents,
@@ -14,7 +15,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const now = DateTime.local();
+  const now = userNow();
   const endOfDay = now.endOf("day");
 
   try {

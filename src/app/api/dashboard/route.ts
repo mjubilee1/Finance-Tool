@@ -8,6 +8,7 @@ import { getBriefRefreshStatus } from "@/lib/daily-snapshot";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import {
   buildDailySpendSeries,
+  buildMonthlyCashFlowSeries,
   calculateTodayCashFlow,
   calculateWeeklyCashFlow,
   calculateNetDailyAverage,
@@ -30,6 +31,7 @@ export async function GET() {
     const userId = session.user.id;
     const twoWeeksAgo = DateTime.local().minus({ days: 14 }).toISODate();
     const thirtyDaysAgo = DateTime.local().minus({ days: 29 }).toISODate();
+    const sixMonthsAgo = DateTime.local().minus({ months: 6 }).startOf("month").toISODate();
     const { dailyBalanceCallLimit } = getPlaidConfig();
 
     const [
@@ -37,6 +39,7 @@ export async function GET() {
       transactions,
       recentTransactions,
       chartTransactions,
+      monthlyTransactions,
       snapshots,
       rawAccounts,
       plaidItems,
@@ -65,6 +68,16 @@ export async function GET() {
           OR: [
             { date: { gte: thirtyDaysAgo ?? undefined } },
             { authorizedDate: { gte: thirtyDaysAgo ?? undefined } },
+          ],
+        },
+        orderBy: { date: "desc" },
+      }),
+      prisma.transaction.findMany({
+        where: {
+          userId,
+          OR: [
+            { date: { gte: sixMonthsAgo ?? undefined } },
+            { authorizedDate: { gte: sixMonthsAgo ?? undefined } },
           ],
         },
         orderBy: { date: "desc" },
@@ -104,6 +117,7 @@ export async function GET() {
     const focusAccounts = getFocusAccounts(accounts);
     const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
     const focusTransactionsAll = filterTransactionsByFocus(transactions, accounts);
+    const focusMonthlyTransactions = filterTransactionsByFocus(monthlyTransactions, accounts);
     const spendingTransactions = filterTransactionsForDailySpend(recentTransactions, accounts);
     const chartSpendTransactions = filterTransactionsForDailySpend(chartTransactions, accounts);
 
@@ -129,6 +143,7 @@ export async function GET() {
     });
 
     const dailySpendSeries = buildDailySpendSeries(chartSpendTransactions, 30, todayKey);
+    const monthlyCashFlowSeries = buildMonthlyCashFlowSeries(focusMonthlyTransactions, 6, todayKey);
 
     return NextResponse.json({
       transactions:
@@ -137,6 +152,7 @@ export async function GET() {
           : transactions,
       snapshots: snapshots.reverse(),
       dailySpendSeries,
+      monthlyCashFlowSeries,
       aiInsight,
       accounts,
       goals,

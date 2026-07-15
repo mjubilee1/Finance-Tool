@@ -12,6 +12,7 @@ import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { getPlannerDayLayouts, loadUserPlanActivitiesBetween } from "@/lib/planner";
 import { loadLyftPaceForUser } from "@/lib/lyft-pace";
 import { DateTime } from "luxon";
+import { calendarDateTime, userNow } from "@/lib/user-timezone";
 
 async function loadWeekUserPlanActivities(userId: string, start: DateTime) {
   const startDate = start.toISODate()!;
@@ -37,7 +38,7 @@ async function loadWeekCalendar(userId: string, now: DateTime) {
 }
 
 function isTodayEvent(event: GoogleCalendarEvent, now: DateTime) {
-  const start = DateTime.fromISO(event.start);
+  const start = calendarDateTime(event.start);
   return start.isValid && start.hasSame(now, "day");
 }
 
@@ -48,7 +49,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const now = DateTime.local();
+    const now = userNow();
     const today = now.toISODate()!;
     const weekEnd = now.plus({ days: 6 }).toISODate()!;
     const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate, lyftPace] =
