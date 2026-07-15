@@ -22,6 +22,7 @@ import {
 } from "@/lib/today-brief";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { loadUserPlanActivitiesBetween } from "@/lib/planner";
+import { calendarDateTime, USER_TIME_ZONE, userNow } from "@/lib/user-timezone";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -99,7 +100,6 @@ type ChatResponsePayload = {
 
 const MAX_CONTEXT_MESSAGES = 10;
 const MAX_HISTORY_MESSAGES = 50;
-const DEFAULT_CALENDAR_TIME_ZONE = "America/New_York";
 
 /** Vercel / serverless: allow vision + calendar coach turns enough time to finish. */
 export const maxDuration = 60;
@@ -155,7 +155,7 @@ function parseCalendarEventRequest(value: unknown): CalendarEventRequest | null 
     timeZone:
       typeof candidate.timeZone === "string" && candidate.timeZone.trim()
         ? candidate.timeZone.trim()
-        : DEFAULT_CALENDAR_TIME_ZONE,
+        : USER_TIME_ZONE,
     location:
       typeof candidate.location === "string" && candidate.location.trim()
         ? candidate.location.trim()
@@ -207,14 +207,14 @@ function buildCalendarEventInput(request: CalendarEventRequest): CreateGoogleCal
 
 function describeCalendarEvent(event: GoogleCalendarEvent) {
   const start = event.allDay
-    ? DateTime.fromISO(event.start).toLocaleString(DateTime.DATE_MED)
-    : DateTime.fromISO(event.start, { setZone: true }).toLocaleString(DateTime.DATETIME_MED);
+    ? calendarDateTime(event.start).toLocaleString(DateTime.DATE_MED)
+    : calendarDateTime(event.start).toLocaleString(DateTime.DATETIME_MED);
   const label = start ? `${event.title} (${start})` : event.title;
   return event.htmlLink ? `${label}: ${event.htmlLink}` : label;
 }
 
 async function loadCoachWeekCalendarEvents(userId: string) {
-  const now = DateTime.local();
+  const now = userNow();
 
   try {
     const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
@@ -230,7 +230,7 @@ async function loadCoachWeekCalendarEvents(userId: string) {
 }
 
 async function loadCoachWeekUserPlanActivities(userId: string) {
-  const now = DateTime.local();
+  const now = userNow();
   const startDate = now.toISODate()!;
   const endDate = now.plus({ days: 6 }).toISODate()!;
   return loadUserPlanActivitiesBetween(userId, startDate, endDate);
@@ -642,7 +642,7 @@ export async function POST(req: Request) {
       loadCoachWeekUserPlanActivities(session.user.id),
     ]);
     const weeklyPlan = buildWeeklyOperatingPlan({
-      start: DateTime.local(),
+      start: userNow(),
       calendarEvents: weekCalendarEvents,
       userPlanActivities,
     });
@@ -653,8 +653,8 @@ export async function POST(req: Request) {
       todayBrief,
       weeklyPlan,
       calendarContext: {
-        nowIso: DateTime.local().setZone(DEFAULT_CALENDAR_TIME_ZONE).toISO() ?? new Date().toISOString(),
-        timeZone: DEFAULT_CALENDAR_TIME_ZONE,
+        nowIso: userNow().toISO() ?? new Date().toISOString(),
+        timeZone: USER_TIME_ZONE,
       },
       financePack: {
         accounts: accounts.map((a) => ({

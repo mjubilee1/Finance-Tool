@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import { prisma } from "@/lib/prisma";
 import type { GrowthDomain } from "@/lib/growth-agent";
+import { calendarDateTime, userNow } from "@/lib/user-timezone";
 import {
   linkActivityMentions,
   parseAtMentions,
@@ -79,14 +80,14 @@ function classifyCalendarEvent(title: string, description: string | null): Class
 }
 
 function eventDateIso(event: GoogleCalendarEvent) {
-  const start = DateTime.fromISO(event.start);
-  return start.isValid ? start.toISODate()! : DateTime.local().toISODate()!;
+  const start = calendarDateTime(event.start);
+  return start.isValid ? start.toISODate()! : userNow().toISODate()!;
 }
 
 function eventDurationMinutes(event: GoogleCalendarEvent) {
   if (!event.end) return null;
-  const start = DateTime.fromISO(event.start);
-  const end = DateTime.fromISO(event.end);
+  const start = calendarDateTime(event.start);
+  const end = calendarDateTime(event.end);
   if (!start.isValid || !end.isValid) return null;
   const minutes = Math.round(end.diff(start, "minutes").minutes);
   if (!Number.isFinite(minutes) || minutes <= 0) return null;
@@ -95,11 +96,11 @@ function eventDurationMinutes(event: GoogleCalendarEvent) {
 
 function isEventComplete(event: GoogleCalendarEvent, now: DateTime) {
   if (event.allDay) {
-    const day = DateTime.fromISO(event.start);
+    const day = calendarDateTime(event.start);
     return day.isValid && day.startOf("day") < now.startOf("day");
   }
 
-  const end = event.end ? DateTime.fromISO(event.end) : DateTime.fromISO(event.start);
+  const end = event.end ? calendarDateTime(event.end) : calendarDateTime(event.start);
   return end.isValid && end <= now;
 }
 
@@ -133,7 +134,7 @@ export async function syncCalendarEventsToGrowth(
   options?: { daysBack?: number },
 ) {
   const daysBack = options?.daysBack ?? 14;
-  const now = DateTime.local();
+  const now = userNow();
   const timeMin = now.minus({ days: daysBack }).startOf("day");
 
   let calendar;
@@ -214,7 +215,7 @@ export async function syncCalendarEventsToGrowth(
 }
 
 export async function getRecentCalendarContextForGrowth(userId: string) {
-  const now = DateTime.local();
+  const now = userNow();
   const pastStart = now.minus({ days: 7 }).startOf("day");
   const futureEnd = now.plus({ days: 7 }).endOf("day");
 
