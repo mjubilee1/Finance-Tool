@@ -38,6 +38,16 @@ export type WeekDaySummary = {
   isFuture: boolean;
 };
 
+export type MonthlyCashFlowPoint = {
+  month: string;
+  label: string;
+  income: number;
+  spent: number;
+  net: number;
+  isCurrentMonth: boolean;
+  isPartial: boolean;
+};
+
 export type WeeklyCashFlow = {
   days: WeekDaySummary[];
   weekSpent: number;
@@ -175,6 +185,61 @@ function topAmounts(map: Map<string, number>, limit: number): DailySpendBreakdow
     .map(([label, amount]) => ({ label, amount: roundCurrency(amount) }))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, limit);
+}
+
+/** Last N calendar months of actual income, spend, and net (not projections). */
+export function buildMonthlyCashFlowSeries(
+  transactions: CashFlowTransaction[],
+  months = 6,
+  referenceDate?: string,
+): MonthlyCashFlowPoint[] {
+  const today = referenceDate
+    ? DateTime.fromISO(referenceDate).startOf("day")
+    : DateTime.local().startOf("day");
+  const currentMonthKey = today.toFormat("yyyy-MM");
+  const startMonth = today.startOf("month").minus({ months: months - 1 });
+
+  const byMonth = new Map<string, { income: number; spent: number }>();
+  for (let i = 0; i < months; i++) {
+    const month = startMonth.plus({ months: i });
+    const key = month.toFormat("yyyy-MM");
+    byMonth.set(key, { income: 0, spent: 0 });
+  }
+
+  for (const transaction of transactions) {
+    if (isTransfer(transaction)) continue;
+
+    const activityDate = getTransactionActivityDate(transaction);
+    const monthKey = DateTime.fromISO(activityDate).toFormat("yyyy-MM");
+    const bucket = byMonth.get(monthKey);
+    if (!bucket) continue;
+
+    const isCurrentMonth = monthKey === currentMonthKey;
+    if (!isCurrentMonth && transaction.pending) continue;
+
+    if (transaction.amount > 0) {
+      bucket.spent += transaction.amount;
+    } else if (transaction.amount < 0) {
+      bucket.income += Math.abs(transaction.amount);
+    }
+  }
+
+  return Array.from(byMonth.entries()).map(([month, totals]) => {
+    const monthDate = DateTime.fromFormat(month, "yyyy-MM");
+    const income = roundCurrency(totals.income);
+    const spent = roundCurrency(totals.spent);
+    const isCurrentMonth = month === currentMonthKey;
+
+    return {
+      month,
+      label: monthDate.toFormat("MMM"),
+      income,
+      spent,
+      net: roundCurrency(income - spent),
+      isCurrentMonth,
+      isPartial: isCurrentMonth,
+    };
+  });
 }
 
 /** Last N days of spending from transactions (not snapshot rows). */

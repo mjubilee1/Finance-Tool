@@ -6,8 +6,9 @@ import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
-import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint } from "@/lib/cash-flow";
+import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint } from "@/lib/cash-flow";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
+import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
@@ -986,6 +987,7 @@ type Props = {
   nextBriefLabel: string | null;
   refreshHours?: number;
   dailySpendSeries: DailySpendPoint[];
+  monthlyCashFlowSeries?: MonthlyCashFlowPoint[];
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
@@ -1007,6 +1009,7 @@ export function OverviewHome({
   nextBriefLabel,
   refreshHours,
   dailySpendSeries,
+  monthlyCashFlowSeries = [],
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
@@ -1236,6 +1239,10 @@ export function OverviewHome({
           </p>
         </div>
       </div>
+
+      {monthlyCashFlowSeries.length > 0 ? (
+        <MonthlyCashFlowChart months={monthlyCashFlowSeries} />
+      ) : null}
 
       {/* Today's schedule — main stage */}
       <div className="rounded-2xl bg-[var(--card-solid)] p-5 md:p-6 ring-1 ring-[var(--card-border)]">
