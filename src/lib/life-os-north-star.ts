@@ -32,7 +32,8 @@ export const GOOD_WEEK_CHECKLIST: GoodWeekCheckItem[] = [
   {
     id: "lyft",
     label: "Lyft math respected",
-    detail: "Weekly Hertz/Lyft fee covered before extra low-ROI grind; leverage traded only on purpose.",
+    detail:
+      "Weekly Hertz/Lyft fee covered before extra low-ROI grind; protect $200–$400/week ($800–$1600/mo) profit band; leverage traded only on purpose when ahead.",
   },
   {
     id: "floor",

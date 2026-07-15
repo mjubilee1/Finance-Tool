@@ -108,7 +108,7 @@ Coaching rules from this schedule:
   },
   {
     title: "Car / Transportation Context",
-    content: `My personal car was effectively paid off / settled — no normal car payment. Liability/non-owner insurance around $120/month. For Lyft I use a Hertz/Lyft rental: I pay a weekly program fee before I start keeping meaningful profit, then Lyft payouts land in Capital One. The AI should track whether Lyft is truly profitable after: weekly rental/program fee, gas, insurance, fees, tickets, time spent driving. When recommending Lyft, say whether today's hours are mainly covering the weekly fee floor or producing surplus toward goals.`
+    content: `My personal car was effectively paid off / settled — no normal car payment. Liability/non-owner insurance around $120/month. For Lyft I use a Hertz/Lyft rental: weekly program fee is about $334/week and must be covered before Lyft is profitable. Profit goals after fee: roughly $200–$400/week ($800–$1600/month) into Capital One. Track daily hit/miss against that pace. When I am ahead of the weekly profit band, say it is fine to take a break and protect leverage; when behind, tell me to make the money back. Lyft payouts land in Capital One. Recommend Lyft by whether today's hours cover the fee floor or produce surplus toward those goals.`
   },
   {
     title: "Startup / Career Context",

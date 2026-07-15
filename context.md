@@ -51,7 +51,7 @@ Weekly review scores the week against this checklist (not one perfect day):
 - **Body fed the system** — gym/training 2–3×; energy for desk and leverage work
 - **Network warmed** — at least one follow-up, note, or outreach with connection equity
 - **Cash rhythm held** — ~$40 most days OR blowouts earned after solid days
-- **Lyft math respected** — weekly fee covered before extra low-ROI grind
+- **Lyft math respected** — weekly fee covered before extra low-ROI grind; daily/weekly profit pace ($200–$400/wk → $800–$1600/mo) guides drive vs break
 - **Financial floor intact** — bills, buffer, debt move when cash allowed
 - **Joy intentional** — rest and social chosen and capped; not doomscroll/drain nights
 - **System remembers** — activities, spends, contacts logged for sharper next week
@@ -128,6 +128,8 @@ When modeling features, allocations, or coach advice:
 - Mortgage cadence: due around the **1st of each month** (roughly $2,659; e.g. in mid-July the next mortgage date is Aug 1)
 - Lyft / gig income → Capital One
 - Lyft has a **$334/week program/rental fee** that must be covered before the week is profitable
+- Lyft **profit goals** (after fee): **$200–$400/week** → **$800–$1600/month** into Capital One; track daily hit/miss against that pace
+- When ahead of the weekly profit band, Coach should say it's fine to take a break / protect leverage; when behind, say to make the money back
 - Goals and plans should be future-proofed against the account that actually holds that money
 - Daily tradeoff often: drive Lyft today vs higher-leverage career/build/network work
 - Typical schedule: Mon–Wed office (early Lyft ~2hr then commute; desk-only mid-day), Thu–Fri WFH (better for deep work / in-person)

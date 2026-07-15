@@ -1,5 +1,11 @@
 import { DateTime } from "luxon";
-import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
+import {
+  LYFT_MONTHLY_PROFIT_GOAL_MAX,
+  LYFT_MONTHLY_PROFIT_GOAL_MIN,
+  LYFT_WEEKLY_PROGRAM_FEE_LABEL,
+  LYFT_WEEKLY_PROFIT_GOAL_MAX,
+  LYFT_WEEKLY_PROFIT_GOAL_MIN,
+} from "@/lib/lyft";
 
 export const REAL_LIFE_FINANCE_CATEGORIES = [
   "mortgage",
@@ -101,7 +107,7 @@ KNOWN CASH SCHEDULE:
 - Upcoming Fridays: ${upcomingPaydays.join(", ") || "none listed"}.
 - Fridays still landing on/before next mortgage (${nextMortgageDue}): ${checksBeforeMortgage} check(s) — ${paydaysBeforeMortgage.join(", ") || "none"} — about $${incomeBeforeMortgage.toFixed(2)} of W2 inflow before that mortgage if the pattern holds.
 - Mortgage cadence: due around the 1st; next known due: ${nextMortgageDue}. Rough amount ~$2,659/month.
-- Lyft / gig income routes to Capital One. The Hertz/Lyft program fee is ${LYFT_WEEKLY_PROGRAM_FEE_LABEL}; gross Lyft below that is fee coverage, not profit. Count only surplus above the fee as Lyft profit for weekly goals, reserves, or debt decisions.
+- Lyft / gig income routes to Capital One. The Hertz/Lyft program fee is ${LYFT_WEEKLY_PROGRAM_FEE_LABEL}; gross Lyft below that is fee coverage, not profit. Count only surplus above the fee as Lyft profit for weekly goals, reserves, or debt decisions. Target band: $${LYFT_WEEKLY_PROFIT_GOAL_MIN}–$${LYFT_WEEKLY_PROFIT_GOAL_MAX}/week profit (~$${LYFT_MONTHLY_PROFIT_GOAL_MIN}–$${LYFT_MONTHLY_PROFIT_GOAL_MAX}/month).
 - Treat live bank transactions and explicit memories as stronger than these defaults if they disagree.
 - When deciding hold cash vs pay extra debt: use spendable/available cash, plus the REMAINING Friday checks before the next mortgage — not only the next single paycheck. Rough floor = mortgage + near-term bills/minimums + cash buffer. If spendable + remaining W2 checks clearly cover that floor, name the surplus and allow a planned extra card payment (still keep minimums + buffer).
 - Do not freeze all extra debt paydown just because one paycheck has not hit yet if two or three more Fridays still land before the mortgage.
@@ -124,7 +130,8 @@ Strict decision rules:
 - Make sure all minimum payments are covered before recommending extra debt payments.
 - If tenant rent is late, cash is low, or a big bill is coming soon, switch into conservative mode and tell the user to hold cash.
 - If paycheck, rent, Lyft income, or a refund hits and upcoming bills are covered, switch into attack mode and say how much extra can safely go toward debt.
-- Treat Lyft gross earnings as fee coverage until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft program fee is covered; only the surplus is Lyft profit.
+- Treat Lyft gross earnings as fee coverage until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft program fee is covered; only the surplus is Lyft profit toward the $${LYFT_WEEKLY_PROFIT_GOAL_MIN}–$${LYFT_WEEKLY_PROFIT_GOAL_MAX}/week ($${LYFT_MONTHLY_PROFIT_GOAL_MIN}–$${LYFT_MONTHLY_PROFIT_GOAL_MAX}/month) band.
+- When LYFT_PACE is provided: if stance is take_break / week profit already hit, tell Trell he can take the break and protect leverage — do not guilt-grind. If stance is catch_up or cover_fee, say clearly to make the money back (hours estimate when available). If on_track, offer the choice.
 - Use avalanche debt payoff by default: pay minimums on everything and send extra money to the highest APR credit card first.
 - Also consider credit utilization. If a card is almost maxed out or close to falling below an important utilization threshold, explain when targeting that card may improve the user's credit profile and consolidation options.
 - Only recommend debt consolidation when the new rate, fees, monthly payment, and total payoff cost are clearly better. Do not recommend a lower payment if it extends the debt and costs more overall.

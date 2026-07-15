@@ -11,6 +11,7 @@ import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoi
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
+import { LyftPaceCard, type LyftPaceSnapshot } from "./lyft-pace-card";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   ArrowDown,
@@ -172,6 +173,7 @@ type TodayOverviewResponse = {
   };
   calendar: GoogleCalendarOverview | null;
   weekPlan?: WeeklyOperatingPlanOverview | null;
+  lyftPace?: LyftPaceSnapshot | null;
 };
 
 const DAY_SHAPE_LABEL: Record<TodayOverviewResponse["brief"]["dayShape"], string> = {
@@ -333,6 +335,70 @@ function SkipReasonForm({
           className="rounded-full bg-rose-500/90 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
         >
           Save skipped
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LyftEarningsForm({
+  amount,
+  dailyTarget,
+  onAmountChange,
+  onSave,
+  onSkipAmount,
+  onCancel,
+  busy,
+}: {
+  amount: string;
+  dailyTarget: number;
+  onAmountChange: (value: string) => void;
+  onSave: () => void;
+  onSkipAmount: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="mt-2 space-y-2 rounded-xl bg-[var(--accent-soft)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
+      <p className="text-xs font-semibold text-[var(--ink)]">Lyft gross earnings</p>
+      <p className="text-[11px] leading-snug text-[var(--muted)]">
+        Log what you made before fee. Daily target ≈ {formatCurrency(dailyTarget)} so the calendar
+        can show hit/miss toward $200–$400/week profit.
+      </p>
+      <input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="0.01"
+        value={amount}
+        onChange={(e) => onAmountChange(e.target.value)}
+        placeholder="e.g. 95.00"
+        className="w-full rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={busy || amount.trim() === "" || Number(amount) < 0}
+          className="rounded-full bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+        >
+          Save earnings &amp; done
+        </button>
+        <button
+          type="button"
+          onClick={onSkipAmount}
+          disabled={busy}
+          className="rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
+        >
+          Mark done without $
         </button>
         <button
           type="button"
@@ -578,10 +644,12 @@ function WeekAhead({
   weekPlan,
   todayDate,
   onChanged,
+  lyftDailyTarget = 90,
 }: {
   weekPlan: WeeklyOperatingPlanOverview | null | undefined;
   todayDate?: string | null;
   onChanged: () => void;
+  lyftDailyTarget?: number;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [addingDate, setAddingDate] = useState<string | null>(null);
@@ -593,6 +661,11 @@ function WeekAhead({
     label: string;
   } | null>(null);
   const [skipReason, setSkipReason] = useState("");
+  const [lyftDoneTarget, setLyftDoneTarget] = useState<{
+    date: string;
+    blockKey: string;
+  } | null>(null);
+  const [lyftGrossAmount, setLyftGrossAmount] = useState("");
   const [form, setForm] = useState<PlannerFormState>({
     title: "",
     timeLabel: "",
@@ -785,23 +858,54 @@ function WeekAhead({
                             label={isDone ? "Undo done" : "Mark done"}
                             tone="success"
                             disabled={busy !== null}
-                            onClick={() =>
+                            onClick={() => {
+                              if (isDone) {
+                                void run(`week-done-${ref}`, async () => {
+                                  if (isUser) {
+                                    await plannerRequest("PATCH", {
+                                      id: block.activityId,
+                                      status: "planned",
+                                    });
+                                  } else {
+                                    await plannerRequest("PATCH", {
+                                      action: "system",
+                                      date: day.date,
+                                      blockKey: block.id,
+                                      status: "planned",
+                                    });
+                                  }
+                                });
+                                return;
+                              }
+                              const isLyftSystem =
+                                !isUser &&
+                                (block.type === "cash" ||
+                                  block.id.endsWith("-lyft") ||
+                                  block.label.toLowerCase().includes("lyft"));
+                              if (isLyftSystem) {
+                                setSkipTarget(null);
+                                setEditingId(null);
+                                setAddingDate(null);
+                                setLyftDoneTarget({ date: day.date, blockKey: block.id });
+                                setLyftGrossAmount("");
+                                return;
+                              }
                               void run(`week-done-${ref}`, async () => {
                                 if (isUser) {
                                   await plannerRequest("PATCH", {
                                     id: block.activityId,
-                                    status: isDone ? "planned" : "done",
+                                    status: "done",
                                   });
                                 } else {
                                   await plannerRequest("PATCH", {
                                     action: "system",
                                     date: day.date,
                                     blockKey: block.id,
-                                    status: isDone ? "planned" : "done",
+                                    status: "done",
                                   });
                                 }
-                              })
-                            }
+                              });
+                            }}
                           >
                             <Check size={14} />
                             <span className="hidden sm:inline">Done</span>
@@ -910,6 +1014,44 @@ function WeekAhead({
                               }
                               setSkipTarget(null);
                               setSkipReason("");
+                            })
+                          }
+                        />
+                      ) : null}
+
+                      {lyftDoneTarget?.date === day.date && lyftDoneTarget.blockKey === block.id ? (
+                        <LyftEarningsForm
+                          amount={lyftGrossAmount}
+                          dailyTarget={lyftDailyTarget}
+                          onAmountChange={setLyftGrossAmount}
+                          busy={busy !== null}
+                          onCancel={() => {
+                            setLyftDoneTarget(null);
+                            setLyftGrossAmount("");
+                          }}
+                          onSkipAmount={() =>
+                            void run(`week-lyft-done-${ref}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: day.date,
+                                blockKey: block.id,
+                                status: "done",
+                              });
+                              setLyftDoneTarget(null);
+                              setLyftGrossAmount("");
+                            })
+                          }
+                          onSave={() =>
+                            void run(`week-lyft-earn-${ref}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: day.date,
+                                blockKey: block.id,
+                                status: "done",
+                                lyftGrossEarnings: Number(lyftGrossAmount),
+                              });
+                              setLyftDoneTarget(null);
+                              setLyftGrossAmount("");
                             })
                           }
                         />
@@ -1031,6 +1173,12 @@ export function OverviewHome({
     label: string;
   } | null>(null);
   const [todaySkipReason, setTodaySkipReason] = useState("");
+  const [lyftDoneTarget, setLyftDoneTarget] = useState<{
+    kind: "today" | "week";
+    date: string;
+    blockKey: string;
+  } | null>(null);
+  const [lyftGrossAmount, setLyftGrossAmount] = useState("");
   const [plannerForm, setPlannerForm] = useState<PlannerFormState>({
     title: "",
     timeLabel: "",
@@ -1068,6 +1216,8 @@ export function OverviewHome({
   const userBlocks = brief?.userPlanBlocks ?? [];
   const leverageBlock = systemBlocks.find((block) => block.key === "leverage");
   const calendar = todayOverview?.calendar ?? null;
+  const lyftPace = todayOverview?.lyftPace ?? null;
+  const lyftDailyTarget = lyftPace?.week.dailyGrossTarget ?? 90;
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const plannerOrder = brief?.plannerLayout?.order ?? [];
   const todayDate = brief?.date ?? now.toISODate()!;
@@ -1246,7 +1396,10 @@ export function OverviewHome({
       ) : null}
 
       {/* Today's schedule — main stage */}
-      <div className="rounded-2xl bg-[var(--card-solid)] p-5 md:p-6 ring-1 ring-[var(--card-border)]">
+      <div
+        id="today-planner"
+        className="rounded-2xl bg-[var(--card-solid)] p-5 md:p-6 ring-1 ring-[var(--card-border)]"
+      >
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
@@ -1532,16 +1685,39 @@ export function OverviewHome({
                         type="button"
                         aria-label={isDone ? "Mark not done" : "Mark done"}
                         disabled={plannerBusy !== null}
-                        onClick={() =>
+                        onClick={() => {
+                          if (isDone) {
+                            void runPlanner(`sys-done-${block.key}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: todayDate,
+                                blockKey: block.key,
+                                status: "planned",
+                              });
+                            });
+                            return;
+                          }
+                          if (block.key === "lyft") {
+                            setTodaySkipTarget(null);
+                            setEditingItemId(null);
+                            setAddingItem(false);
+                            setLyftDoneTarget({
+                              kind: "today",
+                              date: todayDate,
+                              blockKey: block.key,
+                            });
+                            setLyftGrossAmount("");
+                            return;
+                          }
                           void runPlanner(`sys-done-${block.key}`, async () => {
                             await plannerRequest("PATCH", {
                               action: "system",
                               date: todayDate,
                               blockKey: block.key,
-                              status: isDone ? "planned" : "done",
+                              status: "done",
                             });
-                          })
-                        }
+                          });
+                        }}
                         className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ring-1 ${
                           isDone
                             ? "bg-teal-500/20 text-teal-700 ring-teal-400/40"
@@ -1599,16 +1775,39 @@ export function OverviewHome({
                           label={isDone ? "Undo done" : "Mark done"}
                           tone="success"
                           disabled={plannerBusy !== null}
-                          onClick={() =>
+                          onClick={() => {
+                            if (isDone) {
+                              void runPlanner(`sys-done-${block.key}`, async () => {
+                                await plannerRequest("PATCH", {
+                                  action: "system",
+                                  date: todayDate,
+                                  blockKey: block.key,
+                                  status: "planned",
+                                });
+                              });
+                              return;
+                            }
+                            if (block.key === "lyft") {
+                              setTodaySkipTarget(null);
+                              setEditingItemId(null);
+                              setAddingItem(false);
+                              setLyftDoneTarget({
+                                kind: "today",
+                                date: todayDate,
+                                blockKey: block.key,
+                              });
+                              setLyftGrossAmount("");
+                              return;
+                            }
                             void runPlanner(`sys-done-${block.key}`, async () => {
                               await plannerRequest("PATCH", {
                                 action: "system",
                                 date: todayDate,
                                 blockKey: block.key,
-                                status: isDone ? "planned" : "done",
+                                status: "done",
                               });
-                            })
-                          }
+                            });
+                          }}
                         >
                           <Check size={14} />
                           <span className="sm:inline">Done</span>
@@ -1660,6 +1859,45 @@ export function OverviewHome({
                               });
                               setTodaySkipTarget(null);
                               setTodaySkipReason("");
+                            })
+                          }
+                        />
+                      ) : null}
+                      {lyftDoneTarget?.kind === "today" &&
+                      lyftDoneTarget.blockKey === block.key &&
+                      lyftDoneTarget.date === todayDate ? (
+                        <LyftEarningsForm
+                          amount={lyftGrossAmount}
+                          dailyTarget={lyftDailyTarget}
+                          onAmountChange={setLyftGrossAmount}
+                          busy={plannerBusy !== null}
+                          onCancel={() => {
+                            setLyftDoneTarget(null);
+                            setLyftGrossAmount("");
+                          }}
+                          onSkipAmount={() =>
+                            void runPlanner(`sys-lyft-done-${block.key}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: todayDate,
+                                blockKey: block.key,
+                                status: "done",
+                              });
+                              setLyftDoneTarget(null);
+                              setLyftGrossAmount("");
+                            })
+                          }
+                          onSave={() =>
+                            void runPlanner(`sys-lyft-earn-${block.key}`, async () => {
+                              await plannerRequest("PATCH", {
+                                action: "system",
+                                date: todayDate,
+                                blockKey: block.key,
+                                status: "done",
+                                lyftGrossEarnings: Number(lyftGrossAmount),
+                              });
+                              setLyftDoneTarget(null);
+                              setLyftGrossAmount("");
                             })
                           }
                         />
@@ -1803,7 +2041,22 @@ export function OverviewHome({
         weekPlan={todayOverview?.weekPlan}
         todayDate={todayDate}
         onChanged={refreshPlanner}
+        lyftDailyTarget={lyftDailyTarget}
       />
+
+      {lyftPace ? (
+        <LyftPaceCard
+          pace={lyftPace}
+          onAskCoach={onOpenChat}
+          onLogEarnings={() => {
+            setTodaySkipTarget(null);
+            setLyftDoneTarget({ kind: "today", date: todayDate, blockKey: "lyft" });
+            setLyftGrossAmount("");
+            const el = document.getElementById("today-planner");
+            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+      ) : null}
 
       <button
         type="button"

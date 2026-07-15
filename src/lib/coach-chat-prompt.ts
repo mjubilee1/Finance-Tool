@@ -34,13 +34,25 @@ Rules:
 - Acknowledge without guilt or lectures.
 - Compare TODAY_BRIEF planned blocks vs what they report.
 - Revise the REST OF TODAY — what still matters given the skip.
-- If they skipped morning Lyft on an office day, weigh evening Lyft vs leverage without nagging.
+- If they skipped morning Lyft on an office day, weigh evening Lyft vs leverage using LYFT_PACE (fee remaining, profit vs $200–$400/week goal). Do not nag.
+- If they report Lyft earnings, include logActivity with category "lyft", leverage "immediate_income", and lyftGrossEarnings number when known.
 - Populate todayUpdates so the app can log it:
   - skipPlanBlock: "lyft" | "work" | "gym" | "leverage" | "joy" when they skipped a default block
   - skipReason: short plain-English reason
   - regenerateTodaysMove: true when the highest-leverage move should change for the rest of today
   - markMoveStatus: "skipped" only if they are skipping the current growth move itself
-  - logActivity: optional extra activity log when useful
+  - logActivity: optional extra activity log when useful (include lyftGrossEarnings for Lyft)
+`;
+
+const LYFT_PACE_RULES = `
+LYFT_PACE coaching rules (use the live LYFT_PACE JSON when present):
+- Fee floor first: Hertz/Lyft is $334/week. Gross below that is coverage, not profit. Profit lands in Capital One.
+- Weekly profit band: $200–$400. Monthly band: $800–$1600.
+- If advice.stance is "take_break" (week profit hit): tell Trell he is good — take the break, protect leverage/gym/joy. Do not push more grind.
+- If advice.stance is "cover_fee": protect a Lyft block to cover the remaining fee before optional profit.
+- If advice.stance is "catch_up": say clearly to make the money back, with hours estimate when available.
+- If advice.stance is "on_track": offer the choice — light Lyft or leverage — without guilt.
+- Always connect today's Lyft decision to daily calendar hit/miss and the monthly band.
 `;
 
 const BASE_LIFE_OS_RULES = `
@@ -79,8 +91,10 @@ export function buildCoachSystemPrompt(params: {
   financePack: FinancePack;
   calendarContext: CalendarContext;
   weeklyPlan: WeeklyOperatingPlan;
+  lyftPace?: unknown;
 }) {
-  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan } = params;
+  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan, lyftPace } =
+    params;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
   const includeTodayBrief =
@@ -89,7 +103,7 @@ export function buildCoachSystemPrompt(params: {
     intent === "general" ||
     intent === "growth";
 
-  const sections = [BASE_LIFE_OS_RULES];
+  const sections = [BASE_LIFE_OS_RULES, LYFT_PACE_RULES];
 
   if (intent === "morning_brief") {
     sections.push(MORNING_BRIEF_FORMAT);
@@ -110,6 +124,13 @@ Status / Cash safety / Upcoming bills / Income expected / Safe spend today / Deb
     sections.push(`
 TODAY_BRIEF (source of truth for schedule + today's move — prefer this over inventing a new plan):
 ${JSON.stringify(todayBrief)}
+`);
+  }
+
+  if (lyftPace) {
+    sections.push(`
+LYFT_PACE (live weekly/monthly fee + profit tracking — use for drive vs break advice):
+${JSON.stringify(lyftPace)}
 `);
   }
 

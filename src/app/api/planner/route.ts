@@ -66,11 +66,19 @@ export async function PATCH(request: Request) {
       if (body.status != null && !isPlannerStatus(body.status)) {
         return NextResponse.json({ error: "Invalid status" }, { status: 400 });
       }
+      const lyftGross =
+        body.lyftGrossEarnings !== undefined && body.lyftGrossEarnings !== ""
+          ? Number(body.lyftGrossEarnings)
+          : undefined;
+      if (lyftGross != null && (!Number.isFinite(lyftGross) || lyftGross < 0)) {
+        return NextResponse.json({ error: "Invalid Lyft earnings amount" }, { status: 400 });
+      }
       const override = await setSystemBlockOverride(session.user.id, body.date, body.blockKey, {
         status: body.status,
         label: body.label,
         timeLabel: body.timeLabel,
         notes: body.notes,
+        lyftGrossEarnings: lyftGross,
       });
       return NextResponse.json({ override });
     }

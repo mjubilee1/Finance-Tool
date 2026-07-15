@@ -17,6 +17,7 @@ import {
   systemPlanRef,
   type PlannerDayLayoutData,
 } from "@/lib/planner";
+import { buildLyftEarningsNote, getLyftWeekRange, parseLyftGrossEarnings } from "@/lib/lyft";
 
 type CfoBriefHeadline = {
   status: string | null;
@@ -93,6 +94,7 @@ export type TodayUpdatesPayload = {
     minutesSpent?: number;
     notes?: string;
     date?: string;
+    lyftGrossEarnings?: number;
   } | null;
 };
 
@@ -341,15 +343,44 @@ export async function applyTodayUpdates(
   if (updates.logActivity?.title?.trim()) {
     const domain = updates.logActivity.domain;
     const targetDate = updates.logActivity.date?.trim() || today;
+    const category = updates.logActivity.category || "coach_update";
     if ((GROWTH_DOMAINS as readonly string[]).includes(domain)) {
+      let activityNotes = updates.logActivity.notes?.trim() || "Logged from coach chat.";
+      const lyftGross =
+        category === "lyft" &&
+        typeof updates.logActivity.lyftGrossEarnings === "number" &&
+        Number.isFinite(updates.logActivity.lyftGrossEarnings)
+          ? updates.logActivity.lyftGrossEarnings
+          : null;
+      if (lyftGross != null && lyftGross >= 0) {
+        const { startIso, endIso } = getLyftWeekRange(targetDate);
+        const weekActivities = await prisma.growthActivity.findMany({
+          where: {
+            userId,
+            category: "lyft",
+            date: { gte: startIso, lte: endIso },
+          },
+          select: { date: true, category: true, title: true, notes: true },
+        });
+        const existingWeekGross = weekActivities.reduce(
+          (sum, activity) => sum + (parseLyftGrossEarnings(activity) ?? 0),
+          0,
+        );
+        activityNotes = buildLyftEarningsNote({
+          grossEarnings: lyftGross,
+          existingWeekGross,
+          baseNote: updates.logActivity.notes?.trim() || "Logged from coach chat.",
+        });
+      }
+
       await prisma.growthActivity.create({
         data: {
           userId,
           date: targetDate,
           domain,
-          category: updates.logActivity.category || "coach_update",
+          category,
           title: updates.logActivity.title.trim().slice(0, 160),
-          notes: updates.logActivity.notes?.trim() || "Logged from coach chat.",
+          notes: activityNotes,
           leverage:
             updates.logActivity.leverage === "immediate_income"
               ? "immediate_income"
@@ -364,7 +395,11 @@ export async function applyTodayUpdates(
         targetDate,
         updates.logActivity.title.trim(),
       );
-      applied.push(`Logged: ${updates.logActivity.title.trim()}${targetDate !== today ? ` on ${targetDate}` : ""}`);
+      applied.push(
+        `Logged: ${updates.logActivity.title.trim()}${targetDate !== today ? ` on ${targetDate}` : ""}${
+          lyftGross != null ? ` ($${lyftGross.toFixed(2)} gross)` : ""
+        }`,
+      );
     }
   }
 
