@@ -12,11 +12,13 @@ import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
 import { LyftPaceCard, type LyftPaceSnapshot } from "./lyft-pace-card";
+import { buildLyftPaceSnapshot } from "@/lib/lyft";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   ArrowDown,
   ArrowUp,
   CalendarDays,
+  Car,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -1136,6 +1138,7 @@ type Props = {
   onOpenGrowth?: () => void;
   onOpenGoals?: () => void;
   onOpenTrends?: () => void;
+  onOpenLyft?: () => void;
   priorityGoal?: {
     name: string;
     paceMessage: string;
@@ -1156,6 +1159,7 @@ export function OverviewHome({
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
+  onOpenLyft,
   isBriefPending = false,
   userName,
 }: Props) {
@@ -1216,11 +1220,14 @@ export function OverviewHome({
   const userBlocks = brief?.userPlanBlocks ?? [];
   const leverageBlock = systemBlocks.find((block) => block.key === "leverage");
   const calendar = todayOverview?.calendar ?? null;
-  const lyftPace = todayOverview?.lyftPace ?? null;
-  const lyftDailyTarget = lyftPace?.week.dailyGrossTarget ?? 90;
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const plannerOrder = brief?.plannerLayout?.order ?? [];
   const todayDate = brief?.date ?? now.toISODate()!;
+  const lyftPace = todayOverview?.lyftPace ?? null;
+  const lyftBoardPace =
+    lyftPace ??
+    (!todayLoading && !todayError ? buildLyftPaceSnapshot([], todayDate) : null);
+  const lyftDailyTarget = lyftPace?.week.dailyGrossTarget ?? 90;
   const timelineItems = buildTimelineItems(
     systemBlocks,
     userBlocks,
@@ -2037,26 +2044,58 @@ export function OverviewHome({
         </div>
       </div>
 
+      <div id="lyft-board" className="space-y-2">
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+            Lyft board
+          </p>
+          {onOpenLyft ? (
+            <button
+              type="button"
+              onClick={onOpenLyft}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
+            >
+              <Car size={13} />
+              Full board
+            </button>
+          ) : null}
+        </div>
+        {todayLoading && !lyftBoardPace ? (
+          <div className="app-card p-6 text-center text-sm text-[var(--muted)]">
+            Loading Lyft board…
+          </div>
+        ) : lyftBoardPace ? (
+          <LyftPaceCard
+            pace={lyftBoardPace}
+            onAskCoach={onOpenChat}
+            onLogEarnings={() => {
+              setTodaySkipTarget(null);
+              setLyftDoneTarget({ kind: "today", date: todayDate, blockKey: "lyft" });
+              setLyftGrossAmount("");
+              const el = document.getElementById("today-planner");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        ) : todayError ? (
+          <div className="app-card p-5 text-sm text-rose-700 dark:text-rose-300">
+            Couldn&apos;t load the Lyft board.{" "}
+            {onOpenLyft ? (
+              <button type="button" onClick={onOpenLyft} className="font-semibold underline">
+                Open Lyft tab
+              </button>
+            ) : (
+              "Try Reload."
+            )}
+          </div>
+        ) : null}
+      </div>
+
       <WeekAhead
         weekPlan={todayOverview?.weekPlan}
         todayDate={todayDate}
         onChanged={refreshPlanner}
         lyftDailyTarget={lyftDailyTarget}
       />
-
-      {lyftPace ? (
-        <LyftPaceCard
-          pace={lyftPace}
-          onAskCoach={onOpenChat}
-          onLogEarnings={() => {
-            setTodaySkipTarget(null);
-            setLyftDoneTarget({ kind: "today", date: todayDate, blockKey: "lyft" });
-            setLyftGrossAmount("");
-            const el = document.getElementById("today-planner");
-            el?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-        />
-      ) : null}
 
       <button
         type="button"

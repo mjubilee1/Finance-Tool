@@ -45,7 +45,7 @@ export function LyftPaceCard({ pace, onLogEarnings, onAskCoach }: Props) {
     <div className="app-card p-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
         <div>
-          <p className="app-label mb-1">Lyft P&amp;L</p>
+          <p className="app-label mb-1">Lyft board</p>
           <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">
             Weekly profit pace
           </h2>
