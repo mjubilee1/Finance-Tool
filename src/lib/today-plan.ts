@@ -5,8 +5,8 @@ import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 import type { GrowthMetrics } from "@/lib/growth-agent";
 import type { DayShape } from "@/lib/joy-ideas-shared";
 
-export type TodayPlanBlockKey = "gym" | "leverage" | "joy" | "lyft";
-export type TodayPlanBlockRole = "cash" | "training" | "focus" | "recovery";
+export type TodayPlanBlockKey = "gym" | "leverage" | "joy" | "lyft" | "work";
+export type TodayPlanBlockRole = "cash" | "training" | "focus" | "recovery" | "work";
 export type TodayPlanBlockPriority = "locked" | "protect" | "optional";
 
 export type TodayPlanBlock = {
@@ -238,6 +238,32 @@ export function buildTodayPlan(
               ? "Thu-Fri WFH rhythm: Lyft before 9-5 work."
               : null,
       },
+      ...(!isWeekend
+        ? [
+            {
+              key: "work" as const,
+              label: "9-5 work",
+              time: "9 AM-5 PM",
+              fit: isOffice
+                ? "Locked job day; midday is desk/async only."
+                : "Locked job day; gym can use a midday flex pocket.",
+              why: isOffice
+                ? "W2 job is the locked block Mon-Wed. Promotion and extras stay outside 9-5."
+                : "W2 job stays locked Thu-Fri. Use WFH flex pockets inside this block when meetings allow.",
+              domain: "career",
+              category: "work",
+              leverage: "immediate_income" as const,
+              minutes: 480,
+              impact: 10,
+              tone: "slate" as const,
+              role: "work" as const,
+              priority: "locked" as const,
+              evidence: isOffice
+                ? "Mon-Wed office rails: commute + desk day."
+                : "Thu-Fri WFH rails: full job day with flex pockets.",
+            },
+          ]
+        : []),
       ...(isOffice ? [] : [{
         key: "gym" as const,
         label: gymRoutine ? "Training from routine" : gymFit.label,
