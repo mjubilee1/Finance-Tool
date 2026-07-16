@@ -3,6 +3,7 @@ import { formatCurrency } from "@/lib/format";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
 import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 import type { GrowthMetrics } from "@/lib/growth-agent";
+import { WEAK_DOMAIN_THRESHOLD } from "@/lib/growth-scoring";
 import type { DayShape } from "@/lib/joy-ideas-shared";
 
 export type TodayPlanBlockKey = "gym" | "leverage" | "joy" | "lyft" | "work";
@@ -132,7 +133,8 @@ export function buildTodayPlan(
   );
   const cashTight =
     metrics.financialSignals.safeSpendToday < 20 || metrics.financialSignals.cashAvailable < 1000;
-  const socialThin = metrics.domains.social < 55 || metrics.activityCounts.social === 0;
+  const socialThin =
+    metrics.domains.social < WEAK_DOMAIN_THRESHOLD || metrics.activityCounts.social === 0;
   const promotionUpside = profile?.promotionUpsideAnnual ?? 0;
   const promotionDeadline = profile?.promotionDeadline
     ? DateTime.fromISO(profile.promotionDeadline)

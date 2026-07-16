@@ -50,6 +50,10 @@ type GrowthDashboard = {
     bottlenecks: string[];
     improving: boolean;
     activityCounts: Record<string, number>;
+    domainHours?: Record<
+      string,
+      { lifetimeHours: number; recentHours: number; masteryPct: number }
+    >;
     leverageMix: { immediateIncome: number; longTermLeverage: number };
     contactsNeedingAttention: Array<{
       id: string;
@@ -645,6 +649,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               <p className="text-2xl font-bold text-slate-900 leading-none">
                 {Math.round(metrics.compoundingScore)}
               </p>
+              <p className="text-[10px] text-slate-500 mt-1">/ 100 mastery</p>
             </div>
           </div>
           <p className="text-xs text-slate-600 text-right leading-snug max-w-[9rem]">
@@ -662,6 +667,9 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           <p className="text-3xl font-bold text-slate-900">{Math.round(metrics.compoundingScore)}</p>
           <p className="text-xs text-slate-600 mt-1">
             {metrics.improving ? "Improving vs recent history" : "Needs attention"}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-2 leading-snug">
+            Mastery scale — 100 ≈ years of quality hours, not a strong week.
           </p>
         </div>
         <div className="app-card p-4 min-w-0">
@@ -879,15 +887,30 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
       >
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="app-card p-4 min-w-0">
-          <p className="app-label mb-3">Domain scores</p>
+          <p className="app-label mb-1">Domain mastery</p>
+          <p className="text-[11px] text-slate-500 mb-3 leading-snug">
+            Tracks time × impact toward real depth. 100 ≈ ~10k quality hours — friendships take years;
+            skills take decades of reps.
+          </p>
           <div className="space-y-2.5">
             {DOMAINS.map((domain) => {
               const score = metrics.domains[domain];
+              const hours = metrics.domainHours?.[domain];
               return (
                 <div key={domain}>
-                  <div className="flex justify-between text-xs mb-1">
+                  <div className="flex justify-between text-xs mb-1 gap-2">
                     <span className="capitalize text-slate-700 font-medium">{domain}</span>
-                    <span className="text-slate-500">{Math.round(score)}</span>
+                    <span className="text-slate-500 shrink-0">
+                      {Math.round(score)}
+                      {hours && domain !== "financial" && domain !== "social" ? (
+                        <span className="text-slate-400">
+                          {" "}
+                          · {hours.lifetimeHours < 10
+                            ? `${hours.lifetimeHours}h`
+                            : `${Math.round(hours.lifetimeHours)}h`}
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                     <div
@@ -902,7 +925,10 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         </div>
 
         <div className="app-card p-4 min-w-0 overflow-hidden">
-          <p className="app-label mb-3">Compounding over time</p>
+          <p className="app-label mb-1">Compounding over time</p>
+          <p className="text-[11px] text-slate-500 mb-3 leading-snug">
+            Slow climb is the point — false peaks are gone. Expect mid-range scores while hours accumulate.
+          </p>
           {chartData.length > 1 ? (
             <div className="h-48 w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -910,7 +936,9 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={28} />
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value) => [`${value} / 100 mastery`, "Compounding"]}
+                  />
                   <Line type="monotone" dataKey="score" stroke="#0d9488" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -1454,7 +1482,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                 onChange={(e) => setActivityForm({ ...activityForm, impactScore: e.target.value })}
               />
               <span className="text-[10px] text-slate-400 mt-0.5 block">
-                How much this compounds — not how fun it was
+                Quality weight on the hours — 5 is solid practice, 10 is rare high-leverage work
               </span>
             </label>
             {activityForm.category === "lyft" || activityForm.domain === "financial" ? (
