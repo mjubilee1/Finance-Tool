@@ -1,12 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
+import { LyftEarningsForm } from "@/components/lyft/lyft-earnings-form";
 import type { buildLyftPaceSnapshot } from "@/lib/lyft";
 
 export type LyftPaceSnapshot = ReturnType<typeof buildLyftPaceSnapshot>;
 
 type Props = {
   pace: LyftPaceSnapshot;
+  /** Prefer this: opens an inline $ amount form and saves without leaving the board. */
+  onSubmitEarnings?: (amount: number | null) => Promise<void> | void;
+  /** Legacy: still used if onSubmitEarnings is absent (e.g. jump elsewhere). */
   onLogEarnings?: () => void;
   onAskCoach?: () => void;
 };
@@ -30,8 +35,13 @@ const stanceStyles: Record<LyftPaceSnapshot["advice"]["stance"], string> = {
   take_break: "bg-[var(--accent-soft)] text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]",
 };
 
-export function LyftPaceCard({ pace, onLogEarnings, onAskCoach }: Props) {
+export function LyftPaceCard({ pace, onSubmitEarnings, onLogEarnings, onAskCoach }: Props) {
   const { week, month, advice, labels, today } = pace;
+  const [showForm, setShowForm] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const weeklyProgress = Math.min(
     100,
     Math.round((week.profitAfterFee / Math.max(1, week.weeklyProfitTarget)) * 100),
@@ -40,6 +50,44 @@ export function LyftPaceCard({ pace, onLogEarnings, onAskCoach }: Props) {
     100,
     Math.round((month.profitAfterFee / Math.max(1, month.monthlyProfitTarget)) * 100),
   );
+
+  const openForm = () => {
+    setError(null);
+    setAmount("");
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setAmount("");
+    setError(null);
+  };
+
+  const runSubmit = async (value: number | null) => {
+    if (!onSubmitEarnings) return;
+    if (value != null && (!Number.isFinite(value) || value < 0)) {
+      setError("Enter a valid gross earnings amount.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await onSubmitEarnings(value);
+      closeForm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save earnings.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLogClick = () => {
+    if (onSubmitEarnings) {
+      openForm();
+      return;
+    }
+    onLogEarnings?.();
+  };
 
   return (
     <div className="app-card p-6">
@@ -135,26 +183,44 @@ export function LyftPaceCard({ pace, onLogEarnings, onAskCoach }: Props) {
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {onLogEarnings ? (
-          <button
-            type="button"
-            onClick={onLogEarnings}
-            className="inline-flex items-center rounded-full bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white hover:brightness-110 transition"
-          >
-            Log Lyft earnings
-          </button>
-        ) : null}
-        {onAskCoach ? (
-          <button
-            type="button"
-            onClick={onAskCoach}
-            className="inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition"
-          >
-            Ask coach: drive or break?
-          </button>
-        ) : null}
-      </div>
+      {showForm && onSubmitEarnings ? (
+        <div className="space-y-2">
+          <LyftEarningsForm
+            amount={amount}
+            dailyTarget={week.dailyGrossTarget}
+            onAmountChange={setAmount}
+            busy={busy}
+            embedded
+            onCancel={closeForm}
+            onSkipAmount={() => void runSubmit(null)}
+            onSave={() => void runSubmit(Number(amount))}
+          />
+          {error ? (
+            <p className="text-xs font-medium text-rose-700 dark:text-rose-300">{error}</p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {onSubmitEarnings || onLogEarnings ? (
+            <button
+              type="button"
+              onClick={handleLogClick}
+              className="inline-flex items-center rounded-full bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white hover:brightness-110 transition"
+            >
+              Enter today&apos;s earnings
+            </button>
+          ) : null}
+          {onAskCoach ? (
+            <button
+              type="button"
+              onClick={onAskCoach}
+              className="inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] hover:brightness-110 transition"
+            >
+              Ask coach: drive or break?
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

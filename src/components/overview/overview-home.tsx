@@ -12,6 +12,7 @@ import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
 import { LyftPaceCard, type LyftPaceSnapshot } from "./lyft-pace-card";
+import { LyftEarningsForm } from "@/components/lyft/lyft-earnings-form";
 import { buildLyftPaceSnapshot } from "@/lib/lyft";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
@@ -337,70 +338,6 @@ function SkipReasonForm({
           className="rounded-full bg-rose-500/90 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
         >
           Save skipped
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function LyftEarningsForm({
-  amount,
-  dailyTarget,
-  onAmountChange,
-  onSave,
-  onSkipAmount,
-  onCancel,
-  busy,
-}: {
-  amount: string;
-  dailyTarget: number;
-  onAmountChange: (value: string) => void;
-  onSave: () => void;
-  onSkipAmount: () => void;
-  onCancel: () => void;
-  busy: boolean;
-}) {
-  return (
-    <div className="mt-2 space-y-2 rounded-xl bg-[var(--accent-soft)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
-      <p className="text-xs font-semibold text-[var(--ink)]">Lyft gross earnings</p>
-      <p className="text-[11px] leading-snug text-[var(--muted)]">
-        Log what you made before fee. Daily target ≈ {formatCurrency(dailyTarget)} so the calendar
-        can show hit/miss toward $200–$400/week profit.
-      </p>
-      <input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        step="0.01"
-        value={amount}
-        onChange={(e) => onAmountChange(e.target.value)}
-        placeholder="e.g. 95.00"
-        className="w-full rounded-lg bg-[var(--card-solid)] px-3 py-2 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-[var(--accent)]"
-      />
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={busy || amount.trim() === "" || Number(amount) < 0}
-          className="rounded-full bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-        >
-          Save earnings &amp; done
-        </button>
-        <button
-          type="button"
-          onClick={onSkipAmount}
-          disabled={busy}
-          className="rounded-full bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
-        >
-          Mark done without $
         </button>
         <button
           type="button"
@@ -2068,12 +2005,17 @@ export function OverviewHome({
           <LyftPaceCard
             pace={lyftBoardPace}
             onAskCoach={onOpenChat}
-            onLogEarnings={() => {
-              setTodaySkipTarget(null);
-              setLyftDoneTarget({ kind: "today", date: todayDate, blockKey: "lyft" });
+            onSubmitEarnings={async (amount) => {
+              await plannerRequest("PATCH", {
+                action: "system",
+                date: todayDate,
+                blockKey: "lyft",
+                status: "done",
+                ...(amount != null ? { lyftGrossEarnings: amount } : {}),
+              });
+              setLyftDoneTarget(null);
               setLyftGrossAmount("");
-              const el = document.getElementById("today-planner");
-              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+              await refreshPlanner();
             }}
           />
         ) : todayError ? (

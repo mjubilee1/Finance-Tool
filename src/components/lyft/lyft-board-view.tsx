@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Car, MessageSquare, RefreshCw } from "lucide-react";
+import { DateTime } from "luxon";
 import { LyftPaceCard, type LyftPaceSnapshot } from "@/components/overview/lyft-pace-card";
 import { buildLyftPaceSnapshot } from "@/lib/lyft";
-import { DateTime } from "luxon";
 
 type Props = {
   onOpenChat: () => void;
@@ -15,8 +16,30 @@ function emptyPace(): LyftPaceSnapshot {
   return buildLyftPaceSnapshot([], DateTime.local().toISODate()!);
 }
 
+async function saveLyftEarnings(date: string, amount: number | null) {
+  const body: Record<string, unknown> = {
+    action: "system",
+    date,
+    blockKey: "lyft",
+    status: "done",
+  };
+  if (amount != null) {
+    body.lyftGrossEarnings = amount;
+  }
+  const res = await fetch("/api/planner", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error || "Failed to save Lyft earnings");
+  }
+}
+
 export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
   const queryClient = useQueryClient();
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["overview-today"],
@@ -25,12 +48,21 @@ export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
       if (!res.ok) {
         throw new Error("Failed to load Lyft board");
       }
-      return res.json() as Promise<{ lyftPace?: LyftPaceSnapshot | null }>;
+      return res.json() as Promise<{
+        date?: string;
+        lyftPace?: LyftPaceSnapshot | null;
+      }>;
     },
     staleTime: 60_000,
   });
 
   const pace = data?.lyftPace ?? (isLoading ? null : emptyPace());
+  const todayDate = data?.date ?? DateTime.local().toISODate()!;
+
+  const refreshPace = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+    await refetch();
+  };
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -47,8 +79,8 @@ export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
               Weekly profit pace
             </h1>
             <p className="text-sm text-[var(--muted)] mt-1 max-w-lg">
-              Fee first, then Capital One profit. Hit/miss by day — take a break when ahead, make it
-              back when behind.
+              Fee first, then Capital One profit. Enter today&apos;s gross dollar amount here — no
+              trip through Growth required.
             </p>
           </div>
         </div>
@@ -65,8 +97,14 @@ export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
 
       {isError ? (
         <div className="rounded-xl bg-amber-500/15 px-4 py-3 text-sm text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/35">
-          Couldn&apos;t refresh live earnings. Showing the board shell — try Refresh or log from
-          Growth.
+          Couldn&apos;t refresh live earnings. Showing the board shell — try Refresh or enter a
+          number below.
+        </div>
+      ) : null}
+
+      {saveMessage ? (
+        <div className="rounded-xl bg-teal-500/15 px-4 py-3 text-sm text-teal-900 dark:text-teal-100 ring-1 ring-teal-400/35">
+          {saveMessage}
         </div>
       ) : null}
 
@@ -78,9 +116,14 @@ export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
         <LyftPaceCard
           pace={pace}
           onAskCoach={onOpenChat}
-          onLogEarnings={() => {
-            void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
-            onOpenGrowth?.();
+          onSubmitEarnings={async (amount) => {
+            await saveLyftEarnings(todayDate, amount);
+            setSaveMessage(
+              amount == null
+                ? "Marked Lyft done without a dollar amount."
+                : `Saved $${amount.toFixed(2)} gross for today.`,
+            );
+            await refreshPace();
           }}
         />
       ) : null}
@@ -100,7 +143,7 @@ export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
             onClick={onOpenGrowth}
             className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
           >
-            Log Lyft in Growth
+            Open Growth (optional notes)
           </button>
         ) : null}
       </div>
