@@ -7,6 +7,7 @@ import { decrypt } from "@/lib/encryption";
 import type { AccountSummary } from "@/lib/finance";
 import { getPlaidConfig } from "@/lib/env";
 import { getDailyPlaidEndpointCalls, isPlaidEndpointDailyLimitReached, withPlaidTracking } from "@/lib/plaid-tracker";
+import { markPlaidItemFromError } from "@/lib/plaid-item-health";
 
 const BALANCE_ENDPOINT = "accountsBalanceGet";
 
@@ -140,6 +141,7 @@ export async function GET() {
       } catch (err) {
         usedCachedBalances = true;
         console.error(`Failed to fetch balances for item ${item.id}`, err);
+        await markPlaidItemFromError(item, err);
         accounts.push(
           ...(await getCachedAccountsForItem(
             session.user.id,

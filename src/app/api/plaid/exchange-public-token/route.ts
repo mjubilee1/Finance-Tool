@@ -49,6 +49,10 @@ export async function POST(request: Request) {
         institutionName,
         institutionId,
         userId: session.user.id,
+        status: "active",
+        errorCode: null,
+        errorMessage: null,
+        statusUpdatedAt: new Date(),
       },
       create: {
         plaidItemId: item_id,
@@ -56,6 +60,7 @@ export async function POST(request: Request) {
         institutionName,
         institutionId,
         userId: session.user.id,
+        status: "active",
       },
     });
 

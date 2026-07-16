@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { applyRuleBasedCategory } from "@/lib/categorization";
 import { getPlaidConfig } from "@/lib/env";
 import { getLatestPlaidEndpointCall, isPlaidEndpointDailyLimitReached, withPlaidTracking } from "./plaid-tracker";
+import { markPlaidItemFromError, markPlaidItemSynced } from "@/lib/plaid-item-health";
 
 const TRANSACTIONS_SYNC_ENDPOINT = "transactionsSync";
 const { dailySyncCallLimit, syncCooldownMinutes } = getPlaidConfig();
@@ -203,9 +204,12 @@ export async function syncTransactionsForItem(
       data: { cursor },
     });
 
+    await markPlaidItemSynced(item.id);
+
     return { added: addedCount, modified: modifiedCount, removed: removedCount };
   } catch (err) {
     console.error(`Failed to sync transactions for item ${item.id}`, err);
+    await markPlaidItemFromError(item, err);
     throw err;
   } finally {
     inFlightSyncs.delete(item.id);

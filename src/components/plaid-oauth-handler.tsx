@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 const LINK_TOKEN_STORAGE_KEY = "plaid_link_token";
+const LINK_UPDATE_MODE_KEY = "plaid_link_update_mode";
+const LINK_UPDATE_ITEM_KEY = "plaid_link_update_item_id";
 
 function hasOAuthStateInUrl() {
   if (typeof window === "undefined") return false;
@@ -36,19 +38,36 @@ export function PlaidOAuthHandler() {
     token: linkToken,
     receivedRedirectUri,
     onSuccess: async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
+      const updateMode = sessionStorage.getItem(LINK_UPDATE_MODE_KEY) === "true";
+      const itemId = sessionStorage.getItem(LINK_UPDATE_ITEM_KEY);
+
       sessionStorage.removeItem(LINK_TOKEN_STORAGE_KEY);
+      sessionStorage.removeItem(LINK_UPDATE_MODE_KEY);
+      sessionStorage.removeItem(LINK_UPDATE_ITEM_KEY);
 
-      const response = await fetch("/api/plaid/exchange-public-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          public_token: publicToken,
-          institution: metadata.institution,
-        }),
-      });
+      if (updateMode && itemId) {
+        const response = await fetch("/api/plaid/complete-item-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plaidItemId: itemId }),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to link account after OAuth redirect.");
+        if (!response.ok) {
+          throw new Error("Failed to restore bank connection after OAuth redirect.");
+        }
+      } else {
+        const response = await fetch("/api/plaid/exchange-public-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            public_token: publicToken,
+            institution: metadata.institution,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to link account after OAuth redirect.");
+        }
       }
 
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -56,6 +75,8 @@ export function PlaidOAuthHandler() {
     },
     onExit: () => {
       sessionStorage.removeItem(LINK_TOKEN_STORAGE_KEY);
+      sessionStorage.removeItem(LINK_UPDATE_MODE_KEY);
+      sessionStorage.removeItem(LINK_UPDATE_ITEM_KEY);
       window.history.replaceState({}, "", window.location.pathname);
     },
   });
@@ -68,6 +89,15 @@ export function PlaidOAuthHandler() {
   return null;
 }
 
-export function storePlaidLinkToken(linkToken: string) {
+export function storePlaidLinkToken(linkToken: string, options?: { updateMode?: boolean; plaidItemId?: string }) {
   sessionStorage.setItem(LINK_TOKEN_STORAGE_KEY, linkToken);
+  if (options?.updateMode) {
+    sessionStorage.setItem(LINK_UPDATE_MODE_KEY, "true");
+    if (options.plaidItemId) {
+      sessionStorage.setItem(LINK_UPDATE_ITEM_KEY, options.plaidItemId);
+    }
+  } else {
+    sessionStorage.removeItem(LINK_UPDATE_MODE_KEY);
+    sessionStorage.removeItem(LINK_UPDATE_ITEM_KEY);
+  }
 }

@@ -6,6 +6,13 @@ export type SyncApiResponse = {
   removed?: number;
   skipReasons?: string[];
   syncedItems?: number;
+  itemIssues?: Array<{
+    plaidItemId: string;
+    institutionName: string | null;
+    status: string;
+    errorCode: string | null;
+    errorMessage: string | null;
+  }>;
 };
 
 export type SyncFeedbackTone = "success" | "info" | "warning" | "error";
