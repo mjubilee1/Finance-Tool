@@ -24,6 +24,10 @@ export function LyftEarningsForm({
   busy,
   embedded = false,
 }: Props) {
+  const parsed = Number(amount);
+  const canSave =
+    amount.trim() !== "" && Number.isFinite(parsed) && parsed >= 0;
+
   return (
     <div
       className={`space-y-2 rounded-xl bg-[var(--accent-soft)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_30%,transparent)] ${
@@ -51,7 +55,7 @@ export function LyftEarningsForm({
         <button
           type="button"
           onClick={onSave}
-          disabled={busy || amount.trim() === "" || Number(amount) < 0}
+          disabled={busy || !canSave}
           className="rounded-full bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
         >
           Save earnings &amp; done

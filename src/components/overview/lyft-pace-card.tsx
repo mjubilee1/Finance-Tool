@@ -65,6 +65,10 @@ export function LyftPaceCard({ pace, onSubmitEarnings, onLogEarnings, onAskCoach
 
   const runSubmit = async (value: number | null) => {
     if (!onSubmitEarnings) return;
+    if (value != null && (!Number.isFinite(value) || value < 0)) {
+      setError("Enter a valid gross earnings amount.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
