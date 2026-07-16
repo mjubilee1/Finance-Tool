@@ -16,6 +16,14 @@ import {
   getRecentCalendarContextForGrowth,
   syncCalendarEventsToGrowth,
 } from "@/lib/growth-calendar-sync";
+import {
+  IMPROVING_BASELINE,
+  WEAK_DOMAIN_THRESHOLD,
+  combineCompoundingScore,
+  computeDomainScores,
+  domainHoursSummary,
+  isCompletedGrowthActivity,
+} from "@/lib/growth-scoring";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -44,6 +52,8 @@ export type GrowthMetrics = {
   bottlenecks: string[];
   improving: boolean;
   activityCounts: Record<GrowthDomain, number>;
+  /** Quality-weighted hours toward mastery (10k hrs ≈ 100 in skill domains). */
+  domainHours: Record<GrowthDomain, { lifetimeHours: number; recentHours: number; masteryPct: number }>;
   leverageMix: { immediateIncome: number; longTermLeverage: number };
   contactsNeedingAttention: Array<{ id: string; name: string; daysSinceContact: number | null; status: string }>;
   goalsBehind: Array<{ name: string; progressPct: number; targetDate: string | null }>;
@@ -80,6 +90,13 @@ ${COACH_NORTH_STAR}
 Core philosophy: everything compounds — relationships, skills, reputation, income,
 investments, businesses, health, knowledge, opportunities, and time.
 Evaluate decisions by long-term impact, not only immediate reward.
+
+Scoring honesty (critical):
+- Domain / compounding scores are on a mastery scale. 100 ≈ ~10,000 quality-weighted hours
+  (years/decades of deliberate practice), not "had a strong week."
+- Friendships and network equity take years to build and can weaken in weeks of neglect.
+- Do not celebrate being "at peak" or near 100 unless depth truly supports it. Mid-20s–40s
+  with rising hours is healthy early compounding — say that plainly.
 
 Founder principles:
 - Think in years, not days.
@@ -156,26 +173,16 @@ function emptyDomainCounts(): Record<GrowthDomain, number> {
   };
 }
 
-function scoreFromActivities(
-  domain: GrowthDomain,
-  activities: Array<{ domain: string; impactScore: number; date: string }>,
-  sinceDate: string,
-) {
-  const recent = activities.filter((a) => a.domain === domain && a.date >= sinceDate);
-  if (recent.length === 0) return 35;
-  const impact = recent.reduce((sum, a) => sum + a.impactScore, 0);
-  const frequencyBonus = Math.min(25, recent.length * 6);
-  return clamp(40 + impact * 3 + frequencyBonus);
-}
-
 export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetrics> {
   const today = DateTime.local().toISODate()!;
   const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
   const thirtyDaysAgo = DateTime.local().minus({ days: 30 }).toISODate()!;
+  // Mastery depth needs full history — weeks of logs are not years of compounding.
+  const masteryHorizon = DateTime.local().minus({ years: 5 }).toISODate()!;
 
   const [activities, contacts, goals, accounts, transactions, priorSnapshots] = await Promise.all([
     prisma.growthActivity.findMany({
-      where: { userId, date: { gte: thirtyDaysAgo } },
+      where: { userId, date: { gte: masteryHorizon } },
       orderBy: { date: "desc" },
     }),
     prisma.growthContact.findMany({
@@ -217,17 +224,19 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     .reduce((sum, a) => sum + (a.currentBalance ?? 0), 0);
   const netWorthProxy = depository + investment - creditDebt;
 
+  const completedActivities = activities.filter(isCompletedGrowthActivity);
+
   const activityCounts = emptyDomainCounts();
-  for (const activity of activities.filter((a) => a.date >= fourteenDaysAgo)) {
+  for (const activity of completedActivities.filter((a) => a.date >= fourteenDaysAgo)) {
     if ((GROWTH_DOMAINS as readonly string[]).includes(activity.domain)) {
       activityCounts[activity.domain as GrowthDomain] += 1;
     }
   }
 
-  const immediateIncome = activities.filter(
+  const immediateIncome = completedActivities.filter(
     (a) => a.date >= fourteenDaysAgo && a.leverage === "immediate_income",
   ).length;
-  const longTermLeverage = activities.filter(
+  const longTermLeverage = completedActivities.filter(
     (a) => a.date >= fourteenDaysAgo && a.leverage === "long_term_leverage",
   ).length;
 
@@ -261,84 +270,85 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     .filter((c): c is NonNullable<typeof c> => Boolean(c))
     .slice(0, 8);
 
-  const goalsBehind = (() => {
-    // Match Goals tab: use full checking/depository cash, not primary-only focus cash.
-    const funding = calculateGoalFunding({
-      checkingCash: depository,
-      goals,
-    });
-    const fundedById = new Map(funding.goals.map((g) => [g.id, g]));
+  // Match Goals tab: use full checking/depository cash, not primary-only focus cash.
+  const goalFunding = calculateGoalFunding({
+    checkingCash: depository,
+    goals,
+  });
+  const fundedById = new Map(goalFunding.goals.map((g) => [g.id, g]));
+  const avgGoalProgress =
+    goalFunding.goals.length > 0
+      ? goalFunding.goals.reduce((sum, g) => sum + g.progressPct, 0) / goalFunding.goals.length
+      : undefined;
 
-    return goals
-      .map((g) => {
-        const funded = fundedById.get(g.id);
-        const progressPct =
-          funded?.progressPct ??
-          (g.targetAmount > 0 ? clamp((g.currentAmount / g.targetAmount) * 100) : 0);
-        // Match Goals UI: checking coverage counts — don't nag fully funded goals.
-        if (funded?.fullyFunded || progressPct >= 100) return null;
-        const daysLeft = daysBetween(today, g.targetDate);
-        const behind =
-          Boolean(g.targetDate) &&
-          ((daysLeft !== null && daysLeft < 60 && progressPct < 50) ||
-            (daysLeft !== null && daysLeft < 0 && progressPct < 100));
-        return behind
-          ? { name: g.name, progressPct, targetDate: g.targetDate }
-          : null;
-      })
-      .filter((g): g is NonNullable<typeof g> => Boolean(g));
-  })();
+  const goalsBehind = goals
+    .map((g) => {
+      const funded = fundedById.get(g.id);
+      const progressPct =
+        funded?.progressPct ??
+        (g.targetAmount > 0 ? clamp((g.currentAmount / g.targetAmount) * 100) : 0);
+      // Match Goals UI: checking coverage counts — don't nag fully funded goals.
+      if (funded?.fullyFunded || progressPct >= 100) return null;
+      const daysLeft = daysBetween(today, g.targetDate);
+      const behind =
+        Boolean(g.targetDate) &&
+        ((daysLeft !== null && daysLeft < 60 && progressPct < 50) ||
+          (daysLeft !== null && daysLeft < 0 && progressPct < 100));
+      return behind ? { name: g.name, progressPct, targetDate: g.targetDate } : null;
+    })
+    .filter((g): g is NonNullable<typeof g> => Boolean(g));
 
-  const debtPressure = creditDebt > 5000 ? 15 : creditDebt > 2000 ? 8 : 0;
-  const cashStrength = brief.cashAvailable > 3000 ? 20 : brief.cashAvailable > 1500 ? 10 : -10;
-  const spendDiscipline =
-    brief.recentDailySpendAverage > 70 ? -15 : brief.recentDailySpendAverage > 45 ? -5 : 10;
+  const scorableContacts = contacts.map((c) => ({
+    id: c.id,
+    name: c.name,
+    relationshipType: c.relationshipType,
+    trustLevel: c.trustLevel,
+    collaborationPotential: c.collaborationPotential,
+    lastContactDate: c.lastContactDate,
+    mutualValue: c.mutualValue,
+    notes: c.notes,
+    status: c.status,
+    createdAt: c.createdAt,
+    hasNotes: contactHasNotes(c),
+  }));
 
-  const domains: DomainScores = {
-    career: scoreFromActivities("career", activities, fourteenDaysAgo),
-    startup: scoreFromActivities("startup", activities, fourteenDaysAgo),
-    financial: clamp(55 + cashStrength - debtPressure + spendDiscipline),
-    social: clamp(
-      scoreFromActivities("social", activities, fourteenDaysAgo) -
-        Math.min(20, contactsNeedingAttention.length * 4) +
-        Math.min(
-          15,
-          contacts.filter((c) => {
-            const type = (c.relationshipType ?? "").toLowerCase();
-            if (["family", "personal", "unlabeled", ""].includes(type)) {
-              // Phone-book imports don't count as compounding network yet
-              return contactHasNotes(c);
-            }
-            return c.status === "active";
-          }).length * 3,
-        ),
-    ),
-    fitness: scoreFromActivities("fitness", activities, fourteenDaysAgo),
-    personal: scoreFromActivities("personal", activities, fourteenDaysAgo),
-  };
+  const domains = computeDomainScores({
+    activities: completedActivities,
+    contacts: scorableContacts,
+    asOfDate: today,
+    financial: {
+      cashAvailable: brief.cashAvailable,
+      creditDebt,
+      recentDailySpendAverage: brief.recentDailySpendAverage,
+      goalProgressPct: avgGoalProgress,
+    },
+  });
 
-  const compoundingScore = clamp(
-    domains.career * 0.15 +
-      domains.startup * 0.18 +
-      domains.financial * 0.22 +
-      domains.social * 0.18 +
-      domains.fitness * 0.12 +
-      domains.personal * 0.15,
-  );
+  const compoundingScore = combineCompoundingScore(domains);
+  const domainHours = domainHoursSummary(completedActivities, today);
 
   const bottlenecks: string[] = [];
   const domainEntries = Object.entries(domains) as Array<[GrowthDomain, number]>;
   const weakest = [...domainEntries].sort((a, b) => a[1] - b[1]).slice(0, 2);
   for (const [domain, score] of weakest) {
-    if (score < 55) {
-      bottlenecks.push(`${domain} momentum is weak (score ${Math.round(score)})`);
+    if (score < WEAK_DOMAIN_THRESHOLD) {
+      const hours = domainHours[domain];
+      const hoursHint =
+        domain === "financial"
+          ? ""
+          : domain === "social"
+            ? " — real bonds take years to build and weeks of silence to weaken"
+            : ` — ~${hours.lifetimeHours} quality hrs logged toward 10k mastery`;
+      bottlenecks.push(
+        `${domain} compounding is early (score ${Math.round(score)}${hoursHint})`,
+      );
     }
   }
   if (contactsNeedingAttention.length >= 1) {
     bottlenecks.push(
       contactsNeedingAttention.length === 1
-        ? `Relationship follow-up due: ${contactsNeedingAttention[0].name}`
-        : `${contactsNeedingAttention.length} relationships need follow-up`,
+        ? `Relationship equity at risk: ${contactsNeedingAttention[0].name} (years to build, easy to let fade)`
+        : `${contactsNeedingAttention.length} relationships need follow-up before equity decays`,
     );
   } else if (contacts.length === 0) {
     bottlenecks.push("Network is empty — no relationship compounding yet");
@@ -363,7 +373,9 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
 
   const previousScore = priorSnapshots.find((s) => s.date !== today)?.compoundingScore;
   const improving =
-    previousScore === undefined ? compoundingScore >= 55 : compoundingScore >= previousScore - 1;
+    previousScore === undefined
+      ? compoundingScore >= IMPROVING_BASELINE
+      : compoundingScore >= previousScore - 1;
 
   return {
     date: today,
@@ -372,6 +384,7 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     bottlenecks,
     improving,
     activityCounts,
+    domainHours,
     leverageMix: { immediateIncome, longTermLeverage },
     contactsNeedingAttention,
     goalsBehind,
@@ -386,7 +399,7 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
 }
 
 export async function persistGrowthSnapshot(userId: string, metrics: GrowthMetrics) {
-  return prisma.growthSnapshot.upsert({
+  const snapshot = await prisma.growthSnapshot.upsert({
     where: { userId_date: { userId, date: metrics.date } },
     create: {
       userId,
@@ -415,6 +428,103 @@ export async function persistGrowthSnapshot(userId: string, metrics: GrowthMetri
       metricsJson: JSON.stringify(metrics),
     },
   });
+
+  // Rewrite recent chart history onto the mastery scale so old inflated 90–100s don't linger.
+  await backfillMasterySnapshots(userId, metrics, 14);
+
+  return snapshot;
+}
+
+/**
+ * Recompute the last N daily snapshots using mastery scoring as-of each day.
+ * Financial inputs stay at current signals (we don't have historical balances).
+ */
+async function backfillMasterySnapshots(
+  userId: string,
+  todayMetrics: GrowthMetrics,
+  days: number,
+) {
+  const today = DateTime.fromISO(todayMetrics.date);
+  if (!today.isValid) return;
+
+  const horizon = today.minus({ days: days - 1 }).toISODate()!;
+  const activities = await prisma.growthActivity.findMany({
+    where: { userId, date: { lte: todayMetrics.date } },
+    orderBy: { date: "asc" },
+  });
+  const contacts = await prisma.growthContact.findMany({
+    where: { userId },
+    include: { noteEntries: { select: { id: true }, take: 1 } },
+  });
+  const completed = activities.filter(isCompletedGrowthActivity);
+  const scorableContacts = contacts.map((c) => ({
+    id: c.id,
+    name: c.name,
+    relationshipType: c.relationshipType,
+    trustLevel: c.trustLevel,
+    collaborationPotential: c.collaborationPotential,
+    lastContactDate: c.lastContactDate,
+    mutualValue: c.mutualValue,
+    notes: c.notes,
+    status: c.status,
+    createdAt: c.createdAt,
+    hasNotes: contactHasNotes(c),
+  }));
+
+  const financial = {
+    cashAvailable: todayMetrics.financialSignals.cashAvailable,
+    creditDebt: todayMetrics.financialSignals.creditDebt,
+    recentDailySpendAverage: todayMetrics.financialSignals.recentDailySpendAverage,
+  };
+
+  for (let i = 0; i < days; i++) {
+    const date = today.minus({ days: i }).toISODate()!;
+    if (date < horizon) continue;
+    if (date === todayMetrics.date) continue; // already written
+
+    const domains = computeDomainScores({
+      activities: completed,
+      contacts: scorableContacts,
+      asOfDate: date,
+      financial,
+    });
+    const compoundingScore = combineCompoundingScore(domains);
+    const priorDate = today.minus({ days: i + 1 }).toISODate()!;
+    const priorDomains = computeDomainScores({
+      activities: completed,
+      contacts: scorableContacts,
+      asOfDate: priorDate,
+      financial,
+    });
+    const priorScore = combineCompoundingScore(priorDomains);
+
+    await prisma.growthSnapshot.upsert({
+      where: { userId_date: { userId, date } },
+      create: {
+        userId,
+        date,
+        compoundingScore,
+        careerScore: domains.career,
+        startupScore: domains.startup,
+        financialScore: domains.financial,
+        socialScore: domains.social,
+        fitnessScore: domains.fitness,
+        personalScore: domains.personal,
+        bottlenecks: [],
+        improving: compoundingScore >= priorScore - 1,
+      },
+      update: {
+        compoundingScore,
+        careerScore: domains.career,
+        startupScore: domains.startup,
+        financialScore: domains.financial,
+        socialScore: domains.social,
+        fitnessScore: domains.fitness,
+        personalScore: domains.personal,
+        improving: compoundingScore >= priorScore - 1,
+      },
+    });
+  }
 }
 
 function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendationPayload {
@@ -443,7 +553,7 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
     };
   }
 
-  if (metrics.domains.startup < 55) {
+  if (metrics.domains.startup < WEAK_DOMAIN_THRESHOLD) {
     return {
       action: "Ship one concrete software/career leverage block (feature, learning, or positioning)",
       whyItMatters:
@@ -1058,7 +1168,7 @@ export async function generateWeeklyGrowthReview(
           : context.contacts.length === 0
             ? ["Add 3 leverage people to Relationships"]
             : []),
-      ...(metrics.domains.social < 55
+      ...(metrics.domains.social < WEAK_DOMAIN_THRESHOLD
         ? ["One relationship follow-up this week"]
         : []),
       ...(metrics.financialSignals.recentDailySpendAverage > 60
