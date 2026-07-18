@@ -6,6 +6,31 @@ export const CAR_PAYMENT_DEFAULT_NEXT_DUE = "2026-08-31";
 export const CAR_INSURANCE_DEFAULT_NEXT_DUE = "2026-08-17";
 export const CAR_FUNDED_BY = "Capital One";
 
+/** Financed amount on the retail installment contract. */
+export const CAR_LOAN_AMOUNT = 26436;
+/** Remaining principal default (same as financed until payments update it). */
+export const CAR_LOAN_BALANCE = 26436;
+/** 3.5-year payoff horizon. */
+export const CAR_LOAN_TERM_MONTHS = 42;
+export const CAR_LOAN_START_DATE = "2026-07-01";
+/** Monthly amount aimed at the loan (contract payment + extras when cash allows). */
+export const CAR_PAYOFF_TARGET_MONTHLY = 800;
+/** Odometer at handoff (~20,313) plus a small buffer for recent miles. */
+export const CAR_ODOMETER_MILES = 20340;
+export const CAR_ODOMETER_AS_OF = "2026-07-18";
+
+export const CAR_MAINTENANCE_TYPES = [
+  { id: "oil_change", label: "Oil change" },
+  { id: "tires", label: "Tires / rotation" },
+  { id: "brakes", label: "Brakes" },
+  { id: "inspection", label: "Inspection" },
+  { id: "fluids", label: "Fluids" },
+  { id: "wash", label: "Wash / detail" },
+  { id: "other", label: "Other" },
+] as const;
+
+export type CarMaintenanceTypeId = (typeof CAR_MAINTENANCE_TYPES)[number]["id"];
+
 export type CarDocumentSubsection = "payment" | "insurance" | "general";
 
 export type CarDocumentMeta = {
@@ -54,6 +79,13 @@ export type CarProfileLike = {
   paymentNextDue: string;
   insuranceMonthly: number;
   insuranceNextDue: string;
+  loanAmount: number;
+  loanBalance: number;
+  loanTermMonths: number;
+  loanStartDate: string;
+  payoffTargetMonthly: number;
+  odometerMiles: number;
+  odometerAsOf: string;
   notes?: string | null;
 };
 
@@ -63,6 +95,13 @@ export function defaultCarProfile(): CarProfileLike {
     paymentNextDue: CAR_PAYMENT_DEFAULT_NEXT_DUE,
     insuranceMonthly: CAR_INSURANCE_MONTHLY,
     insuranceNextDue: CAR_INSURANCE_DEFAULT_NEXT_DUE,
+    loanAmount: CAR_LOAN_AMOUNT,
+    loanBalance: CAR_LOAN_BALANCE,
+    loanTermMonths: CAR_LOAN_TERM_MONTHS,
+    loanStartDate: CAR_LOAN_START_DATE,
+    payoffTargetMonthly: CAR_PAYOFF_TARGET_MONTHLY,
+    odometerMiles: CAR_ODOMETER_MILES,
+    odometerAsOf: CAR_ODOMETER_AS_OF,
     notes: null,
   };
 }
@@ -132,4 +171,95 @@ export function carUpcomingBills(
 
 export function formatCarBillLine(bill: CarUpcomingBill) {
   return `${bill.label} $${bill.amount.toFixed(0)} from ${bill.account} due ${formatCarDueLabel(bill.dueDate)}`;
+}
+
+export function carMaintenanceTypeLabel(serviceType: string) {
+  return CAR_MAINTENANCE_TYPES.find((t) => t.id === serviceType)?.label ?? serviceType;
+}
+
+export type CarPayoffSummary = {
+  loanAmount: number;
+  loanBalance: number;
+  paidDown: number;
+  progressPct: number;
+  termMonths: number;
+  monthsElapsed: number;
+  monthsRemainingOnTerm: number;
+  targetPayoffDate: string | null;
+  monthsAtContractPayment: number | null;
+  monthsAtPayoffTarget: number | null;
+  payoffDateAtContract: string | null;
+  payoffDateAtTarget: string | null;
+  onTrackForTerm: boolean | null;
+};
+
+/** Payoff math for the financed car — term clock + pace at contract vs $800 target. */
+export function summarizeCarPayoff(
+  profile: Pick<
+    CarProfileLike,
+    | "loanAmount"
+    | "loanBalance"
+    | "loanTermMonths"
+    | "loanStartDate"
+    | "paymentMonthly"
+    | "payoffTargetMonthly"
+  >,
+  todayIso?: string,
+): CarPayoffSummary {
+  const today = todayIso
+    ? DateTime.fromISO(todayIso, { zone: "America/New_York" }).startOf("day")
+    : DateTime.now().setZone("America/New_York").startOf("day");
+  const start = parseIsoDate(profile.loanStartDate);
+  const loanAmount = Math.max(0, profile.loanAmount);
+  const loanBalance = Math.max(0, Math.min(profile.loanBalance, loanAmount || profile.loanBalance));
+  const paidDown = Math.max(0, loanAmount - loanBalance);
+  const progressPct =
+    loanAmount > 0 ? Math.round(Math.min(100, (paidDown / loanAmount) * 1000) / 10) : 0;
+
+  const termMonths = Math.max(1, Math.round(profile.loanTermMonths));
+  const monthsElapsed =
+    start && today.isValid
+      ? Math.max(0, Math.floor(today.diff(start, "months").months))
+      : 0;
+  const monthsRemainingOnTerm = Math.max(0, termMonths - monthsElapsed);
+  const targetPayoffDate =
+    start?.plus({ months: termMonths }).toISODate() ?? null;
+
+  const monthsAtRate = (monthly: number) => {
+    if (loanBalance <= 0) return 0;
+    if (!(monthly > 0)) return null;
+    return Math.ceil(loanBalance / monthly);
+  };
+
+  const monthsAtContractPayment = monthsAtRate(profile.paymentMonthly);
+  const monthsAtPayoffTarget = monthsAtRate(profile.payoffTargetMonthly);
+  const payoffFromMonths = (months: number | null) => {
+    if (months == null || !today.isValid) return null;
+    return today.plus({ months }).toISODate();
+  };
+
+  const onTrackForTerm =
+    monthsAtPayoffTarget == null
+      ? null
+      : monthsAtPayoffTarget <= monthsRemainingOnTerm || loanBalance <= 0;
+
+  return {
+    loanAmount,
+    loanBalance,
+    paidDown,
+    progressPct,
+    termMonths,
+    monthsElapsed,
+    monthsRemainingOnTerm,
+    targetPayoffDate,
+    monthsAtContractPayment,
+    monthsAtPayoffTarget,
+    payoffDateAtContract: payoffFromMonths(monthsAtContractPayment),
+    payoffDateAtTarget: payoffFromMonths(monthsAtPayoffTarget),
+    onTrackForTerm,
+  };
+}
+
+export function formatOdometer(miles: number) {
+  return `${Math.round(miles).toLocaleString("en-US")} mi`;
 }

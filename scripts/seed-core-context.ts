@@ -106,7 +106,7 @@ Coaching rules from this schedule:
   },
   {
     title: "Car / Transportation Context",
-    content: `I own a financed car. Car payment is about $513/month from Capital One. Car insurance is about $352/month from Capital One. Due dates are editable in the Car tab of the app. Purchase/protection documents live there too: retail installment sale contract, GAP coverage, and vehicle service contract (VSC). Gas and car operating costs sit outside the ~$40/day discretionary target. Keep Cap One car payment and insurance current before Cap One fun or goals spend. Do not model Lyft / Hertz rental fee math — that chapter is over.`
+    content: `I own a financed car. Car payment is about $513/month from Capital One. Car insurance is about $352/month from Capital One. Financed amount is about $26,436 with a 3.5-year (42-month) payoff goal. I track an ~$800/month payoff target toward the loan (contract payment plus extras when cash allows). Current odometer starts around 20,340 miles (about 20,313 at handoff plus recent miles) — editable in the Car tab. Due dates, loan balance, mileage, and maintenance/neatness logs are editable in the Car tab. Purchase/protection documents live there too: retail installment sale contract, GAP coverage, and vehicle service contract (VSC). Gas and car operating costs sit outside the ~$40/day discretionary target. Keep Cap One car payment and insurance current before Cap One fun or goals spend. Keeping the car healthy and paid off on the 3.5-year plan is a big goal. Do not model Lyft / Hertz rental fee math — that chapter is over.`
   },
   {
     title: "Startup / Career Context",

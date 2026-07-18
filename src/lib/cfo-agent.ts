@@ -3,6 +3,7 @@ import {
   CAR_FUNDED_BY,
   CAR_INSURANCE_MONTHLY,
   CAR_PAYMENT_MONTHLY,
+  defaultCarProfile,
   type CarProfileLike,
   carUpcomingBills,
   formatCarBillLine,
@@ -103,12 +104,7 @@ export function buildKnownCashScheduleContext(
   const checksBeforeMortgage = paydaysBeforeMortgage.length;
   const incomeBeforeMortgage = Math.round(typicalPaycheck * checksBeforeMortgage * 100) / 100;
 
-  const car = options?.carProfile ?? {
-    paymentMonthly: CAR_PAYMENT_MONTHLY,
-    paymentNextDue: "2026-08-31",
-    insuranceMonthly: CAR_INSURANCE_MONTHLY,
-    insuranceNextDue: "2026-08-17",
-  };
+  const car = options?.carProfile ?? defaultCarProfile();
   const carBills = carUpcomingBills(car, 60, referenceDate.toISODate() ?? undefined);
   const carBillLines =
     carBills.length > 0
