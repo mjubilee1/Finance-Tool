@@ -7,6 +7,7 @@ import { encrypt } from "@/lib/encryption";
 import { CountryCode } from "plaid";
 import { withPlaidTracking } from "@/lib/plaid-tracker";
 import { syncCachedAccountsForItem } from "@/lib/plaid-accounts";
+import { retireStaleItemsForInstitution } from "@/lib/plaid-reconnect";
 
 export async function POST(request: Request) {
   try {
@@ -49,6 +50,8 @@ export async function POST(request: Request) {
         institutionName,
         institutionId,
         userId: session.user.id,
+        cursor: null,
+        status: "active",
       },
       create: {
         plaidItemId: item_id,
@@ -59,14 +62,25 @@ export async function POST(request: Request) {
       },
     });
 
-    // Seed accounts + cached balances via free /accounts/get (not paid Balance).
     try {
       await syncCachedAccountsForItem(saved.id, session.user.id);
     } catch (accountErr) {
       console.error("Failed to seed cached accounts after link:", accountErr);
     }
 
-    return NextResponse.json({ success: true, item_id });
+    // Re-linking the same bank creates a new Plaid item_id — drop the old one + duplicates.
+    const retired = await retireStaleItemsForInstitution({
+      userId: session.user.id,
+      keepPlaidItemId: saved.plaidItemId,
+      institutionId,
+      institutionName,
+    });
+
+    return NextResponse.json({
+      success: true,
+      item_id,
+      retired,
+    });
   } catch (error) {
     console.error("Failed to exchange public token:", error);
     return NextResponse.json(

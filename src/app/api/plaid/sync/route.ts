@@ -3,7 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { syncTransactionsForItem } from "@/lib/plaid-sync";
-import { isTokenDecryptError, tokenDecryptErrorMessage, getEncryptionDiagnostics } from "@/lib/encryption";
+import {
+  isTokenDecryptError,
+  tokenDecryptErrorMessage,
+  getEncryptionDiagnostics,
+} from "@/lib/encryption";
+import { cleanupUndecryptableDuplicateItems } from "@/lib/plaid-reconnect";
 
 type SyncRequestBody = {
   bypassCooldown?: boolean;
@@ -24,6 +29,14 @@ export async function POST(req: Request) {
       // Empty body is fine for legacy callers.
     }
 
+    // Clear old Cap One/Chase links that can't decrypt once a working reconnect exists.
+    const cleanup = await cleanupUndecryptableDuplicateItems(session.user.id);
+    if (cleanup.removedInstitutions > 0) {
+      console.log(
+        `[PLAID SYNC] cleaned ${cleanup.removedInstitutions} stale institution link(s) for user ${session.user.id}`,
+      );
+    }
+
     const items = await prisma.plaidItem.findMany({
       where: { userId: session.user.id },
     });
@@ -39,7 +52,11 @@ export async function POST(req: Request) {
 
     if (items.length === 0) {
       return NextResponse.json(
-        { success: false, error: "No linked banks found. Connect a bank account first.", code: "NO_ITEMS" },
+        {
+          success: false,
+          error: "No linked banks found. Connect a bank account first.",
+          code: "NO_ITEMS",
+        },
         { status: 400 },
       );
     }
@@ -50,12 +67,13 @@ export async function POST(req: Request) {
 
     for (const item of items) {
       try {
-        const result = await syncTransactionsForItem(item.id, { batchStartedAt, bypassCooldown });
+        const result = await syncTransactionsForItem(item.id, {
+          batchStartedAt,
+          bypassCooldown,
+        });
         if (result.skipped) {
           skippedCount++;
-          if (result.reason) {
-            skipReasons.push(result.reason);
-          }
+          if (result.reason) skipReasons.push(result.reason);
         }
         addedCount += result.added;
         modifiedCount += result.modified;
@@ -67,6 +85,9 @@ export async function POST(req: Request) {
           console.error(
             `[PLAID SYNC] token decrypt failed item=${item.id} institution=${item.institutionName ?? "unknown"} crypto=${JSON.stringify(getEncryptionDiagnostics())}`,
             err,
+          );
+          skipReasons.push(
+            `${item.institutionName ?? "A bank"} needs reconnect — saved credentials can’t be read.`,
           );
         } else {
           console.error(`Failed to sync transactions for item ${item.id}`, err);
@@ -83,24 +104,37 @@ export async function POST(req: Request) {
       failed: failedCount,
       skipReasons: [...new Set(skipReasons)],
       syncedItems: items.length - skippedCount - failedCount,
+      cleanedStaleLinks: cleanup.removedInstitutions,
     };
 
-    if (failedCount > 0 && addedCount === 0 && modifiedCount === 0 && removedCount === 0) {
-      const crypto = getEncryptionDiagnostics();
-      const error =
-        tokenDecryptFailures > 0
-          ? tokenDecryptErrorMessage()
-          : "Failed to sync transactions for linked accounts.";
-      const code = tokenDecryptFailures > 0 ? "TOKEN_DECRYPT_FAILED" : "SYNC_FAILED";
+    const changed = addedCount + modifiedCount + removedCount;
 
+    // Every remaining link is undecryptable → must reconnect.
+    if (
+      tokenDecryptFailures > 0 &&
+      tokenDecryptFailures === failedCount &&
+      changed === 0 &&
+      tokenDecryptFailures === items.length
+    ) {
       return NextResponse.json(
         {
           ...payload,
           success: false,
-          error,
-          code,
-          // Safe diagnostics for the UI — fingerprints only, no secrets.
-          crypto,
+          error: tokenDecryptErrorMessage(),
+          code: "TOKEN_DECRYPT_FAILED",
+          crypto: getEncryptionDiagnostics(),
+        },
+        { status: 500 },
+      );
+    }
+
+    if (failedCount > 0 && changed === 0 && tokenDecryptFailures === 0) {
+      return NextResponse.json(
+        {
+          ...payload,
+          success: false,
+          error: "Failed to sync transactions for linked accounts.",
+          code: "SYNC_FAILED",
         },
         { status: 500 },
       );
@@ -109,9 +143,6 @@ export async function POST(req: Request) {
     return NextResponse.json(payload);
   } catch (error) {
     console.error("Failed to sync transactions:", error);
-    return NextResponse.json(
-      { error: "Failed to sync transactions." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to sync transactions." }, { status: 500 });
   }
 }
