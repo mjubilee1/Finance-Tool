@@ -26,6 +26,7 @@ import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
 import { RecurringView } from "./recurring/recurring-view";
 import { ThemeToggle } from "./theme-toggle";
+import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
 import { TrendsView } from "./trends/trends-view";
 
 type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car';
@@ -727,18 +728,22 @@ export function Dashboard() {
               <GrowthView onOpenTrends={() => setActiveTab("tech")} />
             )}
             {activeTab === "tech" && (
-              <TrendsView
-                lane="tech"
-                onOpenGrowth={() => setActiveTab("growth")}
-                onOpenOtherLane={() => setActiveTab("dmv")}
-              />
+              <TrendsErrorBoundary lane="tech">
+                <TrendsView
+                  lane="tech"
+                  onOpenGrowth={() => setActiveTab("growth")}
+                  onOpenOtherLane={() => setActiveTab("dmv")}
+                />
+              </TrendsErrorBoundary>
             )}
             {activeTab === "dmv" && (
-              <TrendsView
-                lane="dmv"
-                onOpenGrowth={() => setActiveTab("growth")}
-                onOpenOtherLane={() => setActiveTab("tech")}
-              />
+              <TrendsErrorBoundary lane="dmv">
+                <TrendsView
+                  lane="dmv"
+                  onOpenGrowth={() => setActiveTab("growth")}
+                  onOpenOtherLane={() => setActiveTab("tech")}
+                />
+              </TrendsErrorBoundary>
             )}
 
             {activeTab === "car" && <CarView />}

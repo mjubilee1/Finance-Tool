@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { prepareSpeechText } from "@/lib/coach-speech";
 
 function pickVoice(): SpeechSynthesisVoice | null {
@@ -14,12 +14,27 @@ function pickVoice(): SpeechSynthesisVoice | null {
   );
 }
 
+function subscribeSpeechSupport() {
+  return () => {};
+}
+
+function getSpeechSupportSnapshot() {
+  return typeof window !== "undefined" && "speechSynthesis" in window;
+}
+
+function getSpeechSupportServerSnapshot() {
+  return false;
+}
+
 export function useBrowserSpeech() {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
-  const supported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
+  const supported = useSyncExternalStore(
+    subscribeSpeechSupport,
+    getSpeechSupportSnapshot,
+    getSpeechSupportServerSnapshot,
+  );
 
   const stop = useCallback(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;

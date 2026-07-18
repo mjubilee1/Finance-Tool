@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { TREND_ITEM_STATUSES, type TrendItemStatus } from "@/lib/trends";
+import { TREND_ITEM_STATUSES, type TrendItemStatus } from "@/lib/trends-shared";
 import { DateTime } from "luxon";
 
 function themeToDomain(theme: string): "startup" | "career" | "personal" | "financial" {
