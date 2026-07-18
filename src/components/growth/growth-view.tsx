@@ -77,9 +77,6 @@ type GrowthDashboard = {
     currentWeight: number | null;
     targetWeight: number | null;
     fitnessGoal: string | null;
-    lyftHourlyNet: number | null;
-    lyftWeeklyProfitTarget?: number | null;
-    lyftMonthlyProfitTarget?: number | null;
     joyOptions: string[];
     notes: string | null;
   } | null;
@@ -158,7 +155,7 @@ const DOMAINS = ["career", "startup", "financial", "social", "fitness", "persona
 const ACTIVITY_CATEGORIES_BY_DOMAIN: Record<(typeof DOMAINS)[number], string[]> = {
   career: ["project", "deep_work", "meeting", "learning", "leadership", "promotion", "other"],
   startup: ["build", "ship", "customer", "learning", "positioning", "other"],
-  financial: ["debt", "budget", "admin", "investing", "lyft", "other"],
+  financial: ["debt", "budget", "admin", "investing", "car", "other"],
   social: ["networking", "follow_up", "dating", "family", "event", "other"],
   fitness: ["gym", "run", "walk", "sports", "recovery", "other"],
   personal: ["errands", "rest", "joy", "chores", "planning", "other"],
@@ -302,9 +299,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     currentWeight: "",
     targetWeight: "",
     fitnessGoal: "",
-    lyftHourlyNet: "20",
-    lyftWeeklyProfitTarget: "300",
-    lyftMonthlyProfitTarget: "1200",
     notes: "",
   });
 
@@ -366,9 +360,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
       currentWeight: profile?.currentWeight?.toString() ?? "",
       targetWeight: profile?.targetWeight?.toString() ?? "",
       fitnessGoal: profile?.fitnessGoal ?? "",
-      lyftHourlyNet: profile?.lyftHourlyNet?.toString() ?? "20",
-      lyftWeeklyProfitTarget: profile?.lyftWeeklyProfitTarget?.toString() ?? "300",
-      lyftMonthlyProfitTarget: profile?.lyftMonthlyProfitTarget?.toString() ?? "1200",
       notes: profile?.notes ?? "",
     });
     setShowProfileForm((v) => !v);
@@ -714,7 +705,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               Teach the app your real tradeoffs
             </h2>
             <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-              Promotion upside, Lyft hourly value, body goal, and joy defaults make the planner less generic.
+              Promotion upside, body goal, and joy defaults make the planner less generic.
             </p>
           </div>
           <button
@@ -738,16 +729,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                   +{formatCurrency(data.lifeLeverageProfile.promotionUpsideAnnual)}/yr potential
                 </p>
               ) : null}
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100">
-              <p className="app-label">Lyft</p>
-              <p className="font-semibold text-slate-900">
-                ~{formatCurrency(data.lifeLeverageProfile.lyftHourlyNet ?? 20)}/hr net
-              </p>
-              <p className="text-slate-500 mt-1">
-                Profit goal {formatCurrency(data.lifeLeverageProfile.lyftWeeklyProfitTarget ?? 300)}/wk ·{" "}
-                {formatCurrency(data.lifeLeverageProfile.lyftMonthlyProfitTarget ?? 1200)}/mo
-              </p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100 sm:col-span-2">
               <p className="app-label">Body</p>
@@ -789,46 +770,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                 }
                 placeholder="20000"
               />
-            </div>
-            <div>
-              <label className="app-label block mb-1.5">Lyft net per hour ($)</label>
-              <input
-                type="number"
-                className="app-input w-full px-3 py-2 text-sm"
-                value={profileForm.lyftHourlyNet}
-                onChange={(e) => setProfileForm({ ...profileForm, lyftHourlyNet: e.target.value })}
-                placeholder="20"
-              />
-            </div>
-            <div>
-              <label className="app-label block mb-1.5">Weekly Lyft profit target ($)</label>
-              <input
-                type="number"
-                className="app-input w-full px-3 py-2 text-sm"
-                value={profileForm.lyftWeeklyProfitTarget}
-                onChange={(e) =>
-                  setProfileForm({ ...profileForm, lyftWeeklyProfitTarget: e.target.value })
-                }
-                placeholder="300"
-              />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">
-                Band $200–$400 after the $334/week Hertz fee
-              </span>
-            </div>
-            <div>
-              <label className="app-label block mb-1.5">Monthly Lyft profit target ($)</label>
-              <input
-                type="number"
-                className="app-input w-full px-3 py-2 text-sm"
-                value={profileForm.lyftMonthlyProfitTarget}
-                onChange={(e) =>
-                  setProfileForm({ ...profileForm, lyftMonthlyProfitTarget: e.target.value })
-                }
-                placeholder="1200"
-              />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">
-                Band $800–$1600 after fees → Capital One
-              </span>
             </div>
             <div>
               <label className="app-label block mb-1.5">Current weight</label>
@@ -1518,7 +1459,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         ) : null}
         {activities.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">
-            Log workouts, shipping blocks, networking, learning, and Lyft hours so the score can improve.
+            Log workouts, shipping blocks, networking, and learning so the score can improve.
           </p>
         ) : (
           <ul className="space-y-2.5">

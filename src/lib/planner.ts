@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { GROWTH_DOMAINS } from "@/lib/growth-agent";
-import type { TodayPlanBlockKey } from "@/lib/today-plan";
 import { storeFinancialMemories } from "@/lib/financial-memory";
-import { buildLyftEarningsNote, getLyftWeekRange, parseLyftGrossEarnings } from "@/lib/lyft";
 
 export type PlannerItemStatus = "planned" | "done" | "skipped" | "hidden";
 
@@ -11,8 +9,6 @@ export type PlannerBlockOverride = {
   label?: string | null;
   timeLabel?: string | null;
   notes?: string | null;
-  /** Ephemeral — used when marking Lyft done; not persisted on the layout. */
-  lyftGrossEarnings?: number | null;
 };
 
 export type PlannerDayLayoutData = {
@@ -20,7 +16,7 @@ export type PlannerDayLayoutData = {
   overrides: Record<string, PlannerBlockOverride>;
 };
 
-export const PLANNER_SYSTEM_KEYS = ["lyft", "work", "gym", "leverage", "joy"] as const;
+export const PLANNER_SYSTEM_KEYS = ["work", "gym", "leverage", "joy"] as const;
 export type PlannerSystemKey = (typeof PLANNER_SYSTEM_KEYS)[number];
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,7 +38,6 @@ export function plannerOverrideAliasKeys(date: string, blockKey: string): string
   const keys = new Set<string>([blockKey]);
 
   const todayToWeek: Record<PlannerSystemKey, string[]> = {
-    lyft: [`${date}-lyft`],
     work: [`${date}-work`],
     gym: [`${date}-training`],
     leverage: [`${date}-promotion`],
@@ -53,7 +48,6 @@ export function plannerOverrideAliasKeys(date: string, blockKey: string): string
     for (const alias of todayToWeek[blockKey]) keys.add(alias);
   }
 
-  if (blockKey === `${date}-lyft` || blockKey.endsWith("-lyft")) keys.add("lyft");
   if (blockKey === `${date}-work` || blockKey.endsWith("-work")) keys.add("work");
   if (blockKey === `${date}-training` || blockKey.endsWith("-training")) keys.add("gym");
   if (blockKey === `${date}-promotion` || blockKey.endsWith("-promotion")) keys.add("leverage");
@@ -549,13 +543,6 @@ export async function setSystemBlockOverride(
   };
   if (patch.status === undefined && prev.status) nextOverride.status = prev.status;
 
-  // Don't persist one-off earnings amount on the layout override blob.
-  const lyftGrossEarnings =
-    typeof patch.lyftGrossEarnings === "number" && Number.isFinite(patch.lyftGrossEarnings)
-      ? patch.lyftGrossEarnings
-      : null;
-  delete nextOverride.lyftGrossEarnings;
-
   const overrides = { ...layout.overrides };
   for (const key of aliasKeys) {
     overrides[key] = nextOverride;
@@ -569,10 +556,7 @@ export async function setSystemBlockOverride(
   const todayKey = aliasKeys.find((key) => isPlannerSystemKey(key));
   if (todayKey && isPlannerSystemKey(todayKey)) {
     if (patch.status === "done" || patch.status === "skipped") {
-      await ensureSystemBlockActivity(userId, date, todayKey, patch.status, {
-        ...nextOverride,
-        lyftGrossEarnings,
-      });
+      await ensureSystemBlockActivity(userId, date, todayKey, patch.status, nextOverride);
     } else if (patch.status === "planned") {
       await clearSystemBlockActivity(userId, date, todayKey);
     }

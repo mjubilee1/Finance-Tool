@@ -1,5 +1,5 @@
 /** One paragraph shared by coach, growth agent, and weekly review. */
-export const COACH_NORTH_STAR = `Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI Lyft after the fee is covered, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.`;
+export const COACH_NORTH_STAR = `Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI busywork, Capital One car payment and insurance stay current, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.`;
 
 export type GoodWeekCheckItem = {
   id: string;
@@ -30,10 +30,9 @@ export const GOOD_WEEK_CHECKLIST: GoodWeekCheckItem[] = [
     detail: "Most days near ~$40 discretionary OR blowouts earned after solid days — week judged, not one night.",
   },
   {
-    id: "lyft",
-    label: "Lyft math respected",
-    detail:
-      "Weekly Hertz/Lyft fee covered before extra low-ROI grind; protect $200–$400/week ($800–$1600/mo) profit band; leverage traded only on purpose when ahead.",
+    id: "car",
+    label: "Car obligations current",
+    detail: "Capital One car payment and insurance stayed on track — owned-car floor protected.",
   },
   {
     id: "floor",

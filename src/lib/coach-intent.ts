@@ -11,7 +11,7 @@ export function classifyCoachIntent(message: string): CoachIntent {
 
   const skippedDay =
     /\b(didn'?t|did not|skipped|skip|missed|forgot|haven'?t|have not|no longer)\b/.test(text) &&
-    /\b(lyft|gym|workout|move|block|run|drive|morning)\b/.test(text);
+    /\b(gym|workout|move|block|run|drive|morning)\b/.test(text);
   const explicitUpdate =
     /\b(update|log|mark|record)\b/.test(text) &&
     /\b(done|skipped|finished|complete|didn'?t)\b/.test(text);

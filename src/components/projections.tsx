@@ -183,7 +183,7 @@ export function Projections() {
             {formatCurrency(foodFunTarget)}/day
           </span>
           . That is <span className="font-medium text-[var(--ink)]">not</span> your whole budget —
-          mortgage, utilities, gas, and Lyft sit outside it.
+          mortgage, utilities, gas, and car costs sit outside it.
         </p>
       </div>
 
@@ -191,7 +191,7 @@ export function Projections() {
         {[
           {
             label: "Comes in / day",
-            hint: "Paycheck, rent, Lyft…",
+            hint: "Paycheck, rent…",
             value: dailyIncome,
             className: "text-[var(--accent-strong)]",
           },

@@ -32,11 +32,11 @@ When touching login UI or auth, match email+code patterns. Never default to pass
 
 ```
 Paycheck (direct deposit)  →  Chase (primary)
-Lyft driving income        →  Capital One (secondary)
-Goals / plans              →  tied to Capital One bucket
+Car payment + insurance    →  Capital One (secondary)
+Goals / plans / fun        →  Capital One after car obligations
 ```
 
-Feature and coach logic should respect which account holds which income.
+Feature and coach logic should respect which account holds which money.
 
 ## Coaching & UX tone
 
@@ -48,7 +48,7 @@ Feature and coach logic should respect which account holds which income.
 ## Goals & plans
 
 - User adds goals/plans to future-proof earmarked money
-- Side income (Lyft) funds secondary-account goals
+- Capital One surplus after car payment + insurance can fund secondary goals
 - Prefer progress toward long-term outcomes over generic monthly totals
 
 ## Build checklist
@@ -56,6 +56,6 @@ Feature and coach logic should respect which account holds which income.
 When adding a feature, ask:
 
 1. Does this assume multi-user or password auth? → Fix scope
-2. Does income/account routing match Chase vs Capital One?
+2. Does income/account routing match Chase vs Capital One (including car bills)?
 3. Does copy coach toward long-term goals, not just budgets?
 4. Does it celebrate wins or warn on drift when appropriate?

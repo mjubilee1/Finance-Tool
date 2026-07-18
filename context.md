@@ -14,21 +14,21 @@ The app should:
 - **Celebrate good weeks** — e.g. "You did well this week; it's okay to spend a little extra"
 - **Alert** when spending or habits drift off course (including thin network / ignored follow-ups)
 - Support occasional out-of-the-ordinary purchases without guilt, when the numbers justify it
-- Default variable spend ~**$40/day** most days (food/fun; gas and Lyft ops sit outside); allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
+- Default variable spend ~**$40/day** most days (food/fun; gas and car costs sit outside); allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
 - Separate Trell's emotional safety instinct from CFO math: Trell may want to stack cash because it feels comfortable, while the financially stronger move may be paying down high-APR cards once mortgage, minimums, bills, buffer, and near-term income are protected
 - Future-proof money by tying income and goals to the right accounts
-- Call out low-leverage traps plainly: e.g. "You don't need 6 hours of Lyft for ~$100 — protect a networking / promotion block too"
+- Call out low-leverage traps plainly: e.g. "Protect a networking / promotion block — don't fill the evening with low-ROI busywork"
 
 ### Daily loop (logging flywheel)
 
-1. **Open Today Planner** — what to protect today (body, leverage, joy, optional Lyft)
+1. **Open Today Planner** — what to protect today (body, leverage, joy)
 2. **One highest-leverage move** — generate once per day; Skip/Done stick. Don't spam regenerate.
-3. **Log as life happens** — gym, outreach, Lyft, spend, contact notes, screenshots
+3. **Log as life happens** — gym, outreach, spend, contact notes, screenshots
 4. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
 5. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
 6. **Trends (optional)** — small curated AI/tech signal digest; note into Growth if useful; never spawn a new unfinished project from a headline
 
-The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real Lyft-vs-leverage tradeoffs. Skipped moves are remembered so the same promo-one-pager advice doesn't keep coming back when he already has boss guidance.
+The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real leverage tradeoffs. Skipped moves are remembered so the same promo-one-pager advice doesn't keep coming back when he already has boss guidance.
 
 ## Planning Philosophy
 
@@ -41,7 +41,7 @@ The daily and weekly planning experience should be inspired by *The 7 Habits of 
 
 ### North star (coach + weekly review)
 
-Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI Lyft after the fee is covered, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.
+Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI busywork, Capital One car payment and insurance stay current, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.
 
 ### What a good week looks like
 
@@ -51,7 +51,7 @@ Weekly review scores the week against this checklist (not one perfect day):
 - **Body fed the system** — gym/training 2–3×; energy for desk and leverage work
 - **Network warmed** — at least one follow-up, note, or outreach with connection equity
 - **Cash rhythm held** — ~$40 most days OR blowouts earned after solid days
-- **Lyft math respected** — weekly fee covered before extra low-ROI grind; daily/weekly profit pace ($200–$400/wk → $800–$1600/mo) guides drive vs break
+- **Car obligations current** — Capital One car payment + insurance on track
 - **Financial floor intact** — bills, buffer, debt move when cash allowed
 - **Joy intentional** — rest and social chosen and capped; not doomscroll/drain nights
 - **System remembers** — activities, spends, contacts logged for sharper next week
@@ -62,9 +62,9 @@ The planner is only useful if today's blocks fit the day shape — never suggest
 
 | Day shape | When | What fits |
 |-----------|------|-----------|
-| **Office** | Mon–Wed | Early Lyft (~2hr) + commute + ~9–5 desk. Mid-day = async/desk only. Joy = short evening-sized, not 2–4 hr trips. Extra Lyft = evening if fee math needs it. |
-| **WFH** | Thu–Fri | Full job day with more flexibility. Better for deep leverage / calls. Joy stays capped (not a day trip). |
-| **Weekend** | Sat–Sun | Open for longer intentional joy, longer leverage, recovery, and Lyft. |
+| **Office** | Mon–Wed | Commute + ~9–5 desk. Mid-day = async/desk only. Joy = short evening-sized, not 2–4 hr trips. |
+| **WFH** | Thu–Fri | Full job day with more flexibility. Better for deep leverage / calls. Gym in a midday flex pocket. Joy stays capped (not a day trip). |
+| **Weekend** | Sat–Sun | Open for longer intentional joy, longer leverage, recovery, and social. |
 
 Rules:
 - **Ideas for today** uses the LLM with live context: date, day shape (office / WFH / weekend), Oxon Hill–area weather, and profile notes. No stale joy-options list.
@@ -78,7 +78,7 @@ This product is becoming a **personal life OS with a CFO core** — money, caree
 
 - **Financial goals** (house, trips, debt) stay money-tracked against checking / Capital One.
 - **Life goals** (promotion, gym/weight, startup leverage, network) are first-class too — tracked via growth profile, activities, and memories, not only dollar targets.
-- Agent advice should mix domains: a promotion block can beat an extra Lyft hour; a gym block protects tomorrow's work energy; cash decisions still protect the floor.
+- Agent advice should mix domains: a promotion block can beat low-ROI busywork; a gym block protects tomorrow's work energy; cash decisions still protect the floor.
 - Weekly review judges whether the *week* compounded across life + money, not only whether spending was low.
 - **Promotion path:** Trell already has a list from his boss on how to get promoted. Do not keep suggesting "draft a promo one-pager" from scratch — help execute the next concrete item from that existing path, or pick different leverage when that theme is skipped.
 
@@ -92,7 +92,7 @@ Flow:
 3. Durable facts get **stored in Prisma** as memories / profile fields (not left as one-off chat).
 4. Today Planner and coach use that stored context next time.
 
-Examples to extract and remember: gym days/times, promotion deadline, weight targets, travel dates, fee amounts, schedule changes.
+Examples to extract and remember: gym days/times, promotion deadline, weight targets, travel dates, car due dates, schedule changes.
 
 ## Home base: Oxon Hill / DMV
 
@@ -115,10 +115,10 @@ Sign-in is **email + 6-digit code** (passcode sent to email), **not** email + pa
 
 ## Accounts & Money Flow
 
-| Account | Role | Income |
-|---------|------|--------|
+| Account | Role | Flow |
+|---------|------|------|
 | **Chase** (primary) | Main checking; day-to-day and paycheck hub | W2 direct-deposit paychecks every Friday |
-| **Capital One** (secondary) | Goals, plans, side-income bucket | Lyft driving earnings (after the $334/week Hertz/Lyft program fee) |
+| **Capital One** (secondary) | Owned-car obligations + goals/plans/fun | Car payment ~$513/mo + car insurance ~$352/mo |
 
 When modeling features, allocations, or coach advice:
 
@@ -126,18 +126,24 @@ When modeling features, allocations, or coach advice:
 - Paycheck → Chase
 - W2 paycheck cadence: **every Friday**
 - Mortgage cadence: due around the **1st of each month** (roughly $2,659; e.g. in mid-July the next mortgage date is Aug 1)
-- Lyft / gig income → Capital One
-- Lyft has a **$334/week program/rental fee** that must be covered before the week is profitable
-- Lyft **profit goals** (after fee): **$200–$400/week** → **$800–$1600/month** into Capital One; track daily hit/miss against that pace
-- When ahead of the weekly profit band, Coach should say it's fine to take a break / protect leverage; when behind, say to make the money back
+- Car payment + car insurance → **Capital One** (editable due dates in the Car tab)
 - Goals and plans should be future-proofed against the account that actually holds that money
-- Daily tradeoff often: drive Lyft today vs higher-leverage career/build/network work
-- Typical schedule: Mon–Wed office (early Lyft ~2hr then commute; desk-only mid-day), Thu–Fri WFH (better for deep work / in-person)
+- Typical schedule: Mon–Wed office (commute; desk-only mid-day), Thu–Fri WFH (better for deep work / in-person)
+
+## Car
+
+Trell owns a financed vehicle. The **Car** tab holds:
+
+- Payment (~$513/mo from Capital One) with editable next due
+- Insurance (~$352/mo from Capital One) with editable next due
+- Purchase/protection documents (retail installment contract, GAP, VSC)
+
+Keep Cap One car obligations current before Cap One fun/goals spend.
 
 ## Goals & Plans
 
 - User can add **financial goals** and **plans** to earmark money for specific outcomes (checking coverage, Capital One bucket)
-- Lyft income flowing to Capital One supports funding secondary goals without mixing paycheck money
+- Capital One surplus after car payment + insurance can support secondary goals without mixing paycheck money
 - **Life/career goals** (promotion, fitness, startup, network) live alongside money goals — same compounding system, different units ($, hours, body metrics, relationships)
 - Features should reinforce long-term progress across domains, not just monthly money snapshots
 
@@ -155,7 +161,7 @@ Coach and UI copy should feel like a sharp personal advisor:
 The CFO should treat money as a **tool being hardened and assembled** — not just a number to minimize.
 
 - Do not stop at "you could save $X." Explain what that savings **does** for the whole system and where freed cash should flow next.
-- Assess decisions by impact on: cash buffer, debt velocity, tenant stability, credit access, real estate readiness, and income engines (W2, rental, Lyft, startup).
+- Assess decisions by impact on: cash buffer, debt velocity, tenant stability, credit access, real estate readiness, and income engines (W2, rental, startup).
 - Prefer recommendations that create positive feedback loops: less leakage → more debt paydown → lower utilization → better credit → more optionality.
 - When goals compete, say which choice hardens the floor vs which bets on upside without a stable base.
 - When cash is available but Trell feels nervous spending it on debt, explicitly name both layers: the emotional brain wants comfort/cash, while the CFO checks the protected floor and may recommend an extra high-APR card payment anyway.
@@ -165,3 +171,4 @@ The CFO should treat money as a **tool being hardened and assembled** — not ju
 - Multi-user auth, admin panels, or "sign up for anyone"
 - Email/password as the primary login method
 - A single undifferentiated bank account — Chase vs Capital One matters
+- Lyft / Hertz rental income or weekly program fee math (owned car now)

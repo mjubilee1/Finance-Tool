@@ -39,6 +39,10 @@ yarn-error.log*
 # local plaid token storage (dev only)
 /.data/
 
+# private car PDFs (served via authenticated API)
+/storage/car-documents/*.pdf
+!/storage/car-documents/.gitkeep
+
 # private contact exports — never commit phone books / VCFs
 *.vcf
 /data/private/

@@ -1,11 +1,17 @@
 import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getCostControlConfig } from "./env";
+import {
+  carUpcomingBills,
+  formatCarBillLine,
+  type CarProfileLike,
+} from "./car";
+import { getOrCreateCarProfile } from "./car-profile";
 import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_CONTRACT } from "./cfo-agent";
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { storeFinancialMemories } from "./financial-memory";
-import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "./lyft";
+import { DateTime } from "luxon";
 
 type NewMemory = {
   title: string;
@@ -64,10 +70,31 @@ type CfoRecurringPattern = {
   lastSeen: string;
 };
 
+function mergeUpcomingBills(
+  aiBills: unknown,
+  carBills: string[],
+  fallbackBills: string[],
+) {
+  const fromAi = Array.isArray(aiBills)
+    ? aiBills.filter((item): item is string => typeof item === "string")
+    : [];
+  const base = fromAi.length > 0 ? fromAi : fallbackBills;
+  const merged = [...carBills];
+  for (const bill of base) {
+    const isCarBill = /car (payment|insurance)/i.test(bill);
+    if (isCarBill && carBills.some((car) => bill.includes(car.split(" • ")[1] ?? ""))) {
+      continue;
+    }
+    if (!merged.includes(bill)) merged.push(bill);
+  }
+  return merged.slice(0, 10);
+}
+
 function buildFallbackCfoInsight(params: {
   accounts: CfoAccount[];
   recentTransactions: CfoTransaction[];
   recurringPatterns: CfoRecurringPattern[];
+  carProfile?: CarProfileLike | null;
 }) {
   const checkingBalance = params.accounts
     .filter((account) => account.type === "depository")
@@ -89,26 +116,33 @@ function buildFallbackCfoInsight(params: {
     .filter((pattern) => pattern.direction === "expense")
     .slice(0, 5)
     .map((pattern) => `Date needed • ${pattern.merchantName ?? "Recurring bill"} • ${pattern.frequency} • $${Math.abs(pattern.averageAmount).toFixed(2)}`);
+  const carBills = params.carProfile
+    ? carUpcomingBills(params.carProfile, 45).map((bill) => {
+        const day = DateTime.fromISO(bill.dueDate).toFormat("ccc LLL d");
+        return `${day} • ${bill.label} • $${bill.amount.toFixed(0)} • ${bill.account}`;
+      })
+    : [];
+  const upcomingBills = [...carBills, ...recurringBills].slice(0, 8);
 
   const buffer = 1000;
   const safeSpendToday = Math.max(0, Math.min(40, Math.floor((checkingBalance - buffer) / 14)));
   const status = checkingBalance < 1500 || !tenantRentSeen ? "conservative mode" : "stable";
   const debtMove = checkingBalance <= buffer + 500
-    ? "Hold cash today. Do not make an extra debt payment until mortgage, minimum payments, and the emergency buffer are clearly protected."
+    ? "Hold cash today. Do not make an extra debt payment until mortgage, minimum payments, car obligations, and the emergency buffer are clearly protected."
     : "Hold extra debt payments until APRs, minimum payments, credit limits, and due dates are entered. Then use avalanche and target the highest APR card first.";
 
   return {
     cfoBrief: {
       status,
-      cashSafety: `Checking shows about ${checkingBalance.toFixed(2)} available. Protect mortgage, minimums, and at least a ${buffer.toFixed(0)} cash buffer before extra debt payments.`,
-      upcomingBills: recurringBills.length > 0
-        ? recurringBills
-        : ["Date needed • No due-date data is stored yet. Add due dates for mortgage, cards, utilities, IRS, insurance, and subscriptions."],
+      cashSafety: `Checking shows about ${checkingBalance.toFixed(2)} available. Protect mortgage, minimums, Capital One car payment + insurance, and at least a ${buffer.toFixed(0)} cash buffer before extra debt payments.`,
+      upcomingBills: upcomingBills.length > 0
+        ? upcomingBills
+        : ["Date needed • No due-date data is stored yet. Add due dates for mortgage, cards, utilities, IRS, car insurance, and subscriptions."],
       incomeExpected: tenantRentSeen
-        ? [`Timing needed • Tenant rent pattern detected recently. Lyft profit still requires clearing the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee first.`]
-        : [`Timing needed • No tenant rent, paycheck, Lyft profit, or refund pattern detected in the current transaction set. Lyft gross earnings count as fee coverage until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee is covered.`],
+        ? [`Timing needed • Tenant rent pattern detected recently. Keep Capital One car payment and insurance current.`]
+        : [`Timing needed • No tenant rent, paycheck, or refund pattern detected in the current transaction set.`],
       safeSpendToday,
-      safeSpendTodayReason: `Default discretionary target is about $40/day for food/fun variable spend — not income and not bill coverage. Gas and Lyft costs sit outside this number, and Lyft profit starts only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee is covered. This keeps checking above the protected cash buffer while bill due dates and debt minimums are incomplete.`,
+      safeSpendTodayReason: `Default discretionary target is about $40/day for food/fun variable spend — not income and not bill coverage. Gas and car operating costs sit outside this number. Capital One funds the owned-car payment and insurance. This keeps checking above the protected cash buffer while bill due dates and debt minimums are incomplete.`,
       debtMove,
       spendingWarning: foodSpend > 0
         ? `Food/convenience spending appears in the recent transactions. Keep food tight today and avoid using credit cards for food.`
@@ -201,7 +235,7 @@ export async function generateDailyInsight(userId: string) {
     take: 100,
   });
 
-  const [recurringPatterns, memoryRecords, accounts, goals] = await Promise.all([
+  const [recurringPatterns, memoryRecords, accounts, goals, carProfile] = await Promise.all([
     prisma.recurringPattern.findMany({
       where: { userId },
       take: 20,
@@ -217,7 +251,10 @@ export async function generateDailyInsight(userId: string) {
     prisma.financialGoal.findMany({
       where: { userId, status: "active" },
     }),
+    getOrCreateCarProfile(userId),
   ]);
+
+  const carBillLines = carUpcomingBills(carProfile, 45).map(formatCarBillLine);
 
   const focusAccounts = getFocusAccounts(accounts);
   const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
@@ -240,7 +277,10 @@ Analyze the user's data and provide JSON. This is the daily brief, so lead with 
 Assess impact on the bigger financial system — not just savings tips. Explain how today's move hardens stability or accelerates growth (debt, credit, reserves, rental readiness).
 Crucially, look at Current Accounts, Financial Goals, recent income, recurring obligations, debt accounts, and spending patterns. Look for opportunities to optimize daily transaction costs while protecting mortgage, minimum payments, upcoming bills, and cash buffer first.
 
-${buildKnownCashScheduleContext()}
+${buildKnownCashScheduleContext(DateTime.local(), { carProfile })}
+
+OWNED CAR OBLIGATIONS (Capital One — include in upcomingBills when due):
+${carBillLines.length > 0 ? carBillLines.map((line) => `- ${line}`).join("\n") : "- None due in the next 45 days; still track payment and insurance next-due dates from the Car profile."}
 
 MEMORIES:
 ${memories}
@@ -291,8 +331,8 @@ ${JSON.stringify({
     incomeToday: dailyMetrics.totalIncome,
     recentDailySpendAverage: dailyMetrics.recentDailySpendAverage,
   })}
-safeSpendToday is remaining food/fun room today. dailyAllowance is the ~$40/day food/fun target. Gas, Lyft operating costs, and bills do NOT count against it. Never raise safeSpendToday above the system-calculated dailyAllowance.
-Lyft gross earnings are not profit until the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft program fee is covered for the week. For weekly recommendations, separate "cover the fee floor" from "drive for surplus profit."
+safeSpendToday is remaining food/fun room today. dailyAllowance is the ~$40/day food/fun target. Gas, car costs, and bills do NOT count against it. Never raise safeSpendToday above the system-calculated dailyAllowance.
+Capital One funds the owned-car payment and insurance — keep those current before Cap One fun/goals spend.
 
 RECENT TRANSACTIONS (last 30 days, primary accounts when set):
 ${JSON.stringify(focusTransactions.slice(0, 60).map((transaction: {
@@ -416,6 +456,11 @@ Generate a JSON response exactly matching this structure:
     accounts: accounts as CfoAccount[],
     recentTransactions: recentTransactions as CfoTransaction[],
     recurringPatterns: recurringPatterns as CfoRecurringPattern[],
+    carProfile,
+  });
+  const carUpcomingLines = carUpcomingBills(carProfile, 45).map((bill) => {
+    const day = DateTime.fromISO(bill.dueDate).toFormat("ccc LLL d");
+    return `${day} • ${bill.label} • $${bill.amount.toFixed(0)} • ${bill.account}`;
   });
   const insight = parsedInsight?.cfoBrief
     ? {
@@ -424,6 +469,11 @@ Generate a JSON response exactly matching this structure:
         cfoBrief: {
           ...fallbackInsight.cfoBrief,
           ...parsedInsight.cfoBrief,
+          upcomingBills: mergeUpcomingBills(
+            parsedInsight.cfoBrief?.upcomingBills,
+            carUpcomingLines,
+            fallbackInsight.cfoBrief.upcomingBills,
+          ),
         },
       }
     : fallbackInsight;

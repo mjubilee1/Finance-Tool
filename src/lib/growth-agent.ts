@@ -5,7 +5,6 @@ import { getFocusAccounts, filterTransactionsForDailySpend } from "./account-foc
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { calculateGoalFunding } from "./goal-funding";
 import { storeFinancialMemories } from "./financial-memory";
-import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "./lyft";
 import {
   contactHasNotes,
   formatContactNotesForAgent,
@@ -107,11 +106,11 @@ Founder principles:
 - Prefer creating assets over consuming.
 
 Leverage categories:
-- Immediate income: Lyft, overtime, contract work
+- Immediate income: overtime, contract work, side cash
 - Long-term leverage: building software, startup work, networking, learning,
   relationship building, content, hiring, systems
 
-Sometimes skipping a small amount of immediate income (e.g. one Lyft evening)
+Sometimes skipping a small amount of immediate income
 to meet a founder, ship a feature, or strengthen a relationship is the better move.
 Explain opportunity cost explicitly.
 
@@ -120,11 +119,11 @@ Be direct, practical, and numbers-aware. No fluff. No generic motivation.
 Active-context rules:
 - Do not invent projects the user is not working on. If core context says a product is inactive (e.g. real-estate agent SaaS), never recommend that work.
 - Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
-- Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person; Mon–Wed often already include ~5am + ~2hr morning Lyft before commute.
-- Name when an action fits (desk lunch message, Thu deep block, evening/weekend Lyft or meet).
-- Often weigh: drive Lyft today (cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} Hertz/Lyft fee → Capital One surplus toward $200–$400/week / $800–$1600/month profit) vs a higher-leverage block. Be explicit about fee floor vs profit and opportunity cost — e.g. "skip grinding 6 Lyft hours for ~$100 if a network/promotion block compounds more; cover the fee floor first, then protect leverage. If weekly profit is already hit, take the break."
+- Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person.
+- Name when an action fits (desk lunch message, Thu deep block, evening/weekend meet).
+- Capital One funds owned-car payment (~$513/mo) and insurance (~$352/mo) — keep those current before Cap One fun/goals spend. Prefer career/build/network leverage over low-ROI busywork.
 - Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
-- Default discretionary target ~$40 most days (food/fun; gas/Lyft outside); celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
+- Default discretionary target ~$40 most days (food/fun; gas/car costs outside); celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
 - Family/personal contacts can exist unlabeled or as "family" without notes — do not nag for notes or treat them as compounding bottlenecks. Prioritize notes on mentors, founders, peers, investors, dating-with-intent.
 - Mix money + life: career/promotion, fitness/body, startup leverage, relationships, and cash are one reinforcing system — not a finance-only coach.
@@ -140,7 +139,7 @@ Active-context rules:
 - Trends digest (trendsContext) is background signal only. Never turn a headline into a new side project. Prefer finishing open leverage / promotion work; reading may inform, not derail.
 
 Writing style for recommendations (critical — UI is small):
-- action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block instead of low-ROI Lyft")
+- action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block tonight")
 - whyItMatters / longTermBenefit / opportunityCost: 1 sentence each, max ~28 words
 - nextActions: 3–4 steps, each max ~14 words, concrete verbs only
 - Do not pack scripts, templates, or long explanations into any field
@@ -540,7 +539,7 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
         "Strong relationships unlock introductions, opportunities, and future collaboration that money alone cannot buy.",
       timeRequiredMinutes: 20,
       opportunityCost:
-        "Skipping one low-leverage scroll or Lyft hour preserves a multi-year relationship asset.",
+        "Skipping one low-leverage scroll hour preserves a multi-year relationship asset.",
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [topContact.name],
       nextActions: [
@@ -559,10 +558,10 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
       whyItMatters:
         "Career/build momentum compounds only when you ship or learn on work you are actually doing — not abandoned ideas.",
       longTermBenefit:
-        "Each real shipped increment improves skills and income upside beyond Lyft hours.",
+        "Each real shipped increment improves skills and income upside beyond busywork hours.",
       timeRequiredMinutes: 90,
       opportunityCost:
-        `One Lyft evening may help cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} weekly fee; one shipped increment can pay for years.`,
+        "One focused shipping block can pay for years of low-ROI busywork.",
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [],
       nextActions: [

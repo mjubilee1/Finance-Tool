@@ -1,13 +1,12 @@
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
-import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
 import type { GrowthMetrics } from "@/lib/growth-agent";
 import { WEAK_DOMAIN_THRESHOLD } from "@/lib/growth-scoring";
 import type { DayShape } from "@/lib/joy-ideas-shared";
 
-export type TodayPlanBlockKey = "gym" | "leverage" | "joy" | "lyft" | "work";
-export type TodayPlanBlockRole = "cash" | "training" | "focus" | "recovery" | "work";
+export type TodayPlanBlockKey = "gym" | "leverage" | "joy";
+export type TodayPlanBlockRole = "training" | "focus" | "recovery";
 export type TodayPlanBlockPriority = "locked" | "protect" | "optional";
 
 export type TodayPlanBlock = {
@@ -171,42 +170,21 @@ export function buildTodayPlan(
   const recoveryFit = isWeekend
     ? "Use only after one real anchor lands."
     : isOffice
-      ? "After desk leverage or Lyft; skip if the evening is tight."
+      ? "After desk leverage; skip if the evening is tight."
       : "Around the job day, not during protected focus.";
   const recoveryWhy = isWeekend
     ? "Live DMV ideas are fine when the week earned it; keep it intentional."
     : isOffice
       ? "This is not fake daily fun. It is a capped reset only if cash and leverage are handled."
       : "This is not fake daily fun. It is a capped reset only if cash, training, and leverage are handled.";
-  const lyftLabel = cashTight
-    ? `Lyft fee-floor block (${LYFT_WEEKLY_PROGRAM_FEE_LABEL})`
-    : isWeekend
-      ? "Morning Lyft"
-      : isOffice
-        ? "Morning Lyft (~2 hr) + optional evening"
-        : "Morning Lyft before 9-5";
-  const lyftTime = cashTight
-    ? isOffice
-      ? "60-90 min evening"
-      : "2-3 hr"
-    : isWeekend
-      ? "AM before the day starts"
-      : isOffice
-        ? "~2 hr morning; 60-90 min evening optional"
-        : "60-90 min before work";
-  const lyftWhy = cashTight
-    ? `Cover the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} weekly fee first; only surplus is profit to send toward Capital One goals.`
-    : isWeekend
-      ? `Every day starts with morning Lyft when possible; count profit only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee.`
-      : isOffice
-        ? `Office rhythm often includes early morning Lyft before commute; count profit only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee.`
-        : `Thu-Fri WFH rhythm: Lyft before the locked 9-5 block; count profit only after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee.`;
   const summary =
     shape === "weekend"
-      ? `Weekend: morning Lyft AM like every day, then gym/recovery, social, and events.`
+      ? "Weekend: gym/recovery, social, and deeper leverage when the week earned it."
       : shape === "office"
-        ? "Office day: morning Lyft baseline, 9-5 work locked, no gym block Mon-Wed. Promotion/network is optional off-hours."
-        : `WFH day: morning Lyft before 9-5, gym in a midday flex pocket inside the job day, promotion off-hours.`;
+        ? cashTight
+          ? "Office day: 9-5 work locked, protect cash floor (including Capital One car bills), optional off-hours leverage."
+          : "Office day: 9-5 work locked, no gym block Mon-Wed. Promotion/network is optional off-hours."
+        : "WFH day: gym in a midday flex pocket inside the job day, promotion/network off-hours.";
 
   return {
     dayLabel: now.toFormat("cccc"),
@@ -214,58 +192,6 @@ export function buildTodayPlan(
     dayShape: shape,
     summary,
     blocks: [
-      {
-        key: "lyft" as const,
-        label: lyftLabel,
-        time: lyftTime,
-        fit: isWeekend
-          ? "AM before gym, social, or events."
-          : isOffice
-            ? "Before commute; evening only if fee math still needs it."
-            : "Before 9-5 on Thu-Fri WFH days.",
-        why: lyftWhy,
-        domain: "financial",
-        category: "lyft",
-        leverage: "immediate_income" as const,
-        minutes: cashTight ? (isOffice ? 75 : 150) : isOffice ? 120 : 75,
-        impact: cashTight ? 7 : 4,
-        tone: "slate" as const,
-        role: "cash" as const,
-        priority: cashTight || isOffice || shape === "wfh" || isWeekend ? "locked" as const : "optional" as const,
-        evidence: isWeekend
-          ? "Morning Lyft AM every day including weekends."
-          : isOffice
-            ? "Mon-Wed office rhythm includes early Lyft before commute."
-            : shape === "wfh"
-              ? "Thu-Fri WFH rhythm: Lyft before 9-5 work."
-              : null,
-      },
-      ...(!isWeekend
-        ? [
-            {
-              key: "work" as const,
-              label: "9-5 work",
-              time: "9 AM-5 PM",
-              fit: isOffice
-                ? "Locked job day; midday is desk/async only."
-                : "Locked job day; gym can use a midday flex pocket.",
-              why: isOffice
-                ? "W2 job is the locked block Mon-Wed. Promotion and extras stay outside 9-5."
-                : "W2 job stays locked Thu-Fri. Use WFH flex pockets inside this block when meetings allow.",
-              domain: "career",
-              category: "work",
-              leverage: "immediate_income" as const,
-              minutes: 480,
-              impact: 10,
-              tone: "slate" as const,
-              role: "work" as const,
-              priority: "locked" as const,
-              evidence: isOffice
-                ? "Mon-Wed office rails: commute + desk day."
-                : "Thu-Fri WFH rails: full job day with flex pockets.",
-            },
-          ]
-        : []),
       ...(isOffice ? [] : [{
         key: "gym" as const,
         label: gymRoutine ? "Training from routine" : gymFit.label,

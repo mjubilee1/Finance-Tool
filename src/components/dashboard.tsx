@@ -17,12 +17,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountsView } from "./accounts-view";
 import { AppVersion } from "./app-version";
+import { CarView } from "./car/car-view";
 import { ChatInterface } from "./chat-interface";
 import { ConnectBankButton } from "./connect-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
 import { GrowthView } from "./growth/growth-view";
-import { LyftBoardView } from "./lyft/lyft-board-view";
 import { OverviewHome } from "./overview/overview-home";
 import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
@@ -30,7 +30,7 @@ import { RecurringView } from "./recurring/recurring-view";
 import { ThemeToggle } from "./theme-toggle";
 import { TrendsView } from "./trends/trends-view";
 
-type TabType = 'chat' | 'overview' | 'lyft' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car';
 
 type DashboardAccount = {
   id: string;
@@ -523,7 +523,6 @@ export function Dashboard() {
 
         <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
           {renderNavItem("overview", LayoutDashboard, "Overview")}
-          {renderNavItem("lyft", Car, "Lyft")}
           {renderNavItem("chat", BrainCircuit, "Coach")}
           {renderNavItem("growth", Flame, "Growth")}
           {renderNavItem("tech", Cpu, "Tech")}
@@ -531,6 +530,7 @@ export function Dashboard() {
           {renderNavItem("goals", Target, "Goals")}
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
+          {renderNavItem("car", Car, "Car")}
           {renderNavItem("transactions", Receipt, "Transactions")}
           {renderNavItem("recurring", Repeat, "Recurring")}
         </nav>
@@ -680,7 +680,6 @@ export function Dashboard() {
                   onOpenGrowth={() => setActiveTab('growth')}
                   onOpenGoals={() => setActiveTab('goals')}
                   onOpenTrends={() => setActiveTab('tech')}
-                  onOpenLyft={() => setActiveTab('lyft')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                   userName={session?.user?.name}
@@ -689,24 +688,8 @@ export function Dashboard() {
                 <div className="app-card p-8 text-center text-slate-500 leading-relaxed space-y-4">
                   <p>Link a bank account and sync transactions to see your daily cash flow.</p>
                   <ConnectBankButton onLinked={handleBankLinked} className="mx-auto" />
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("lyft")}
-                    className="mx-auto inline-flex items-center gap-1.5 rounded-full app-btn-primary px-4 py-2 text-sm"
-                  >
-                    <Car size={16} />
-                    Open Lyft board
-                  </button>
                 </div>
               )
-            )}
-
-            {/* View: LYFT BOARD */}
-            {activeTab === "lyft" && (
-              <LyftBoardView
-                onOpenChat={() => setActiveTab("chat")}
-                onOpenGrowth={() => setActiveTab("growth")}
-              />
             )}
 
             {/* View: GROWTH */}
@@ -727,6 +710,8 @@ export function Dashboard() {
                 onOpenOtherLane={() => setActiveTab("tech")}
               />
             )}
+
+            {activeTab === "car" && <CarView />}
 
             {/* View: ACCOUNTS */}
             {activeTab === 'accounts' && (

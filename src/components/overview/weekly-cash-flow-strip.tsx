@@ -2,7 +2,7 @@
 
 import { formatCurrency } from "@/lib/format";
 import type { WeeklyCashFlow } from "@/lib/cash-flow";
-import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
+import { CAR_FUNDED_BY } from "@/lib/car";
 
 type Props = {
   weekly: WeeklyCashFlow;
@@ -35,8 +35,8 @@ export function WeeklyCashFlowStrip({ weekly }: Props) {
           <p className="app-label mb-1">This week</p>
           <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">Weekly cash flow</h2>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            Paycheck is spread across 7 days; extra deposits land when they post. Lyft first{" "}
-            {LYFT_WEEKLY_PROGRAM_FEE_LABEL} covers the fee.
+            Paycheck is spread across 7 days; extra deposits land when they post. Car payment and
+            insurance come from {CAR_FUNDED_BY}.
           </p>
         </div>
         <div className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 ${paceStyles[paceStatus]}`}>

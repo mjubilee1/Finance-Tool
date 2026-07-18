@@ -133,7 +133,7 @@ Rules:
 - Use weather: outdoor if nice; indoor / covered if rain/cold/windy.
 - Prefer nearby first (Oxon Hill, National Harbor, PG County, easy DC). Longer outings only on weekend-shaped days.
 - Vary the mix: outdoor, food, culture, explore somewhere slightly new, recovery.
-- No lectures, no money guilt, no Lyft comparisons.
+- No lectures, no money guilt, no hustle comparisons.
 - Do not invent ticketed "events happening tonight" unless reasonably confident — prefer places and activities.
 - Labels max ~6 words. Details max ~18 words.`,
         },

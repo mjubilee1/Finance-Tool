@@ -11,15 +11,11 @@ import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoi
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
-import { LyftPaceCard, type LyftPaceSnapshot } from "./lyft-pace-card";
-import { LyftEarningsForm } from "@/components/lyft/lyft-earnings-form";
-import { buildLyftPaceSnapshot } from "@/lib/lyft";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   ArrowDown,
   ArrowUp,
   CalendarDays,
-  Car,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -176,7 +172,6 @@ type TodayOverviewResponse = {
   };
   calendar: GoogleCalendarOverview | null;
   weekPlan?: WeeklyOperatingPlanOverview | null;
-  lyftPace?: LyftPaceSnapshot | null;
 };
 
 const DAY_SHAPE_LABEL: Record<TodayOverviewResponse["brief"]["dayShape"], string> = {
@@ -456,8 +451,6 @@ function formatPlanRole(role: string) {
 }
 
 function planBlockSortKey(block: PlanBlock, dayShape: TodayOverviewResponse["brief"]["dayShape"] | undefined) {
-  if (block.key === "lyft") return dayShape === "office" ? 7.5 : 16;
-  if (block.key === "work") return 9;
   if (block.key === "gym") return dayShape === "weekend" ? 11 : 17.5;
   if (block.key === "leverage") return dayShape === "office" ? 18 : 10;
   if (block.key === "joy") return dayShape === "weekend" ? 16 : 20;
@@ -583,12 +576,10 @@ function WeekAhead({
   weekPlan,
   todayDate,
   onChanged,
-  lyftDailyTarget = 90,
 }: {
   weekPlan: WeeklyOperatingPlanOverview | null | undefined;
   todayDate?: string | null;
   onChanged: () => void;
-  lyftDailyTarget?: number;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [addingDate, setAddingDate] = useState<string | null>(null);
@@ -600,11 +591,6 @@ function WeekAhead({
     label: string;
   } | null>(null);
   const [skipReason, setSkipReason] = useState("");
-  const [lyftDoneTarget, setLyftDoneTarget] = useState<{
-    date: string;
-    blockKey: string;
-  } | null>(null);
-  const [lyftGrossAmount, setLyftGrossAmount] = useState("");
   const [form, setForm] = useState<PlannerFormState>({
     title: "",
     timeLabel: "",
@@ -816,19 +802,6 @@ function WeekAhead({
                                 });
                                 return;
                               }
-                              const isLyftSystem =
-                                !isUser &&
-                                (block.type === "cash" ||
-                                  block.id.endsWith("-lyft") ||
-                                  block.label.toLowerCase().includes("lyft"));
-                              if (isLyftSystem) {
-                                setSkipTarget(null);
-                                setEditingId(null);
-                                setAddingDate(null);
-                                setLyftDoneTarget({ date: day.date, blockKey: block.id });
-                                setLyftGrossAmount("");
-                                return;
-                              }
                               void run(`week-done-${ref}`, async () => {
                                 if (isUser) {
                                   await plannerRequest("PATCH", {
@@ -958,44 +931,6 @@ function WeekAhead({
                         />
                       ) : null}
 
-                      {lyftDoneTarget?.date === day.date && lyftDoneTarget.blockKey === block.id ? (
-                        <LyftEarningsForm
-                          amount={lyftGrossAmount}
-                          dailyTarget={lyftDailyTarget}
-                          onAmountChange={setLyftGrossAmount}
-                          busy={busy !== null}
-                          onCancel={() => {
-                            setLyftDoneTarget(null);
-                            setLyftGrossAmount("");
-                          }}
-                          onSkipAmount={() =>
-                            void run(`week-lyft-done-${ref}`, async () => {
-                              await plannerRequest("PATCH", {
-                                action: "system",
-                                date: day.date,
-                                blockKey: block.id,
-                                status: "done",
-                              });
-                              setLyftDoneTarget(null);
-                              setLyftGrossAmount("");
-                            })
-                          }
-                          onSave={() =>
-                            void run(`week-lyft-earn-${ref}`, async () => {
-                              await plannerRequest("PATCH", {
-                                action: "system",
-                                date: day.date,
-                                blockKey: block.id,
-                                status: "done",
-                                lyftGrossEarnings: Number(lyftGrossAmount),
-                              });
-                              setLyftDoneTarget(null);
-                              setLyftGrossAmount("");
-                            })
-                          }
-                        />
-                      ) : null}
-
                       {editingId && block.activityId === editingId ? (
                         <PlannerItemForm
                           form={form}
@@ -1075,7 +1010,6 @@ type Props = {
   onOpenGrowth?: () => void;
   onOpenGoals?: () => void;
   onOpenTrends?: () => void;
-  onOpenLyft?: () => void;
   priorityGoal?: {
     name: string;
     paceMessage: string;
@@ -1096,7 +1030,6 @@ export function OverviewHome({
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
-  onOpenLyft,
   isBriefPending = false,
   userName,
 }: Props) {
@@ -1114,12 +1047,6 @@ export function OverviewHome({
     label: string;
   } | null>(null);
   const [todaySkipReason, setTodaySkipReason] = useState("");
-  const [lyftDoneTarget, setLyftDoneTarget] = useState<{
-    kind: "today" | "week";
-    date: string;
-    blockKey: string;
-  } | null>(null);
-  const [lyftGrossAmount, setLyftGrossAmount] = useState("");
   const [plannerForm, setPlannerForm] = useState<PlannerFormState>({
     title: "",
     timeLabel: "",
@@ -1160,11 +1087,6 @@ export function OverviewHome({
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const plannerOrder = brief?.plannerLayout?.order ?? [];
   const todayDate = brief?.date ?? now.toISODate()!;
-  const lyftPace = todayOverview?.lyftPace ?? null;
-  const lyftBoardPace =
-    lyftPace ??
-    (!todayLoading && !todayError ? buildLyftPaceSnapshot([], todayDate) : null);
-  const lyftDailyTarget = lyftPace?.week.dailyGrossTarget ?? 90;
   const timelineItems = buildTimelineItems(
     systemBlocks,
     userBlocks,
@@ -1641,18 +1563,6 @@ export function OverviewHome({
                             });
                             return;
                           }
-                          if (block.key === "lyft") {
-                            setTodaySkipTarget(null);
-                            setEditingItemId(null);
-                            setAddingItem(false);
-                            setLyftDoneTarget({
-                              kind: "today",
-                              date: todayDate,
-                              blockKey: block.key,
-                            });
-                            setLyftGrossAmount("");
-                            return;
-                          }
                           void runPlanner(`sys-done-${block.key}`, async () => {
                             await plannerRequest("PATCH", {
                               action: "system",
@@ -1731,18 +1641,6 @@ export function OverviewHome({
                               });
                               return;
                             }
-                            if (block.key === "lyft") {
-                              setTodaySkipTarget(null);
-                              setEditingItemId(null);
-                              setAddingItem(false);
-                              setLyftDoneTarget({
-                                kind: "today",
-                                date: todayDate,
-                                blockKey: block.key,
-                              });
-                              setLyftGrossAmount("");
-                              return;
-                            }
                             void runPlanner(`sys-done-${block.key}`, async () => {
                               await plannerRequest("PATCH", {
                                 action: "system",
@@ -1803,45 +1701,6 @@ export function OverviewHome({
                               });
                               setTodaySkipTarget(null);
                               setTodaySkipReason("");
-                            })
-                          }
-                        />
-                      ) : null}
-                      {lyftDoneTarget?.kind === "today" &&
-                      lyftDoneTarget.blockKey === block.key &&
-                      lyftDoneTarget.date === todayDate ? (
-                        <LyftEarningsForm
-                          amount={lyftGrossAmount}
-                          dailyTarget={lyftDailyTarget}
-                          onAmountChange={setLyftGrossAmount}
-                          busy={plannerBusy !== null}
-                          onCancel={() => {
-                            setLyftDoneTarget(null);
-                            setLyftGrossAmount("");
-                          }}
-                          onSkipAmount={() =>
-                            void runPlanner(`sys-lyft-done-${block.key}`, async () => {
-                              await plannerRequest("PATCH", {
-                                action: "system",
-                                date: todayDate,
-                                blockKey: block.key,
-                                status: "done",
-                              });
-                              setLyftDoneTarget(null);
-                              setLyftGrossAmount("");
-                            })
-                          }
-                          onSave={() =>
-                            void runPlanner(`sys-lyft-earn-${block.key}`, async () => {
-                              await plannerRequest("PATCH", {
-                                action: "system",
-                                date: todayDate,
-                                blockKey: block.key,
-                                status: "done",
-                                lyftGrossEarnings: Number(lyftGrossAmount),
-                              });
-                              setLyftDoneTarget(null);
-                              setLyftGrossAmount("");
                             })
                           }
                         />
@@ -1981,62 +1840,10 @@ export function OverviewHome({
         </div>
       </div>
 
-      <div id="lyft-board" className="space-y-2">
-        <div className="flex items-center justify-between gap-2 px-0.5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
-            Lyft board
-          </p>
-          {onOpenLyft ? (
-            <button
-              type="button"
-              onClick={onOpenLyft}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)]"
-            >
-              <Car size={13} />
-              Full board
-            </button>
-          ) : null}
-        </div>
-        {todayLoading && !lyftBoardPace ? (
-          <div className="app-card p-6 text-center text-sm text-[var(--muted)]">
-            Loading Lyft board…
-          </div>
-        ) : lyftBoardPace ? (
-          <LyftPaceCard
-            pace={lyftBoardPace}
-            onAskCoach={onOpenChat}
-            onSubmitEarnings={async (amount) => {
-              await plannerRequest("PATCH", {
-                action: "system",
-                date: todayDate,
-                blockKey: "lyft",
-                status: "done",
-                ...(amount != null ? { lyftGrossEarnings: amount } : {}),
-              });
-              setLyftDoneTarget(null);
-              setLyftGrossAmount("");
-              await refreshPlanner();
-            }}
-          />
-        ) : todayError ? (
-          <div className="app-card p-5 text-sm text-rose-700 dark:text-rose-300">
-            Couldn&apos;t load the Lyft board.{" "}
-            {onOpenLyft ? (
-              <button type="button" onClick={onOpenLyft} className="font-semibold underline">
-                Open Lyft tab
-              </button>
-            ) : (
-              "Try Reload."
-            )}
-          </div>
-        ) : null}
-      </div>
-
       <WeekAhead
         weekPlan={todayOverview?.weekPlan}
         todayDate={todayDate}
         onChanged={refreshPlanner}
-        lyftDailyTarget={lyftDailyTarget}
       />
 
       <button

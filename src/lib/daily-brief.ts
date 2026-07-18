@@ -1,5 +1,3 @@
-import { LYFT_WEEKLY_PROGRAM_FEE_LABEL } from "@/lib/lyft";
-
 type BriefTransaction = {
   date: string;
   amount: number;
@@ -146,7 +144,7 @@ export function calculateDailyBriefMetrics(params: {
       includesAny(text, ["food", "restaurant", "dining", "grocery", "coffee"]);
     const isTransport =
       Boolean(transaction.isTransportationCandidate) ||
-      includesAny(text, ["transport", "gas", "fuel", "parking", "uber", "lyft", "hertz"]);
+      includesAny(text, ["transport", "gas", "fuel", "parking", "uber"]);
     const isBill =
       Boolean(transaction.isUtilityCandidate) ||
       includesAny(text, [
@@ -167,7 +165,7 @@ export function calculateDailyBriefMetrics(params: {
     if (isBill) billsSpend += amount;
     if (transaction.isRecurringCandidate) recurringSpend += amount;
 
-    // Discretionary = food/fun/shopping/leak — not bills and not gas/Lyft operating costs.
+    // Discretionary = food/fun/shopping/leak — not bills and not gas/transport operating costs.
     if (transaction.pending && !isTransport && !isBill) {
       pendingDiscretionaryToday += amount;
     }
@@ -213,10 +211,10 @@ export function calculateDailyBriefMetrics(params: {
     cashAvailable <= 0
       ? "No depository cash balance is available yet, so the safe daily spend is held at $0 until balances sync."
       : pendingDiscretionaryToday > 0
-        ? `About $${DEFAULT_DISCRETIONARY_DAILY}/day is for food/fun/variable spend. Gas, Lyft operating costs, and bills do not eat this number; Lyft profit starts after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee. Includes ${formatUsd(pendingDiscretionaryToday)} in pending discretionary charges.`
+        ? `About $${DEFAULT_DISCRETIONARY_DAILY}/day is for food/fun/variable spend. Gas, car operating costs, and bills do not eat this number. Includes ${formatUsd(pendingDiscretionaryToday)} in pending discretionary charges.`
         : cashSupportedDaily < DEFAULT_DISCRETIONARY_DAILY
           ? `Cash buffer is the protected floor in checking (${formatUsd(protectedBuffer)}). Above that floor, variable spend is tightened to about ${formatUsd(dailyAllowance)}/day until income clears.`
-          : `Cash buffer (${formatUsd(protectedBuffer)}) is money you do not spend — the safety floor so a bill or late rent does not bounce you. The ~$${DEFAULT_DISCRETIONARY_DAILY}/day target is food/fun only; gas and Lyft costs sit outside it, and Lyft profit starts after the ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee.`;
+          : `Cash buffer (${formatUsd(protectedBuffer)}) is money you do not spend — the safety floor so a bill or late rent does not bounce you. The ~$${DEFAULT_DISCRETIONARY_DAILY}/day target is food/fun only; gas and car costs sit outside it. Capital One funds the car payment and insurance.`;
 
   return {
     date,

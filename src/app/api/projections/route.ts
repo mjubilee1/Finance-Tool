@@ -191,7 +191,7 @@ export async function GET(request: Request) {
         tenDollarsPerDayMonthlyImpact: 10 * 30,
         tenDollarsPerDaySixMonthImpact: 10 * 180,
         raiseFactors: [
-          "More confirmed income hits checking, especially paycheck, tenant rent, Lyft profit, or refunds.",
+          "More confirmed income hits checking, especially paycheck, tenant rent, or refunds.",
           "Upcoming bills and card minimums are covered with cash left above the buffer.",
           "Food, convenience, travel, and house-repair spending stays below the current daily cap.",
         ],

@@ -29,30 +29,17 @@ Keep it scannable. Do NOT dump account JSON or long transaction lists for mornin
 `;
 
 const DAY_UPDATE_FORMAT = `
-The user is updating what actually happened today (skipped Lyft, missed gym, etc.).
+The user is updating what actually happened today (skipped gym, missed leverage block, etc.).
 Rules:
 - Acknowledge without guilt or lectures.
 - Compare TODAY_BRIEF planned blocks vs what they report.
 - Revise the REST OF TODAY — what still matters given the skip.
-- If they skipped morning Lyft on an office day, weigh evening Lyft vs leverage using LYFT_PACE (fee remaining, profit vs $200–$400/week goal). Do not nag.
-- If they report Lyft earnings, include logActivity with category "lyft", leverage "immediate_income", and lyftGrossEarnings number when known.
 - Populate todayUpdates so the app can log it:
-  - skipPlanBlock: "lyft" | "work" | "gym" | "leverage" | "joy" when they skipped a default block
+  - skipPlanBlock: "gym" | "leverage" | "joy" when they skipped a default block
   - skipReason: short plain-English reason
   - regenerateTodaysMove: true when the highest-leverage move should change for the rest of today
   - markMoveStatus: "skipped" only if they are skipping the current growth move itself
-  - logActivity: optional extra activity log when useful (include lyftGrossEarnings for Lyft)
-`;
-
-const LYFT_PACE_RULES = `
-LYFT_PACE coaching rules (use the live LYFT_PACE JSON when present):
-- Fee floor first: Hertz/Lyft is $334/week. Gross below that is coverage, not profit. Profit lands in Capital One.
-- Weekly profit band: $200–$400. Monthly band: $800–$1600.
-- If advice.stance is "take_break" (week profit hit): tell Trell he is good — take the break, protect leverage/gym/joy. Do not push more grind.
-- If advice.stance is "cover_fee": protect a Lyft block to cover the remaining fee before optional profit.
-- If advice.stance is "catch_up": say clearly to make the money back, with hours estimate when available.
-- If advice.stance is "on_track": offer the choice — light Lyft or leverage — without guilt.
-- Always connect today's Lyft decision to daily calendar hit/miss and the monthly band.
+  - logActivity: optional extra activity log when useful
 `;
 
 const BASE_LIFE_OS_RULES = `
@@ -91,10 +78,8 @@ export function buildCoachSystemPrompt(params: {
   financePack: FinancePack;
   calendarContext: CalendarContext;
   weeklyPlan: WeeklyOperatingPlan;
-  lyftPace?: unknown;
 }) {
-  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan, lyftPace } =
-    params;
+  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan } = params;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
   const includeTodayBrief =
@@ -103,7 +88,7 @@ export function buildCoachSystemPrompt(params: {
     intent === "general" ||
     intent === "growth";
 
-  const sections = [BASE_LIFE_OS_RULES, LYFT_PACE_RULES];
+  const sections = [BASE_LIFE_OS_RULES];
 
   if (intent === "morning_brief") {
     sections.push(MORNING_BRIEF_FORMAT);
@@ -124,13 +109,6 @@ Status / Cash safety / Upcoming bills / Income expected / Safe spend today / Deb
     sections.push(`
 TODAY_BRIEF (source of truth for schedule + today's move — prefer this over inventing a new plan):
 ${JSON.stringify(todayBrief)}
-`);
-  }
-
-  if (lyftPace) {
-    sections.push(`
-LYFT_PACE (live weekly/monthly fee + profit tracking — use for drive vs break advice):
-${JSON.stringify(lyftPace)}
 `);
   }
 
@@ -188,10 +166,11 @@ Weekly planning rules:
 - When WEEKLY_OPERATING_SCRIPT or TODAY_BRIEF marks a block status "done" or "skipped", treat that as ground truth for what actually happened.
 - If a skipped block includes a why/reason note, use it as coaching signal: protect that failure mode next time, do not nag about the same skip blindly.
 - 9-5 work is locked Mon-Fri. Promotion/network work is optional and happens outside job hours.
-- Mon-Wed office: morning Lyft before commute, no gym block.
-- Thu-Fri WFH: morning Lyft before 9-5, gym in a midday flex pocket inside the job day, promotion/network off-hours.
-- Sat-Sun weekend: morning Lyft AM like every other day, then gym, social, and recovery.
-- When the user teaches durable schedule preferences (Lyft timing, gym window, work shape, day rhythm), store them in memoriesToStore so future planning stays aligned.
+- Mon-Wed office: no gym block mid-day; promotion/network optional off-hours.
+- Thu-Fri WFH: gym in a midday flex pocket inside the job day, promotion/network off-hours.
+- Sat-Sun weekend: gym, social, leverage, and recovery.
+- When the user teaches durable schedule preferences (gym window, work shape, day rhythm), store them in memoriesToStore so future planning stays aligned.
+- Capital One funds owned-car payment and insurance — keep those current before Cap One fun spend.
 - For parties, birthdays, networking, appointments, and events with locations, call out prep/travel/follow-up windows.
 - Do not create multiple calendar blocks for a weekly script unless the user explicitly asks you to schedule them.
 - If the user asks to add something to their plan/list for today or another day this week, use todayUpdates.logActivity with category "user_plan", a clear title, domain, notes, and optional date (YYYY-MM-DD). That adds it to the Week ahead and today's planner without creating a Google Calendar event unless they also ask for that.
@@ -251,7 +230,7 @@ Return JSON only with this exact shape:
 
 todayUpdates rules:
 - Use null/false defaults when the user is not changing today's plan.
-- skipPlanBlock must be one of: "lyft", "work", "gym", "leverage", "joy", or null.
+- skipPlanBlock must be one of: "gym", "leverage", "joy", or null.
 - markMoveStatus must be "skipped", "done", or null.
 - logActivity when set: { "title", "domain", "category", "date", "leverage", "minutesSpent", "notes" }
 - Use @Name in logActivity.title or notes to link a contact (e.g. "Coffee with @Jane Smith").

@@ -25,14 +25,6 @@ const SKIP_TITLE_RE = /^(busy|focus time|hold|blocked|block|ooo|out of office)$/
 function classifyCalendarEvent(title: string, description: string | null): ClassifiedCalendarEvent {
   const haystack = `${title} ${description ?? ""}`.toLowerCase();
 
-  if (/\b(lyft|hertz|drive shift|gig)\b/.test(haystack)) {
-    return {
-      domain: "personal",
-      category: "lyft",
-      leverage: "immediate_income",
-      impactScore: 5,
-    };
-  }
   if (/\b(gym|workout|training|planet fitness|lift|cardio|push day|pull day|leg day)\b/.test(haystack)) {
     return {
       domain: "fitness",

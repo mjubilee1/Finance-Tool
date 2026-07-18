@@ -52,7 +52,7 @@ export async function GET() {
     const now = userNow();
     const today = now.toISODate()!;
     const weekEnd = now.plus({ days: 6 }).toISODate()!;
-    const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate, lyftPace] =
+    const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate] =
       await Promise.all([
       buildTodayBriefContext(session.user.id),
       getTrendDigestForDate(session.user.id, today).catch((error) => {
@@ -65,10 +65,6 @@ export async function GET() {
         return [];
       }),
       getPlannerDayLayouts(session.user.id, today, weekEnd),
-      loadLyftPaceForUser(session.user.id, today).catch((error) => {
-        console.error("Lyft pace failed while loading today overview:", error);
-        return null;
-      }),
     ]);
 
     const serialized = digest ? serializeTrendDigest(digest) : null;
@@ -117,7 +113,6 @@ export async function GET() {
         : null,
       calendar,
       weekPlan,
-      lyftPace,
     });
   } catch (error) {
     console.error("Failed to load today overview:", error);
