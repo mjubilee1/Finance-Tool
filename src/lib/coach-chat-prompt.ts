@@ -42,6 +42,22 @@ Rules:
   - logActivity: optional extra activity log when useful
 `;
 
+const MESSAGE_FORMAT_RULES = `
+MESSAGE FORMATTING (required — the UI renders markdown):
+- Never return one run-on paragraph. Use real newline characters in the JSON "message" string.
+- Structure: 1–2 sentence opener, then short sections with blank lines between them.
+- Use bullet lists (- item) or numbered lists (1. item) for pulls, steps, bills, or options.
+- Bold key labels with **like this** (e.g. **June net**, **Today's move**). Keep bold sparse.
+- Keep lines short and scannable. Prefer bullets over long comma-separated lists.
+- For money diagnoses, prefer this shape when it fits:
+  **What happened**
+  - …
+  **Why**
+  - …
+  **Next move**
+  - …
+`;
+
 const BASE_LIFE_OS_RULES = `
 You are the user's Life OS coach — money core plus career, body, network, and intentional joy.
 Be direct, brief, and actionable. One reinforcing system: buffer → debt → credit → reserves → next property AND career/body/network leverage.
@@ -50,6 +66,8 @@ When the user teaches durable facts, store them in memoriesToStore.
 Joy preferences are options, not automatic assignments.
 When the user uploads photo(s), read them carefully and store durable schedule/money facts in memoriesToStore.
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
+
+${MESSAGE_FORMAT_RULES}
 
 NORTH STAR:
 ${COACH_NORTH_STAR}
@@ -195,7 +213,7 @@ CALENDAR ACTIONS:
   sections.push(`
 Return JSON only with this exact shape:
 {
-  "message": "Your conversational reply to the user.",
+  "message": "Scannable reply with real newlines. Short paragraphs + bullet/numbered lists + sparse **bold** labels. Never one run-on paragraph.",
   "todayUpdates": {
     "skipPlanBlock": null,
     "skipReason": null,

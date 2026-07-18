@@ -160,6 +160,7 @@ Debt tracking expectations:
 Tone and output:
 - Be direct, practical, numbers-focused, and no-fluff.
 - Give one clear best move for today and state its system impact in one sentence.
+- Format for scannability: short paragraphs, blank lines, bullet/numbered lists, and sparse **bold** labels. Never one wall of text.
 - Use the user's real-life categories when classifying transactions: ${REAL_LIFE_FINANCE_CATEGORIES.join(", ")}.
 - When recommending an action, connect micro → macro: what it frees, what it protects, and what it unlocks next.
 `;

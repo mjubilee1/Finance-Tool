@@ -247,6 +247,18 @@ function stringifyStoredJson(value: unknown) {
   }
 }
 
+function normalizeCoachMessage(message: string) {
+  let text = message.trim();
+  if (!text) return "";
+
+  // Models sometimes emit literal "\n" sequences inside an already-parsed string.
+  if (!text.includes("\n") && /\\n/.test(text)) {
+    text = text.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+  }
+
+  return text.trim();
+}
+
 function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
   const content = response.choices[0]?.message.content;
 
@@ -262,7 +274,8 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
 
   try {
     const parsed = JSON.parse(content) as Partial<ChatResponsePayload>;
-    const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
+    const message =
+      typeof parsed.message === "string" ? normalizeCoachMessage(parsed.message) : "";
     const memoriesToStore = Array.isArray(parsed.memoriesToStore)
       ? parsed.memoriesToStore.filter((memory): memory is ChatMemory =>
           typeof memory?.title === "string" &&
@@ -293,7 +306,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
     };
   } catch {
     return {
-      message: content.trim(),
+      message: normalizeCoachMessage(content),
       memoriesToStore: [],
       shouldRefreshBrief: false,
       todayUpdates: null,

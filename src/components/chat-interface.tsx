@@ -19,6 +19,7 @@ import { TransactionSpotlightCard, type TransactionSpotlight } from "./chat/tran
 import { GoalSuggestionCard } from "./chat/goal-suggestion-card";
 import type { GoalSuggestion } from "@/lib/goal-suggestion";
 import { ChatComposer } from "./chat/chat-composer";
+import { CoachMessageContent } from "./chat/coach-message-content";
 import { useCoachSpeech } from "@/hooks/use-coach-speech";
 import { READ_ALOUD_STORAGE_KEY } from "@/lib/coach-speech";
 import { fetchWithRetry, friendlyChatFetchError } from "@/lib/fetch-with-retry";
@@ -655,7 +656,13 @@ export function ChatInterface({
                       </div>
                     ) : null}
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                      {m.role === "assistant" ? (
+                        <CoachMessageContent content={m.content} />
+                      ) : (
+                        <p className="min-w-0 flex-1 text-sm leading-relaxed whitespace-pre-wrap">
+                          {m.content}
+                        </p>
+                      )}
                       {m.role === "assistant" ? (
                         <button
                           type="button"
