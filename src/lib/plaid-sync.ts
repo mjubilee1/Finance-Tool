@@ -7,7 +7,6 @@ import { syncCachedAccountsForItem } from "@/lib/plaid-accounts";
 import { getLatestPlaidEndpointCall, isPlaidEndpointDailyLimitReached, withPlaidTracking } from "./plaid-tracker";
 
 const TRANSACTIONS_SYNC_ENDPOINT = "transactionsSync";
-const { dailySyncCallLimit, syncCooldownMinutes } = getPlaidConfig();
 const inFlightSyncs = new Set<string>();
 
 export type TransactionSyncResult = {
@@ -31,6 +30,8 @@ export async function shouldSkipTransactionSync(
   if (inFlightSyncs.has(itemId)) {
     return "A sync is already running for this item.";
   }
+
+  const { dailySyncCallLimit, syncCooldownMinutes } = getPlaidConfig();
 
   const isLimitReached = await isPlaidEndpointDailyLimitReached(
     TRANSACTIONS_SYNC_ENDPOINT,
@@ -90,6 +91,7 @@ export async function syncTransactionsForItem(
     let hasMore = true;
 
     while (hasMore) {
+      const { dailySyncCallLimit } = getPlaidConfig();
       const isLimitReached = await isPlaidEndpointDailyLimitReached(
         TRANSACTIONS_SYNC_ENDPOINT,
         item.userId,
