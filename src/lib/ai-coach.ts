@@ -13,6 +13,7 @@ import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_C
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { storeFinancialMemories } from "./financial-memory";
+import { attachGoalMonthPaid } from "./goal-month";
 import { DateTime } from "luxon";
 
 type NewMemory = {
@@ -33,13 +34,6 @@ type PromptAccount = {
   minimumPayment?: number | null;
   dueDay?: number | null;
   statementDay?: number | null;
-};
-
-type PromptGoal = {
-  name: string;
-  targetAmount: number;
-  currentAmount: number;
-  targetDate: string | null;
 };
 
 type CfoAccount = {
@@ -260,6 +254,7 @@ export async function generateDailyInsight(userId: string) {
 
   const focusAccounts = getFocusAccounts(accounts);
   const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
+  const goalsWithMonth = await attachGoalMonthPaid(userId, goals);
 
   const dailyMetrics = calculateDailyBriefMetrics({
     date: todayDate,
@@ -324,7 +319,15 @@ ${JSON.stringify(focusAccounts.map((a) => ({
   })))}
 
 FINANCIAL GOALS:
-${JSON.stringify((goals as PromptGoal[]).map((g) => ({ name: g.name, target: g.targetAmount, current: g.currentAmount, targetDate: g.targetDate })))}
+${JSON.stringify(goalsWithMonth.map((g) => ({
+    name: g.name,
+    target: g.targetAmount,
+    current: g.currentAmount,
+    targetDate: g.targetDate,
+    type: g.category ?? null,
+    monthlyPlan: g.monthlyContribution ?? null,
+    thisMonthPaid: g.thisMonthPaid ?? null,
+  })))}
 
 SYSTEM-CALCULATED DAILY LIMIT:
 ${JSON.stringify({

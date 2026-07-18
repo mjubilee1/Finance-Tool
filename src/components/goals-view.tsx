@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { calculateGoalPace } from "@/lib/cash-flow";
 import { calculateGoalFunding } from "@/lib/goal-funding";
+import { summarizeDebtMonth } from "@/lib/debt-paydown";
 import {
   GOAL_TYPE_OPTIONS,
   LIFE_GOAL_PROGRESS_TARGET,
@@ -26,6 +27,8 @@ type Goal = {
   priority?: number;
   category?: string;
   createdAt?: string;
+  thisMonthPaid?: number;
+  monthKey?: string;
 };
 
 type GoalForm = {
@@ -77,7 +80,9 @@ export function GoalsView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
   const [form, setForm] = useState<GoalForm>(emptyForm);
+  const isDebtForm = form.type === "debt_payoff";
 
   const isLifeForm = isLifeGoalType(form.type);
   const moneyGoals = useMemo(
@@ -220,6 +225,36 @@ export function GoalsView({
     }
   };
 
+  const logDebtPayment = async (id: string) => {
+    const raw = paymentDrafts[id]?.trim() ?? "";
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Enter the extra principal you paid (beyond the minimum).");
+      return;
+    }
+    setUpdatingId(id);
+    try {
+      const res = await fetch("/api/goals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, addAmount: amount }),
+      });
+      if (res.ok) {
+        setPaymentDrafts((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        invalidateGoals();
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "Failed to log payment");
+      }
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const renderGoalForm = (mode: "create" | "edit") => (
     <form
       onSubmit={mode === "create" ? handleAddGoal : handleSaveEdit}
@@ -293,7 +328,9 @@ export function GoalsView({
               />
             </div>
             <div>
-              <label className="app-label block mb-1.5">Monthly plan ($)</label>
+              <label className="app-label block mb-1.5">
+                {isDebtForm ? "Monthly principal plan ($)" : "Monthly plan ($)"}
+              </label>
               <input
                 type="number"
                 min="0"
@@ -301,8 +338,14 @@ export function GoalsView({
                 value={form.monthlyContribution}
                 onChange={(e) => setForm({ ...form, monthlyContribution: e.target.value })}
                 className="app-input w-full px-3 py-2 text-sm"
-                placeholder="Optional — e.g. 15"
+                placeholder={isDebtForm ? "e.g. 200 beyond minimums" : "Optional — e.g. 15"}
               />
+              {isDebtForm ? (
+                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                  Extra principal each month — not the minimum. That&apos;s how you tell paydown from
+                  treading water.
+                </p>
+              ) : null}
             </div>
           </>
         ) : (
@@ -365,7 +408,8 @@ export function GoalsView({
           ({formatCurrency(funding.checkingCash)}) after a{" "}
           {formatCurrency(funding.protectedBuffer)} buffer. Order: targets within ~12 months, then
           undated goals, then farther dates — so a 2027 house doesn&apos;t beat a trip with no date.
-          Life goals track progress separately.
+          Debt goals track a <span className="font-medium text-slate-800">monthly principal plan</span>{" "}
+          so you can see real paydown vs treading water. Life goals track progress separately.
         </div>
       ) : null}
 
@@ -422,6 +466,15 @@ export function GoalsView({
               ? progress >= 100
               : Boolean(funded?.fullyFunded);
             const isEditing = editingId === goal.id;
+            const isDebt = goal.category === "debt_payoff";
+            const debtMonth = isDebt
+              ? summarizeDebtMonth({
+                  monthPaid: goal.thisMonthPaid ?? 0,
+                  monthlyPlan: goal.monthlyContribution,
+                  totalPaid: effectiveAmount,
+                  targetAmount: goal.targetAmount,
+                })
+              : null;
 
             return (
               <div
@@ -456,9 +509,22 @@ export function GoalsView({
                       <span className="text-[10px] uppercase tracking-wider font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
                         {goalTypeLabel(goal.category)}
                       </span>
-                      {goal.category === "debt_payoff" && (
+                      {isDebt && (
                         <span className="text-[10px] uppercase tracking-wider font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md ring-1 ring-rose-200/60">Debt</span>
                       )}
+                      {debtMonth && debtMonth.status !== "done" ? (
+                        <span
+                          className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md ring-1 ${
+                            debtMonth.status === "treading_water"
+                              ? "bg-amber-50 text-amber-900 ring-amber-200/70"
+                              : debtMonth.status === "behind" || debtMonth.status === "no_plan"
+                                ? "bg-slate-100 text-slate-700 ring-slate-200/70"
+                                : "bg-teal-50 text-teal-800 ring-teal-200/60"
+                          }`}
+                        >
+                          {debtMonth.statusLabel}
+                        </span>
+                      ) : null}
                       {goal.priority === 1 && (
                         <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md ring-1 ring-amber-200/60">High</span>
                       )}
@@ -523,19 +589,80 @@ export function GoalsView({
                         />
                       </div>
                       <p className="text-xs text-slate-500 mt-2">
-                        {Math.round(progress)}% covered
+                        {Math.round(progress)}% {isDebt ? "paid toward payoff" : "covered"}
                         {funded?.coveredByChecking
                           ? ` · ${formatCurrency(funded.checkingAllocation)} assigned from checking`
-                          : goal.category === "debt_payoff"
-                            ? " · update payoff progress when you pay"
-                            : ""}
-                        {goal.monthlyContribution && goal.monthlyContribution > 0
+                          : ""}
+                        {!isDebt && goal.monthlyContribution && goal.monthlyContribution > 0
                           ? ` · plan ${formatCurrency(goal.monthlyContribution)}/mo`
                           : ""}
                       </p>
                     </>
                   )}
                 </div>
+
+                {isDebt && debtMonth ? (
+                  <div className="mt-4 rounded-xl p-3 ring-1 ring-slate-200/70 bg-slate-50/70">
+                    <div className="flex justify-between text-sm mb-2 gap-3">
+                      <span className="font-semibold text-slate-800">
+                        {debtMonth.monthLabel} principal
+                      </span>
+                      <span className="text-slate-600 tabular-nums shrink-0">
+                        {formatCurrency(debtMonth.monthPaid)}
+                        {debtMonth.monthlyPlan != null
+                          ? ` / ${formatCurrency(debtMonth.monthlyPlan)}`
+                          : ""}
+                      </span>
+                    </div>
+                    {debtMonth.monthlyPlan != null ? (
+                      <div className="w-full bg-white rounded-full h-2 overflow-hidden ring-1 ring-slate-200/60">
+                        <div
+                          className={`h-2 rounded-full transition-all duration-500 ${
+                            debtMonth.status === "treading_water"
+                              ? "bg-amber-500"
+                              : debtMonth.status === "behind"
+                                ? "bg-slate-400"
+                                : "bg-teal-500"
+                          }`}
+                          style={{ width: `${Math.min(100, debtMonth.monthProgressPct)}%` }}
+                        />
+                      </div>
+                    ) : null}
+                    {!complete ? (
+                      <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          inputMode="decimal"
+                          placeholder="Extra principal paid"
+                          value={paymentDrafts[goal.id] ?? ""}
+                          onChange={(e) =>
+                            setPaymentDrafts((prev) => ({
+                              ...prev,
+                              [goal.id]: e.target.value,
+                            }))
+                          }
+                          className="app-input flex-1 px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          disabled={updatingId === goal.id}
+                          onClick={() => logDebtPayment(goal.id)}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl ring-1 ring-teal-200/70 disabled:opacity-60"
+                        >
+                          {updatingId === goal.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : null}
+                          Log payment
+                        </button>
+                      </div>
+                    ) : null}
+                    <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                      Log extras beyond the minimum. That&apos;s what shrinks the balance.
+                    </p>
+                  </div>
+                ) : null}
 
                 {lifeGoal && !complete ? (
                   <button
@@ -548,7 +675,7 @@ export function GoalsView({
                   </button>
                 ) : null}
 
-                {!lifeGoal && goal.category !== "debt_payoff" && !funded?.fullyFunded ? (
+                {!lifeGoal && !isDebt && !funded?.fullyFunded ? (
                   <button
                     type="button"
                     disabled={updatingId === goal.id}
@@ -561,9 +688,15 @@ export function GoalsView({
 
                 <div
                   className={`mt-4 rounded-xl p-3 text-sm ring-1 leading-relaxed ${
-                    complete || pace?.onTrack
-                      ? "bg-teal-50/80 text-teal-900 ring-teal-200/50"
-                      : "bg-amber-50/80 text-amber-900 ring-amber-200/50"
+                    isDebt && debtMonth
+                      ? debtMonth.status === "treading_water" || debtMonth.status === "behind"
+                        ? "bg-amber-50/80 text-amber-900 ring-amber-200/50"
+                        : debtMonth.status === "no_plan"
+                          ? "bg-slate-50 text-slate-700 ring-slate-200/60"
+                          : "bg-teal-50/80 text-teal-900 ring-teal-200/50"
+                      : complete || pace?.onTrack
+                        ? "bg-teal-50/80 text-teal-900 ring-teal-200/50"
+                        : "bg-amber-50/80 text-amber-900 ring-amber-200/50"
                   }`}
                 >
                   <p>
@@ -573,11 +706,13 @@ export function GoalsView({
                         : goal.targetDate?.trim()
                           ? `Life goal in progress — target ${goal.targetDate}. Log work in Growth when you push it forward.`
                           : "Life goal in progress — update the slider as you move. No cash allocation needed."
-                      : funded?.fullyFunded
-                        ? "Checking coverage already meets this goal — protect that cash until you spend it on purpose."
-                        : funded?.coveredByChecking && pace && pace.dailyContribution <= 0
-                          ? `Checking covers ${formatCurrency(funded.checkingAllocation)} for now — add income or cut spend to keep filling the rest.`
-                          : pace?.paceMessage}
+                      : isDebt && debtMonth
+                        ? debtMonth.message
+                        : funded?.fullyFunded
+                          ? "Checking coverage already meets this goal — protect that cash until you spend it on purpose."
+                          : funded?.coveredByChecking && pace && pace.dailyContribution <= 0
+                            ? `Checking covers ${formatCurrency(funded.checkingAllocation)} for now — add income or cut spend to keep filling the rest.`
+                            : pace?.paceMessage}
                   </p>
                   {!lifeGoal && !funded?.fullyFunded && projectedLabel && pace && pace.remaining > 0 && (
                     <p className="text-xs mt-1 opacity-80">

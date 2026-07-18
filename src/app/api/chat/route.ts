@@ -7,6 +7,7 @@ import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
+import { attachGoalMonthPaid } from "@/lib/goal-month";
 import {
   createOrUpdateGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
@@ -742,13 +743,15 @@ export async function POST(req: Request) {
               ? Math.round(((a.currentBalance ?? 0) / a.creditLimit) * 1000) / 10
               : null,
         })),
-        goals: goals.map((g) => ({
+        goals: (await attachGoalMonthPaid(session.user.id, goals)).map((g) => ({
           name: g.name,
           target: g.targetAmount,
           current: g.currentAmount,
           targetDate: g.targetDate,
           type: g.category,
           status: g.status,
+          monthlyPlan: g.monthlyContribution,
+          thisMonthPaid: g.thisMonthPaid,
         })),
         recentTransactions: recentTransactions.map((t) => ({
           id: t.id,

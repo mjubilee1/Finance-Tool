@@ -19,6 +19,7 @@ import {
   getFocusAccounts,
   sumDepositoryCash,
 } from "@/lib/account-focus";
+import { attachGoalMonthPaid } from "@/lib/goal-month";
 import { DateTime } from "luxon";
 
 export async function GET() {
@@ -144,6 +145,7 @@ export async function GET() {
 
     const dailySpendSeries = buildDailySpendSeries(chartSpendTransactions, 30, todayKey);
     const monthlyCashFlowSeries = buildMonthlyCashFlowSeries(focusMonthlyTransactions, 6, todayKey);
+    const goalsWithMonth = await attachGoalMonthPaid(userId, goals);
 
     return NextResponse.json({
       transactions:
@@ -155,7 +157,7 @@ export async function GET() {
       monthlyCashFlowSeries,
       aiInsight,
       accounts,
-      goals,
+      goals: goalsWithMonth,
       briefRefresh,
       cashFlow: {
         today: todayCashFlow,

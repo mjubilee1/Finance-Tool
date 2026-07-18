@@ -147,9 +147,12 @@ type DashboardGoal = {
   name: string;
   targetAmount: number;
   currentAmount: number;
+  monthlyContribution?: number | null;
   targetDate?: string | null;
   priority?: number;
   category?: string;
+  thisMonthPaid?: number;
+  monthKey?: string;
 };
 
 type DashboardData = {

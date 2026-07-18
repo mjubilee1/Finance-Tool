@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { currentGoalMonthKey } from "@/lib/debt-paydown";
+import { attachGoalMonthPaid } from "@/lib/goal-month";
 
 export async function GET() {
   try {
@@ -15,7 +17,8 @@ export async function GET() {
       orderBy: { createdAt: "asc" },
     });
 
-    return NextResponse.json({ goals });
+    const withMonth = await attachGoalMonthPaid(session.user.id, goals);
+    return NextResponse.json({ goals: withMonth });
   } catch (error) {
     console.error("Failed to fetch goals:", error);
     return NextResponse.json(
@@ -50,6 +53,7 @@ export async function POST(request: Request) {
     const category =
       typeof type === "string" && type.trim() ? type.trim() : "savings";
     const isLifeGoal = !["savings", "debt_payoff"].includes(category);
+    const isDebtGoal = category === "debt_payoff";
 
     // Life goals track progress 0–100; money goals need a dollar target.
     if (!isLifeGoal && (targetAmount === undefined || targetAmount === "" || Number(targetAmount) <= 0)) {
@@ -72,8 +76,9 @@ export async function POST(request: Request) {
       ? Math.min(100, Math.max(0, parseFloat(String(currentAmount)) || 0))
       : parseFloat(String(currentAmount)) || 0;
 
-    // Seed first month of a planned redirect so the goal isn't stuck at $0.
-    if (!isLifeGoal && parsedCurrent <= 0 && safeMonthly != null) {
+    // Seed first month for savings redirects only. Debt starts at $0 so
+    // "treading water" is honest until principal is actually logged.
+    if (!isLifeGoal && !isDebtGoal && parsedCurrent <= 0 && safeMonthly != null) {
       parsedCurrent = safeMonthly;
     }
 
@@ -93,7 +98,8 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ goal });
+    const [withMonth] = await attachGoalMonthPaid(session.user.id, [goal]);
+    return NextResponse.json({ goal: withMonth });
   } catch (error) {
     console.error("Failed to create goal:", error);
     return NextResponse.json(
@@ -123,6 +129,8 @@ export async function PATCH(request: Request) {
       addAmount,
       type,
       category,
+      note,
+      monthKey: requestedMonthKey,
     } = body;
 
     if (!id || typeof id !== "string") {
@@ -137,12 +145,20 @@ export async function PATCH(request: Request) {
     }
 
     const data: Record<string, unknown> = {};
+    let contributionAmount: number | null = null;
+    const monthKey =
+      typeof requestedMonthKey === "string" && /^\d{4}-\d{2}$/.test(requestedMonthKey)
+        ? requestedMonthKey
+        : currentGoalMonthKey();
+
     if (addAmount !== undefined && addAmount !== null && addAmount !== "") {
       const add = Number(addAmount);
       if (!Number.isFinite(add) || add === 0) {
         return NextResponse.json({ error: "Invalid addAmount" }, { status: 400 });
       }
-      data.currentAmount = Math.round((existing.currentAmount + add) * 100) / 100;
+      const nextAmount = Math.round((existing.currentAmount + add) * 100) / 100;
+      data.currentAmount = nextAmount;
+      contributionAmount = Math.round(add * 100) / 100;
     } else if (currentAmount !== undefined) {
       data.currentAmount = parseFloat(String(currentAmount));
     }
@@ -176,17 +192,41 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "No updates provided" }, { status: 400 });
     }
 
-    const updated = await prisma.financialGoal.updateMany({
-      where: { id, userId: session.user.id },
-      data,
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.financialGoal.updateMany({
+        where: { id, userId: session.user.id },
+        data,
+      });
+      if (updated.count === 0) {
+        throw new Error("NOT_FOUND");
+      }
+
+      if (contributionAmount != null && contributionAmount !== 0) {
+        await tx.goalContribution.create({
+          data: {
+            userId: session.user.id,
+            goalId: id,
+            amount: contributionAmount,
+            monthKey,
+            note:
+              typeof note === "string" && note.trim() ? note.trim().slice(0, 200) : null,
+          },
+        });
+      }
     });
 
-    if (updated.count === 0) {
+    const goal = await prisma.financialGoal.findFirst({
+      where: { id, userId: session.user.id },
+    });
+    const [withMonth] = goal
+      ? await attachGoalMonthPaid(session.user.id, [goal])
+      : [null];
+
+    return NextResponse.json({ success: true, goal: withMonth });
+  } catch (error) {
+    if (error instanceof Error && error.message === "NOT_FOUND") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
     console.error("Failed to update goal:", error);
     return NextResponse.json({ error: "Failed to update goal." }, { status: 500 });
   }
