@@ -36,7 +36,7 @@ export function LyftEarningsForm({
     >
       <p className="text-xs font-semibold text-[var(--ink)]">Lyft gross earnings</p>
       <p className="text-[11px] leading-snug text-[var(--muted)]">
-        Enter the dollar amount Lyft paid you before the weekly fee. Daily target ≈{" "}
+        Enter what Lyft paid you. No weekly program fee — daily target ≈{" "}
         {formatCurrency(dailyTarget)} toward $200–$400/week profit.
       </p>
       <input

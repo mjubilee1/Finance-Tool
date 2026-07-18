@@ -1,11 +1,11 @@
 import { DateTime } from "luxon";
 
-export const LYFT_WEEKLY_PROGRAM_FEE = 334;
-export const LYFT_WEEKLY_PROGRAM_FEE_LABEL = "$334/week";
-export const LYFT_MONTHLY_PROGRAM_FEE_ESTIMATE = Math.round(LYFT_WEEKLY_PROGRAM_FEE * 4.33);
+export const LYFT_WEEKLY_PROGRAM_FEE = 0;
+export const LYFT_WEEKLY_PROGRAM_FEE_LABEL = "no weekly program fee";
+export const LYFT_MONTHLY_PROGRAM_FEE_ESTIMATE = 0;
 export const LYFT_GROSS_EARNINGS_NOTE_PREFIX = "Lyft gross earnings";
 
-/** Default weekly profit band after the Hertz/Lyft fee is covered. */
+/** Default weekly profit band (gross ≈ profit when there is no program fee). */
 export const LYFT_WEEKLY_PROFIT_GOAL_MIN = 200;
 export const LYFT_WEEKLY_PROFIT_GOAL_MAX = 400;
 export const LYFT_WEEKLY_PROFIT_GOAL_DEFAULT = 300;
@@ -429,12 +429,19 @@ export function buildLyftEarningsNote(params: {
   baseNote?: string | null;
 }) {
   const impact = calculateLyftEntryImpact(params.existingWeekGross, params.grossEarnings);
-  const lines = [
-    `${LYFT_GROSS_EARNINGS_NOTE_PREFIX}: $${roundCurrency(params.grossEarnings).toFixed(2)}.`,
-    `Applied to ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee first: $${impact.feeCoveredByEntry.toFixed(2)}.`,
-    `Lyft profit after fee from this entry: $${impact.profitAfterFee.toFixed(2)}.`,
-    `Weekly fee remaining after this entry: $${impact.feeRemainingAfter.toFixed(2)}.`,
-  ];
+  const lines =
+    LYFT_WEEKLY_PROGRAM_FEE > 0
+      ? [
+          `${LYFT_GROSS_EARNINGS_NOTE_PREFIX}: $${roundCurrency(params.grossEarnings).toFixed(2)}.`,
+          `Applied to ${LYFT_WEEKLY_PROGRAM_FEE_LABEL} fee first: $${impact.feeCoveredByEntry.toFixed(2)}.`,
+          `Lyft profit after fee from this entry: $${impact.profitAfterFee.toFixed(2)}.`,
+          `Weekly fee remaining after this entry: $${impact.feeRemainingAfter.toFixed(2)}.`,
+        ]
+      : [
+          `${LYFT_GROSS_EARNINGS_NOTE_PREFIX}: $${roundCurrency(params.grossEarnings).toFixed(2)}.`,
+          `Counted as profit (no weekly program fee): $${impact.profitAfterFee.toFixed(2)}.`,
+          `Week profit so far: $${roundCurrency(params.existingWeekGross + params.grossEarnings).toFixed(2)}.`,
+        ];
 
   if (params.baseNote?.trim()) {
     lines.push(params.baseNote.trim());

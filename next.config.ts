@@ -28,6 +28,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_COMMIT: getGitCommit(),
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
   },
+  // Keep hardcoded car PDFs available to the authenticated document API on deploy.
+  outputFileTracingIncludes: {
+    "/api/car/documents/[id]": ["./storage/car-documents/**/*"],
+  },
 };
 
 export default nextConfig;

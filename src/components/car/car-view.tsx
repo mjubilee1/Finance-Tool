@@ -13,6 +13,7 @@ import {
   type CarProfileLike,
 } from "@/lib/car";
 import { formatCurrency } from "@/lib/format";
+import { CapitalOneProjectionChart } from "@/components/car/capital-one-projection-chart";
 
 type CarSubView = "payment" | "insurance" | "documents";
 
@@ -316,6 +317,9 @@ export function CarView() {
                   </p>
                 ) : null}
               </div>
+
+              <CapitalOneProjectionChart />
+
               <div className="space-y-2">
                 <p className="app-label px-1">Payment documents</p>
                 {paymentDocs.map((doc) => (

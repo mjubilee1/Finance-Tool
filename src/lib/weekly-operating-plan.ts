@@ -193,6 +193,18 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
   if (shape === "office") {
     return [
       {
+        id: `${day.toISODate()}-lyft`,
+        type: "cash",
+        priority: "optional",
+        label: "Morning Lyft",
+        time: "Before commute",
+        why: "Optional cash block before 9-5 — drive when it fits without stealing the workday.",
+        source: "weekly_template",
+        sortKey: 6.5,
+        ref: weekPlanRef(`${day.toISODate()}-lyft`),
+        status: "planned",
+      },
+      {
         id: `${day.toISODate()}-work`,
         type: "work",
         priority: "locked",
@@ -220,9 +232,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         id: `${day.toISODate()}-evening`,
         type: "recovery",
         priority: "optional",
-        label: "Evening reset",
+        label: "Evening reset or Lyft",
         time: "After commute",
-        why: "Use the evening intentionally: recovery if the floor is handled, including Capital One car bills.",
+        why: "Use the evening intentionally: recovery if the floor is handled, or another Lyft block if you want extra cash.",
         source: "weekly_template",
         sortKey: 19,
         ref: weekPlanRef(`${day.toISODate()}-evening`),
@@ -233,6 +245,18 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
 
   if (shape === "wfh") {
     return [
+      {
+        id: `${day.toISODate()}-lyft`,
+        type: "cash",
+        priority: "protect",
+        label: "Morning Lyft before 9-5",
+        time: "Before work starts",
+        why: "Thu-Fri rhythm: drive before the locked job block when you want the cash.",
+        source: "weekly_template",
+        sortKey: 6.5,
+        ref: weekPlanRef(`${day.toISODate()}-lyft`),
+        status: "planned",
+      },
       {
         id: `${day.toISODate()}-work`,
         type: "work",
@@ -274,11 +298,23 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
 
   return [
     {
+      id: `${day.toISODate()}-lyft`,
+      type: "cash",
+      priority: "protect",
+      label: "Morning Lyft",
+      time: "AM before the day starts",
+      why: "Weekend rhythm: morning Lyft when you want cash, then gym/social/recovery.",
+      source: "weekly_template",
+      sortKey: 6.5,
+      ref: weekPlanRef(`${day.toISODate()}-lyft`),
+      status: "planned",
+    },
+    {
       id: `${day.toISODate()}-review`,
       type: "review",
       priority: "protect",
       label: "Weekly review / setup",
-      time: "Morning",
+      time: day.weekday === 7 ? "After morning Lyft" : "Morning",
       why: "Review what is ahead, what needs prep, and which blocks actually create value.",
       source: "weekly_template",
       sortKey: day.weekday === 7 ? 9 : 8,
@@ -313,15 +349,15 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
 }
 
 function headlineFor(shape: DayShape) {
-  if (shape === "office") return "Office rails: 9-5 work is locked; extras happen after hours.";
-  if (shape === "wfh") return "WFH rails: 9-5 work locked, gym in midday flex.";
-  return "Weekend rails: gym, social, and recovery.";
+  if (shape === "office") return "Office rails: optional morning Lyft, then 9-5 locked; extras after hours.";
+  if (shape === "wfh") return "WFH rails: morning Lyft, 9-5 work locked, gym in midday flex.";
+  return "Weekend rails: morning Lyft AM, then gym, social, and recovery.";
 }
 
 function valueFocusFor(shape: DayShape) {
-  if (shape === "office") return "Protect 9-5 work; promotion and network are optional off-hours extras.";
-  if (shape === "wfh") return "9-5 work locked; gym uses a midday flex pocket inside the job day.";
-  return "Use the open day for gym, events, leverage, and recovery.";
+  if (shape === "office") return "Protect 9-5 work; Lyft and promotion are optional around the job block.";
+  if (shape === "wfh") return "Morning Lyft when you want cash, then 9-5; gym uses a midday flex pocket.";
+  return "Morning Lyft AM like other days, then gym, events, leverage, and recovery.";
 }
 
 export function buildWeeklyOperatingPlan(

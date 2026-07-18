@@ -1436,7 +1436,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                   min={0}
                   step="0.01"
                   className="app-input w-full px-3 py-1.5 text-sm mt-1"
-                  placeholder="What Lyft paid before the weekly fee"
+                  placeholder="What Lyft paid you"
                   value={activityForm.lyftGrossEarnings}
                   onChange={(e) =>
                     setActivityForm({ ...activityForm, lyftGrossEarnings: e.target.value })
@@ -1444,7 +1444,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                   disabled={activityForm.category !== "lyft"}
                 />
                 <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  Required for hit/miss pacing. Fee ($334/week) is covered first; surplus is profit.
+                  Required for hit/miss pacing. No weekly program fee — gross counts as profit toward the $200–$400/week band.
                 </span>
               </label>
             ) : null}

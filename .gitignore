@@ -39,9 +39,8 @@ yarn-error.log*
 # local plaid token storage (dev only)
 /.data/
 
-# private car PDFs (served via authenticated API)
-/storage/car-documents/*.pdf
-!/storage/car-documents/.gitkeep
+# Car purchase PDFs are intentionally tracked (single-user app; served only via auth API).
+# Keep .gitkeep for empty clones; PDFs live under storage/car-documents/.
 
 # private contact exports — never commit phone books / VCFs
 *.vcf
