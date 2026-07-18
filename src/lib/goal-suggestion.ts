@@ -77,8 +77,8 @@ GOAL SUGGESTIONS (optional, rare):
 - goalId and matchName must refer to the goal named in "name". If unsure which id, omit goalId and use exact matchName equal to that goal's name — or use action "create".
 - Prefer redirecting freed cash (canceled subscription, leftover after buffer) toward the highest-APR credit card or an existing near-term money goal — do NOT invent a new trip/house goal if those already exist or are far away.
 - Respect timelines: near-term funded/covered trips stay covered; far house goals should not vacuum every new $15 — point surplus at high-APR debt or the soonest underfunded goal.
-- For debt_payoff creates: set monthlyRedirect (e.g. 15) and a sensible targetAmount; the UI seeds the first month as progress.
-- For updates: set action "update", goalId from FINANCIAL GOALS when known (or matchName), and addAmount / monthlyRedirect.
+- For debt_payoff creates: set monthlyRedirect (monthly principal plan beyond minimums) and a sensible targetAmount. Progress starts at $0 until principal is logged.
+- For updates: set action "update", goalId from FINANCIAL GOALS when known (or matchName), and addAmount (principal paid this month) / monthlyRedirect.
 - Never spam goals. Skip if equivalent exists and you're not adding to it, if the win is tiny one-off fun, or you already suggested something similar.
 - If unsure, omit goalSuggestion (null) and just explain the money move in the message.
 `;

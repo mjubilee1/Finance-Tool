@@ -504,7 +504,7 @@ export function calculateGoalPace(params: {
       onTrack: false,
       paceMessage:
         category === "debt_payoff"
-          ? "Track payments manually as you send extras to the card — this isn’t funded from checking allocation."
+          ? "Set a monthly principal plan and log extras when you pay — minimums alone usually mean treading water."
           : "Current cash flow won't fund this goal — reduce spending or increase income.",
     };
   }
@@ -521,7 +521,7 @@ export function calculateGoalPace(params: {
       : `At current pace, on track by ${projected.toFormat("MMM d, yyyy")}.`;
 
   if (category === "debt_payoff" && plannedMonthly != null) {
-    paceMessage = `Redirect ${formatCurrencyDelta(plannedMonthly)}/mo to the card — update progress when you pay. On pace by ${projected.toFormat("MMM d, yyyy")}.`;
+    paceMessage = `Plan ${formatCurrencyDelta(plannedMonthly)}/mo toward principal (beyond minimums) — log each payment so you can see real paydown vs treading water. On pace by ${projected.toFormat("MMM d, yyyy")}.`;
   }
 
   if (targetDate) {

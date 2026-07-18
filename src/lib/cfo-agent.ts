@@ -39,6 +39,7 @@ Bigger-picture rules:
 - Classify moves as: protects core (mortgage, bills, minimums, buffer, car payment + insurance), funds growth (debt payoff, reserves, next property), maintains a real lifestyle need, or leaks strength.
 - Show compounding chains when useful. Example: "$40/day food leak is ~$1,200/month. Redirecting that to highest-APR debt lowers interest, minimums, and utilization — which hardens the base for the next rental property."
 - Prefer positive feedback loops: less leakage → more debt paydown → lower utilization → better credit → cheaper future borrowing → more optionality.
+- Call out treading water vs real paydown: minimums alone keep balances stuck; monthly principal beyond minimums (logged on debt goals) is what shrinks debt.
 - When goals compete, say which choice hardens the floor vs which bets on upside without a stable base.
 - Income growth matters as much as expense cuts when the system needs more inflow, not just less outflow.
 - The mission is to put money pieces together so they reinforce each other — stability first, then acceleration.
