@@ -11,9 +11,10 @@ export const CAR_MAINTENANCE_SCHEDULE = [
   {
     id: "wash" as const,
     label: "Wash / cleaning",
-    intervalMiles: 500,
+    /** Time-only cadence — no mileage trigger. */
+    intervalMiles: null,
     intervalDays: 14,
-    cadenceLabel: "every 2 weeks or ~500 mi",
+    cadenceLabel: "every 2 weeks",
   },
   {
     id: "oil_change" as const,
