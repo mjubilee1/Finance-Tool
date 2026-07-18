@@ -87,6 +87,13 @@ type FinancePack = {
 type CalendarContext = {
   nowIso: string;
   timeZone: string;
+  upcomingEvents: Array<{
+    eventId: string;
+    title: string;
+    start: string;
+    end: string | null;
+    allDay: boolean;
+  }>;
 };
 
 export function buildCoachSystemPrompt(params: {
@@ -183,15 +190,17 @@ Weekly planning rules:
 - Weekly template blocks are rails, not hard calendar events.
 - When WEEKLY_OPERATING_SCRIPT or TODAY_BRIEF marks a block status "done" or "skipped", treat that as ground truth for what actually happened.
 - If a skipped block includes a why/reason note, use it as coaching signal: protect that failure mode next time, do not nag about the same skip blindly.
-- 9-5 work is locked Mon-Fri. Promotion/network work is optional and happens outside job hours.
-- Mon-Wed office: no gym block mid-day; promotion/network optional off-hours.
-- Thu-Fri WFH: gym in a midday flex pocket inside the job day, promotion/network off-hours.
-- Sat-Sun weekend: gym, social, leverage, and recovery.
+- 9-5 work is locked Mon-Fri. Promotion/network work is intentional and opt-in — not a daily rail.
+- Mon-Wed office: no gym block mid-day; no default daily promotion block.
+- Thu-Fri WFH: gym in a midday flex pocket inside the job day.
+- Do not invent a daily promotion schedule. Promotion/network is Add item / coach when asked.
+- Sat-Sun weekend: gym, social, and recovery.
 - When the user teaches durable schedule preferences (gym window, work shape, day rhythm), store them in memoriesToStore so future planning stays aligned.
 - Capital One funds owned-car payment and insurance — keep those current before Cap One fun spend.
 - For parties, birthdays, networking, appointments, and events with locations, call out prep/travel/follow-up windows.
 - Do not create multiple calendar blocks for a weekly script unless the user explicitly asks you to schedule them.
 - If the user asks to add something to their plan/list for today or another day this week, use todayUpdates.logActivity with category "user_plan", a clear title, domain, notes, and optional date (YYYY-MM-DD). That adds it to the Week ahead and today's planner without creating a Google Calendar event unless they also ask for that.
+- If the user asks to edit/rename/reschedule an existing plan item, set logActivity.activityId to that item's id from TODAY_BRIEF.userPlanBlocks or WEEKLY_OPERATING_SCRIPT and update fields — do NOT create a duplicate.
 - If the user asks you to update their weekly rhythm or default schedule, confirm the change in message, store the preference in memoriesToStore, and use logActivity with category "user_plan" only when they want a specific dated block added.
 `);
 
@@ -201,8 +210,13 @@ Weekly planning rules:
 CALENDAR ACTIONS:
 - Current local time: ${calendarContext.nowIso}
 - Default calendar time zone: ${calendarContext.timeZone}
-- If the user explicitly asks to add, create, schedule, or put something on Google Calendar, populate calendarEvent with action "create".
-- Do not create calendar events from vague planning talk. If title, date, or start time is missing/ambiguous, ask one concise follow-up in message and set calendarEvent to null.
+- Upcoming Google Calendar events (use eventId when updating/deleting — never create a second copy):
+${JSON.stringify(calendarContext.upcomingEvents)}
+- If the user explicitly asks to add/create a NEW Google Calendar event, populate calendarEvent with action "create".
+- If the user asks to change, move, rename, reschedule, or fix an existing event (including duplicates), use action "update" with eventId from the list above. Prefer update over create.
+- If the user asks to remove/cancel/delete an event, use action "delete" with eventId.
+- When multiple events share the same title on one day (duplicates), update the earliest matching eventId and delete the extra duplicate eventIds.
+- Do not create calendar events from vague planning talk. If title, date, or start time is missing/ambiguous for a create, ask one concise follow-up in message and set calendarEvent to null.
 - If duration is not specified for a timed event, default to 60 minutes. Preserve the user's requested duration when given.
 - For all-day events, use allDay true with start/end as YYYY-MM-DD; Google Calendar end date is exclusive, so a one-day all-day event ends the next date.
 - Never include sensitive financial account details in calendar event descriptions.
@@ -234,13 +248,15 @@ Return JSON only with this exact shape:
   "goalSuggestion": null,
   "calendarEvent": {
     "action": "create",
+    "eventId": null,
     "title": "Event title",
     "start": "ISO date-time with offset, or YYYY-MM-DD for all-day",
     "end": "ISO date-time with offset, or exclusive YYYY-MM-DD for all-day",
     "allDay": false,
     "timeZone": "${calendarContext.timeZone}",
     "location": null,
-    "description": null
+    "description": null,
+    "deleteDuplicateEventIds": []
   },
   "memoriesToStore": [],
   "shouldRefreshBrief": false
@@ -250,13 +266,14 @@ todayUpdates rules:
 - Use null/false defaults when the user is not changing today's plan.
 - skipPlanBlock must be one of: "gym", "leverage", "joy", or null.
 - markMoveStatus must be "skipped", "done", or null.
-- logActivity when set: { "title", "domain", "category", "date", "leverage", "minutesSpent", "notes" }
+- logActivity when set: { "title", "domain", "category", "date", "leverage", "minutesSpent", "notes", "activityId?" }
+- Use activityId when editing an existing user_plan item so it updates instead of creating a duplicate.
 - Use @Name in logActivity.title or notes to link a contact (e.g. "Coffee with @Jane Smith").
 - Use category "user_plan" when adding an item to the user's operating plan/list. date is optional YYYY-MM-DD; default is today.
 
 Use spotlight null when the user is not asking about a specific transaction.
 Use goalSuggestion null unless one high-value tracked goal clearly helps.
-Use calendarEvent null unless the user is explicitly asking to create a Google Calendar event and gave enough detail.
+Use calendarEvent null unless the user is explicitly asking to create, update, or delete a Google Calendar event.
 If the user is only asking a question and not teaching durable facts, return an empty memoriesToStore array and shouldRefreshBrief false.
 
 User display name: ${userName || "Trell"}

@@ -1542,7 +1542,7 @@ export function OverviewHome({
                 const block = item.block;
                 const isDone = completed.has(block.key);
                 const isSkipped = skipped.has(block.key);
-                const isFocus = block.key === "leverage";
+                const isFocus = block.priority === "protect";
 
                 return (
                   <li key={block.key} className="flex gap-3">
@@ -1769,6 +1769,11 @@ export function OverviewHome({
             <p className="text-sm font-semibold text-[var(--ink)] leading-snug">
               {brief.recommendation.action}
             </p>
+            {brief.recommendation.status === "pending" ? (
+              <p className="text-xs text-[var(--muted)] mt-1">
+                One focused move for today — not a standing daily promotion block.
+              </p>
+            ) : null}
             {leverageBlock ? (
               <p className="text-xs text-[var(--muted)] mt-1">
                 Fits in: {formatPlanRole(leverageBlock.role)} · {leverageBlock.time}

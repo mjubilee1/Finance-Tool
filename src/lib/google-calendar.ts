@@ -81,6 +81,10 @@ export type CreateGoogleCalendarEventInput = {
   description?: string | null;
 };
 
+export type UpdateGoogleCalendarEventInput = CreateGoogleCalendarEventInput & {
+  eventId: string;
+};
+
 export type GoogleCalendarEvent = {
   id: string;
   title: string;
@@ -434,10 +438,30 @@ export async function fetchUpcomingGoogleCalendarEvents(
   };
 }
 
-export async function createGoogleCalendarEvent(userId: string, input: CreateGoogleCalendarEventInput) {
+function buildGoogleCalendarEventBody(input: CreateGoogleCalendarEventInput) {
+  if (input.allDay) {
+    return {
+      summary: input.summary,
+      location: input.location ?? undefined,
+      description: input.description ?? undefined,
+      start: { date: input.start },
+      end: { date: input.end },
+    };
+  }
+
+  return {
+    summary: input.summary,
+    location: input.location ?? undefined,
+    description: input.description ?? undefined,
+    start: { dateTime: input.start, timeZone: input.timeZone },
+    end: { dateTime: input.end, timeZone: input.timeZone },
+  };
+}
+
+async function requireGoogleCalendarWriteAccess(userId: string) {
   const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
   if (!connection) {
-    throw new Error("Connect Google Calendar on Overview before I can create events.");
+    throw new Error("Connect Google Calendar on Overview before I can change events.");
   }
 
   if (!hasCalendarEventWriteScope(connection.scopes)) {
@@ -445,7 +469,7 @@ export async function createGoogleCalendarEvent(userId: string, input: CreateGoo
       where: { userId },
       data: { status: "needs_reconnect" },
     });
-    throw new Error("Reconnect Google Calendar so I can create events, not just read them.");
+    throw new Error("Reconnect Google Calendar so I can create and update events, not just read them.");
   }
 
   const accessToken = await getActiveGoogleCalendarAccessToken(userId);
@@ -453,26 +477,24 @@ export async function createGoogleCalendarEvent(userId: string, input: CreateGoo
     const status = await getGoogleCalendarStatus(userId);
     throw new Error(
       status.status === "not_connected"
-        ? "Connect Google Calendar on Overview before I can create events."
+        ? "Connect Google Calendar on Overview before I can change events."
         : "Reconnect Google Calendar on Overview — the saved token expired or needs fresh approval.",
     );
   }
 
-  const eventBody = input.allDay
-    ? {
-        summary: input.summary,
-        location: input.location ?? undefined,
-        description: input.description ?? undefined,
-        start: { date: input.start },
-        end: { date: input.end },
-      }
-    : {
-        summary: input.summary,
-        location: input.location ?? undefined,
-        description: input.description ?? undefined,
-        start: { dateTime: input.start, timeZone: input.timeZone },
-        end: { dateTime: input.end, timeZone: input.timeZone },
-      };
+  return accessToken;
+}
+
+async function markCalendarWriteAuthFailure(userId: string) {
+  await prisma.googleCalendarConnection.update({
+    where: { userId },
+    data: { status: "needs_reconnect" },
+  });
+}
+
+export async function createGoogleCalendarEvent(userId: string, input: CreateGoogleCalendarEventInput) {
+  const accessToken = await requireGoogleCalendarWriteAccess(userId);
+  const eventBody = buildGoogleCalendarEventBody(input);
 
   const response = await fetch(`${GOOGLE_CALENDAR_EVENTS_URL}/primary/events`, {
     method: "POST",
@@ -484,10 +506,7 @@ export async function createGoogleCalendarEvent(userId: string, input: CreateGoo
   });
 
   if (response.status === 401 || response.status === 403) {
-    await prisma.googleCalendarConnection.update({
-      where: { userId },
-      data: { status: "needs_reconnect" },
-    });
+    await markCalendarWriteAuthFailure(userId);
     throw new Error("Google Calendar needs to be reconnected before I can create events.");
   }
 
@@ -502,6 +521,116 @@ export async function createGoogleCalendarEvent(userId: string, input: CreateGoo
   });
 
   return normalizeCalendarEvent(event);
+}
+
+export async function updateGoogleCalendarEvent(userId: string, input: UpdateGoogleCalendarEventInput) {
+  const eventId = input.eventId.trim();
+  if (!eventId) {
+    throw new Error("I need the Google Calendar event id to update that event.");
+  }
+
+  const accessToken = await requireGoogleCalendarWriteAccess(userId);
+  const eventBody = buildGoogleCalendarEventBody(input);
+  const url = `${GOOGLE_CALENDAR_EVENTS_URL}/primary/events/${encodeURIComponent(eventId)}`;
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(eventBody),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    await markCalendarWriteAuthFailure(userId);
+    throw new Error("Google Calendar needs to be reconnected before I can update events.");
+  }
+
+  if (response.status === 404) {
+    throw new Error("That Google Calendar event was not found — it may already be deleted.");
+  }
+
+  if (!response.ok) {
+    throw new Error("Google Calendar could not update that event.");
+  }
+
+  const event = (await response.json()) as GoogleCalendarApiEvent;
+  await prisma.googleCalendarConnection.update({
+    where: { userId },
+    data: { lastSyncAt: new Date(), status: "active" },
+  });
+
+  return normalizeCalendarEvent(event);
+}
+
+export async function deleteGoogleCalendarEvent(userId: string, eventId: string) {
+  const id = eventId.trim();
+  if (!id) {
+    throw new Error("I need the Google Calendar event id to delete that event.");
+  }
+
+  const accessToken = await requireGoogleCalendarWriteAccess(userId);
+  const url = `${GOOGLE_CALENDAR_EVENTS_URL}/primary/events/${encodeURIComponent(id)}`;
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    await markCalendarWriteAuthFailure(userId);
+    throw new Error("Google Calendar needs to be reconnected before I can delete events.");
+  }
+
+  // 404 / 410 mean it is already gone — treat as success so cleanup is idempotent.
+  if (response.status === 404 || response.status === 410 || response.status === 204 || response.ok) {
+    await prisma.googleCalendarConnection.update({
+      where: { userId },
+      data: { lastSyncAt: new Date(), status: "active" },
+    });
+    return { deleted: true as const, eventId: id };
+  }
+
+  throw new Error("Google Calendar could not delete that event.");
+}
+
+/**
+ * Prefer updating an existing same-title event on the same local day instead of
+ * creating a duplicate (common failure mode when "updating" a schedule via chat).
+ */
+export async function createOrUpdateGoogleCalendarEvent(
+  userId: string,
+  input: CreateGoogleCalendarEventInput,
+  options?: { existingEvents?: GoogleCalendarEvent[] },
+) {
+  const existing = options?.existingEvents ?? [];
+  const targetDay = input.allDay
+    ? input.start.slice(0, 10)
+    : input.start.slice(0, 10);
+  const titleKey = input.summary.trim().toLowerCase();
+
+  const matches = existing.filter((event) => {
+    if (event.title.trim().toLowerCase() !== titleKey) return false;
+    const day = event.start.slice(0, 10);
+    return day === targetDay;
+  });
+
+  if (matches.length > 0) {
+    const keep = matches[0]!;
+    const updated = await updateGoogleCalendarEvent(userId, {
+      ...input,
+      eventId: keep.id,
+    });
+    const extras = matches.slice(1);
+    for (const duplicate of extras) {
+      await deleteGoogleCalendarEvent(userId, duplicate.id).catch(() => null);
+    }
+    return { event: updated, action: "update" as const, removedDuplicates: extras.length };
+  }
+
+  const created = await createGoogleCalendarEvent(userId, input);
+  return { event: created, action: "create" as const, removedDuplicates: 0 };
 }
 
 export async function disconnectGoogleCalendar(userId: string) {

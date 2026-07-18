@@ -8,8 +8,10 @@ import { getCostControlConfig } from "@/lib/env";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
 import {
-  createGoogleCalendarEvent,
+  createOrUpdateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
   fetchUpcomingGoogleCalendarEvents,
+  updateGoogleCalendarEvent,
   type CreateGoogleCalendarEventInput,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
@@ -70,14 +72,16 @@ type ChatMemory = {
 };
 
 type CalendarEventRequest = {
-  action: "create";
-  title: string;
-  start: string;
+  action: "create" | "update" | "delete";
+  eventId: string | null;
+  title: string | null;
+  start: string | null;
   end: string | null;
   allDay: boolean;
   timeZone: string;
   location: string | null;
   description: string | null;
+  deleteDuplicateEventIds: string[];
 };
 
 type ChatResponsePayload = {
@@ -139,16 +143,53 @@ function parseStoredJson<T>(value: string | null): T | null {
 function parseCalendarEventRequest(value: unknown): CalendarEventRequest | null {
   if (!value || typeof value !== "object") return null;
 
-  const candidate = value as Partial<Record<keyof CalendarEventRequest, unknown>>;
-  if (candidate.action !== "create") return null;
+  const candidate = value as Partial<Record<keyof CalendarEventRequest, unknown>> & {
+    action?: unknown;
+  };
+  const action =
+    candidate.action === "create" || candidate.action === "update" || candidate.action === "delete"
+      ? candidate.action
+      : null;
+  if (!action) return null;
 
+  const eventId =
+    typeof candidate.eventId === "string" && candidate.eventId.trim()
+      ? candidate.eventId.trim()
+      : null;
   const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
   const start = typeof candidate.start === "string" ? candidate.start.trim() : "";
   const end = typeof candidate.end === "string" ? candidate.end.trim() : null;
+  const deleteDuplicateEventIds = Array.isArray(candidate.deleteDuplicateEventIds)
+    ? candidate.deleteDuplicateEventIds
+        .filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
+        .map((id) => id.trim())
+    : [];
+
+  if (action === "delete") {
+    if (!eventId && deleteDuplicateEventIds.length === 0) return null;
+    return {
+      action,
+      eventId,
+      title: title || null,
+      start: start || null,
+      end: end || null,
+      allDay: candidate.allDay === true,
+      timeZone:
+        typeof candidate.timeZone === "string" && candidate.timeZone.trim()
+          ? candidate.timeZone.trim()
+          : USER_TIME_ZONE,
+      location: null,
+      description: null,
+      deleteDuplicateEventIds,
+    };
+  }
+
   if (!title || !start) return null;
+  if (action === "update" && !eventId) return null;
 
   return {
-    action: "create",
+    action,
+    eventId,
     title,
     start,
     end: end || null,
@@ -165,10 +206,13 @@ function parseCalendarEventRequest(value: unknown): CalendarEventRequest | null 
       typeof candidate.description === "string" && candidate.description.trim()
         ? candidate.description.trim()
         : null,
+    deleteDuplicateEventIds,
   };
 }
 
 function buildCalendarEventInput(request: CalendarEventRequest): CreateGoogleCalendarEventInput | null {
+  if (!request.title || !request.start) return null;
+
   if (request.allDay) {
     const start = DateTime.fromISO(request.start, { zone: request.timeZone });
     if (!start.isValid) return null;
@@ -218,10 +262,11 @@ async function loadCoachWeekCalendarEvents(userId: string) {
   const now = userNow();
 
   try {
+    // Wider window so schedule updates can match/dedupe events beyond "this week".
     const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
-      timeMin: now.toJSDate(),
-      timeMax: now.plus({ days: 6 }).endOf("day").toJSDate(),
-      maxResults: 40,
+      timeMin: now.minus({ days: 2 }).startOf("day").toJSDate(),
+      timeMax: now.plus({ days: 21 }).endOf("day").toJSDate(),
+      maxResults: 80,
     });
 
     return calendar.events;
@@ -670,6 +715,13 @@ export async function POST(req: Request) {
       calendarContext: {
         nowIso: userNow().toISO() ?? new Date().toISOString(),
         timeZone: USER_TIME_ZONE,
+        upcomingEvents: weekCalendarEvents.map((event) => ({
+          eventId: event.id,
+          title: event.title,
+          start: event.start,
+          end: event.end,
+          allDay: event.allDay,
+        })),
       },
       financePack: {
         accounts: accounts.map((a) => ({
@@ -786,27 +838,73 @@ export async function POST(req: Request) {
     }
 
     let calendarEventCreated: GoogleCalendarEvent | null = null;
+    let calendarEventUpdated: GoogleCalendarEvent | null = null;
+    const calendarEventDeletedIds: string[] = [];
     let calendarEventError: string | null = null;
+    let calendarEventAction: "create" | "update" | "delete" | null = null;
     if (chatResponse.calendarEvent) {
-      const eventInput = buildCalendarEventInput(chatResponse.calendarEvent);
-      if (!eventInput) {
-        calendarEventError = "I need a clear title, date, and start time before I can create that calendar event.";
-      } else {
-        try {
-          calendarEventCreated = await createGoogleCalendarEvent(session.user.id, eventInput);
-          if (!calendarEventCreated) {
-            calendarEventError = "Google Calendar created the event, but I could not read back the event details.";
+      const request = chatResponse.calendarEvent;
+      try {
+        if (request.action === "delete") {
+          const ids = [
+            ...(request.eventId ? [request.eventId] : []),
+            ...request.deleteDuplicateEventIds,
+          ];
+          const uniqueIds = [...new Set(ids)];
+          for (const id of uniqueIds) {
+            await deleteGoogleCalendarEvent(session.user.id, id);
+            calendarEventDeletedIds.push(id);
+          }
+          calendarEventAction = "delete";
+        } else {
+          const eventInput = buildCalendarEventInput(request);
+          if (!eventInput) {
+            calendarEventError =
+              "I need a clear title, date, and start time before I can change that calendar event.";
+          } else if (request.action === "update" && request.eventId) {
+            calendarEventUpdated = await updateGoogleCalendarEvent(session.user.id, {
+              ...eventInput,
+              eventId: request.eventId,
+            });
+            calendarEventAction = "update";
+            for (const duplicateId of request.deleteDuplicateEventIds) {
+              if (duplicateId === request.eventId) continue;
+              await deleteGoogleCalendarEvent(session.user.id, duplicateId);
+              calendarEventDeletedIds.push(duplicateId);
+            }
           } else {
+            const result = await createOrUpdateGoogleCalendarEvent(
+              session.user.id,
+              eventInput,
+              { existingEvents: weekCalendarEvents },
+            );
+            calendarEventAction = result.action;
+            if (result.action === "create") {
+              calendarEventCreated = result.event;
+            } else {
+              calendarEventUpdated = result.event;
+            }
+            if (result.removedDuplicates > 0) {
+              calendarEventDeletedIds.push(`deduped:${result.removedDuplicates}`);
+            }
+            for (const duplicateId of request.deleteDuplicateEventIds) {
+              if (result.event?.id && duplicateId === result.event.id) continue;
+              await deleteGoogleCalendarEvent(session.user.id, duplicateId);
+              calendarEventDeletedIds.push(duplicateId);
+            }
+          }
+
+          if (calendarEventCreated || calendarEventUpdated) {
             await syncCalendarEventsToGrowth(session.user.id, { daysBack: 14 }).catch((syncError) => {
-              console.error("Calendar → Growth sync after create failed:", syncError);
+              console.error("Calendar → Growth sync after write failed:", syncError);
             });
           }
-        } catch (calendarError) {
-          calendarEventError =
-            calendarError instanceof Error
-              ? calendarError.message
-              : "Google Calendar could not create that event.";
         }
+      } catch (calendarError) {
+        calendarEventError =
+          calendarError instanceof Error
+            ? calendarError.message
+            : "Google Calendar could not update that event.";
       }
     }
 
@@ -823,9 +921,30 @@ export async function POST(req: Request) {
         assistantHistoryMessage += `\nNew move for the rest of today: ${refreshedMoveAction}`;
       }
     }
-    if (calendarEventCreated) {
+    if (calendarEventUpdated) {
+      assistantHistoryMessage += `\n\nUpdated on Google Calendar: ${describeCalendarEvent(calendarEventUpdated)}`;
+    } else if (calendarEventCreated) {
       assistantHistoryMessage += `\n\nCreated on Google Calendar: ${describeCalendarEvent(calendarEventCreated)}`;
-    } else if (calendarEventError) {
+    } else if (calendarEventAction === "delete" && calendarEventDeletedIds.length > 0) {
+      assistantHistoryMessage += `\n\nRemoved ${calendarEventDeletedIds.length} Google Calendar event(s).`;
+    }
+    if (
+      calendarEventDeletedIds.length > 0 &&
+      calendarEventAction !== "delete" &&
+      !calendarEventDeletedIds.every((id) => id.startsWith("deduped:"))
+    ) {
+      const realDeletes = calendarEventDeletedIds.filter((id) => !id.startsWith("deduped:"));
+      if (realDeletes.length > 0) {
+        assistantHistoryMessage += `\nAlso removed ${realDeletes.length} duplicate calendar event(s).`;
+      }
+    }
+    if (calendarEventDeletedIds.some((id) => id.startsWith("deduped:"))) {
+      const count = Number(calendarEventDeletedIds.find((id) => id.startsWith("deduped:"))?.split(":")[1] ?? 0);
+      if (count > 0) {
+        assistantHistoryMessage += `\nCollapsed ${count} duplicate calendar event(s) with the same title/day.`;
+      }
+    }
+    if (calendarEventError) {
       assistantHistoryMessage += `\n\nCalendar not updated: ${calendarEventError}`;
     }
 
@@ -865,6 +984,9 @@ export async function POST(req: Request) {
       spotlight: chatResponse.spotlight ?? null,
       goalSuggestion: chatResponse.goalSuggestion ?? null,
       calendarEventCreated,
+      calendarEventUpdated,
+      calendarEventDeletedIds: calendarEventDeletedIds.filter((id) => !id.startsWith("deduped:")),
+      calendarEventAction,
       calendarEventError,
       memoriesSaved: savedMemoryTitles,
       briefRefreshed,
