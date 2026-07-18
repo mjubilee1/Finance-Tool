@@ -217,24 +217,12 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         status: "planned",
       },
       {
-        id: `${day.toISODate()}-promotion`,
-        type: "focus",
-        priority: "optional",
-        label: "Extra promotion / network",
-        time: "Evening or off-hours",
-        why: "Promotion work is optional and happens outside 9-5 when you have bandwidth.",
-        source: "weekly_template",
-        sortKey: 18,
-        ref: weekPlanRef(`${day.toISODate()}-promotion`),
-        status: "planned",
-      },
-      {
         id: `${day.toISODate()}-evening`,
         type: "recovery",
         priority: "optional",
         label: "Evening reset or Lyft",
         time: "After commute",
-        why: "Use the evening intentionally: recovery if the floor is handled, or another Lyft block if you want extra cash.",
+        why: "Use the evening intentionally: recovery if the floor is handled, or another Lyft block if you want extra cash. Add promotion only when you deliberately protect it.",
         source: "weekly_template",
         sortKey: 19,
         ref: weekPlanRef(`${day.toISODate()}-evening`),
@@ -282,15 +270,15 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         status: "planned",
       },
       {
-        id: `${day.toISODate()}-promotion`,
-        type: "focus",
+        id: `${day.toISODate()}-evening`,
+        type: "recovery",
         priority: "optional",
-        label: "Extra promotion / network",
-        time: "Evening or off-hours",
-        why: "Promotion, startup, and networking are extras outside the locked job block.",
+        label: "Evening reset",
+        time: "After work",
+        why: "Optional recovery if cash and training are handled. Add promotion only when you deliberately protect it.",
         source: "weekly_template",
         sortKey: 18,
-        ref: weekPlanRef(`${day.toISODate()}-promotion`),
+        ref: weekPlanRef(`${day.toISODate()}-evening`),
         status: "planned",
       },
     ];
@@ -349,15 +337,17 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
 }
 
 function headlineFor(shape: DayShape) {
-  if (shape === "office") return "Office rails: optional morning Lyft, then 9-5 locked; extras after hours.";
+  if (shape === "office") return "Office rails: optional morning Lyft, then 9-5 locked.";
   if (shape === "wfh") return "WFH rails: morning Lyft, 9-5 work locked, gym in midday flex.";
   return "Weekend rails: morning Lyft AM, then gym, social, and recovery.";
 }
 
 function valueFocusFor(shape: DayShape) {
-  if (shape === "office") return "Protect 9-5 work; Lyft and promotion are optional around the job block.";
+  if (shape === "office") {
+    return "Protect 9-5 work. Add promotion only when you deliberately protect it — not every day.";
+  }
   if (shape === "wfh") return "Morning Lyft when you want cash, then 9-5; gym uses a midday flex pocket.";
-  return "Morning Lyft AM like other days, then gym, events, leverage, and recovery.";
+  return "Morning Lyft AM like other days, then gym, events, and recovery.";
 }
 
 export function buildWeeklyOperatingPlan(

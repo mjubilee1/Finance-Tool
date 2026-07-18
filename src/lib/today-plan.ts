@@ -1,8 +1,6 @@
 import { DateTime } from "luxon";
-import { formatCurrency } from "@/lib/format";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
 import type { GrowthMetrics } from "@/lib/growth-agent";
-import { WEAK_DOMAIN_THRESHOLD } from "@/lib/growth-scoring";
 import type { DayShape } from "@/lib/joy-ideas-shared";
 
 export type TodayPlanBlockKey = "lyft" | "work" | "gym" | "leverage" | "joy";
@@ -50,12 +48,6 @@ const GYM_CONTEXT_RE =
   /\b(gym|workout|work out|training|lift|lifting|cardio|fitness|planet fitness|body|push|pull|legs|upper|lower|run)\b/i;
 const GYM_SCHEDULE_RE =
   /\b(mon|tue|wed|thu|fri|sat|sun|morning|evening|after work|before work|office|wfh|split|push|pull|legs|upper|lower|cardio|chest|back|shoulder|arms)\b/i;
-
-function firstSentence(text: string | null | undefined, max = 120) {
-  if (!text?.trim()) return null;
-  const sentence = text.split(/(?<=[.!?])\s+/)[0]?.trim() ?? text.trim();
-  return sentence.length > max ? `${sentence.slice(0, max - 1).trim()}…` : sentence;
-}
 
 function compactSnippet(text: string, max = 150) {
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -126,40 +118,10 @@ export function buildTodayPlan(
   const isOffice = shape === "office";
   const gymFit = gymFitFor(shape);
   const gymRoutine = gymRoutineFrom(profile, options.memorySnippets);
-  const leverageMinutes = Math.min(
-    isOffice ? 60 : isWeekend ? 90 : 75,
-    Math.max(45, recommendation?.timeRequiredMinutes ?? (isOffice ? 45 : 60)),
-  );
   const cashTight =
     metrics.financialSignals.safeSpendToday < 20 || metrics.financialSignals.cashAvailable < 1000;
-  const socialThin =
-    metrics.domains.social < WEAK_DOMAIN_THRESHOLD || metrics.activityCounts.social === 0;
-  const promotionUpside = profile?.promotionUpsideAnnual ?? 0;
-  const promotionDeadline = profile?.promotionDeadline
-    ? DateTime.fromISO(profile.promotionDeadline)
-    : null;
-  const promotionSoon = promotionDeadline?.isValid
-    ? promotionDeadline.diff(now, "days").days <= 60
-    : Boolean(profile?.promotionTarget);
-  const leverageLabel = promotionSoon
-    ? isOffice
-      ? "Extra promotion block (optional)"
-      : "Promotion project block"
-    : recommendation?.domain === "social" || socialThin
-      ? isOffice
-        ? "Network / async outreach (optional)"
-        : "Network / startup leverage"
-      : isOffice
-        ? "Extra leverage block (optional)"
-        : "Startup leverage";
-  const leverageWhy = promotionSoon
-    ? `Career hour toward ${profile?.promotionTarget ?? "your promotion"} (${
-        promotionUpside > 0 ? formatCurrency(promotionUpside) : "big upside"
-      }/yr). Ship one concrete item from the existing promotion path.`
-    : (firstSentence(recommendation?.action, 120) ??
-      (isOffice
-        ? "Desk-compatible ship, outreach, or learning that compounds."
-        : "Ship, outreach, or learn something that compounds."));
+  // Highest-leverage move stays on its own card — not a daily standing block.
+  void recommendation;
   const recoveryLabel = isWeekend
     ? "Optional social / recovery"
     : isOffice
@@ -170,21 +132,21 @@ export function buildTodayPlan(
   const recoveryFit = isWeekend
     ? "Use only after one real anchor lands."
     : isOffice
-      ? "After desk leverage; skip if the evening is tight."
-      : "Around the job day, not during protected focus.";
+      ? "After the workday; skip if the evening is tight."
+      : "Around the job day, not during protected training.";
   const recoveryWhy = isWeekend
     ? "Live DMV ideas are fine when the week earned it; keep it intentional."
     : isOffice
-      ? "This is not fake daily fun. It is a capped reset only if cash and leverage are handled."
-      : "This is not fake daily fun. It is a capped reset only if cash, training, and leverage are handled.";
+      ? "This is not fake daily fun. It is a capped reset only if cash and the workday are handled."
+      : "This is not fake daily fun. It is a capped reset only if cash and training are handled.";
   const summary =
     shape === "weekend"
-      ? "Weekend: gym/recovery, social, and deeper leverage when the week earned it."
+      ? "Weekend: gym/recovery, social, and events when the week earned it."
       : shape === "office"
         ? cashTight
-          ? "Office day: 9-5 work locked, protect cash floor (including Capital One car bills), optional off-hours leverage."
-          : "Office day: 9-5 work locked, no gym block Mon-Wed. Promotion/network is optional off-hours."
-        : "WFH day: gym in a midday flex pocket inside the job day, promotion/network off-hours.";
+          ? "Office day: 9-5 work locked, protect cash floor (including Capital One car bills)."
+          : "Office day: 9-5 work locked, no gym block Mon-Wed. Add promotion only when you mean to protect it."
+        : "WFH day: gym in a midday flex pocket inside the job day. Promotion stays optional — not a default block.";
 
   return {
     dayLabel: now.toFormat("cccc"),
@@ -210,28 +172,6 @@ export function buildTodayPlan(
         priority: "protect" as const,
         evidence: gymRoutine ? "Pulled from profile or stored gym memory." : "Needs your actual gym split saved.",
       }]),
-      {
-        key: "leverage" as const,
-        label: leverageLabel,
-        time: isOffice ? "Evening or off-hours" : `${leverageMinutes} min`,
-        fit: isOffice ? "Outside 9-5 only; not during the job." : isWeekend ? "Best before the day gets noisy." : "Use a deeper WFH block.",
-        why: leverageWhy,
-        domain: promotionSoon
-          ? "career"
-          : recommendation?.domain ?? (socialThin ? "social" : "startup"),
-        category: promotionSoon
-          ? "promotion"
-          : recommendation?.domain === "social" || socialThin
-            ? "networking"
-            : "build",
-        leverage: "long_term_leverage" as const,
-        minutes: leverageMinutes,
-        impact: 8,
-        tone: "sky" as const,
-        role: "focus" as const,
-        priority: isOffice ? "optional" as const : "protect" as const,
-        evidence: promotionSoon ? "Promotion target is active." : recommendation ? "From today's Growth recommendation." : null,
-      },
       {
         key: "joy" as const,
         label: recoveryLabel,

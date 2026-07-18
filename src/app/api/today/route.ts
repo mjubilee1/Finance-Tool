@@ -8,6 +8,7 @@ import {
   getGoogleCalendarStatus,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
+import { cleanupPromotionalProjectBlocks } from "@/lib/cleanup-promotion-blocks";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { getPlannerDayLayouts, loadUserPlanActivitiesBetween } from "@/lib/planner";
 import { loadLyftPaceForUser } from "@/lib/lyft-pace";
@@ -52,6 +53,10 @@ export async function GET() {
     const now = userNow();
     const today = now.toISODate()!;
     const weekEnd = now.plus({ days: 6 }).toISODate()!;
+    // Strip leftover auto-injected promotion rails from the DB before building Today.
+    await cleanupPromotionalProjectBlocks(session.user.id).catch((error) => {
+      console.error("Promotion-block cleanup failed:", error);
+    });
     const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate] =
       await Promise.all([
       buildTodayBriefContext(session.user.id),

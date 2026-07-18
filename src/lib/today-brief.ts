@@ -15,6 +15,7 @@ import {
   resolvePlannerOverride,
   serializeUserPlanBlock,
   systemPlanRef,
+  updatePlannerItem,
   type PlannerDayLayoutData,
 } from "@/lib/planner";
 
@@ -93,6 +94,8 @@ export type TodayUpdatesPayload = {
     minutesSpent?: number;
     notes?: string;
     date?: string;
+    /** When set, update this existing activity/plan item instead of creating a duplicate. */
+    activityId?: string;
   } | null;
 };
 
@@ -338,34 +341,84 @@ export async function applyTodayUpdates(
     const domain = updates.logActivity.domain;
     const targetDate = updates.logActivity.date?.trim() || today;
     const category = updates.logActivity.category || "coach_update";
+    const activityId = updates.logActivity.activityId?.trim() || null;
     if ((GROWTH_DOMAINS as readonly string[]).includes(domain)) {
       const activityNotes = updates.logActivity.notes?.trim() || "Logged from coach chat.";
+      const title = updates.logActivity.title.trim().slice(0, 160);
 
-      await prisma.growthActivity.create({
-        data: {
+      if (activityId) {
+        const existing = await prisma.growthActivity.findFirst({
+          where: { id: activityId, userId },
+          select: { id: true, category: true, date: true },
+        });
+        if (!existing) {
+          applied.push(`Could not update plan item — id not found.`);
+        } else if (existing.category === "user_plan") {
+          await updatePlannerItem(userId, existing.id, {
+            title,
+            domain,
+            notes: activityNotes,
+            minutesSpent: updates.logActivity.minutesSpent ?? null,
+            date: targetDate,
+          });
+          await applyMentionsToActivityText(
+            userId,
+            `${title} ${updates.logActivity.notes ?? ""}`,
+            targetDate,
+            title,
+          );
+          applied.push(`Updated plan item: ${title}${targetDate !== today ? ` on ${targetDate}` : ""}`);
+        } else {
+          await prisma.growthActivity.update({
+            where: { id: existing.id },
+            data: {
+              title,
+              domain,
+              category,
+              notes: activityNotes,
+              date: targetDate,
+              leverage:
+                updates.logActivity.leverage === "immediate_income"
+                  ? "immediate_income"
+                  : "long_term_leverage",
+              minutesSpent: updates.logActivity.minutesSpent ?? null,
+            },
+          });
+          await applyMentionsToActivityText(
+            userId,
+            `${title} ${updates.logActivity.notes ?? ""}`,
+            targetDate,
+            title,
+          );
+          applied.push(`Updated: ${title}${targetDate !== today ? ` on ${targetDate}` : ""}`);
+        }
+      } else {
+        await prisma.growthActivity.create({
+          data: {
+            userId,
+            date: targetDate,
+            domain,
+            category,
+            title,
+            notes: activityNotes,
+            leverage:
+              updates.logActivity.leverage === "immediate_income"
+                ? "immediate_income"
+                : "long_term_leverage",
+            minutesSpent: updates.logActivity.minutesSpent ?? null,
+            impactScore: 5,
+          },
+        });
+        await applyMentionsToActivityText(
           userId,
-          date: targetDate,
-          domain,
-          category,
-          title: updates.logActivity.title.trim().slice(0, 160),
-          notes: activityNotes,
-          leverage:
-            updates.logActivity.leverage === "immediate_income"
-              ? "immediate_income"
-              : "long_term_leverage",
-          minutesSpent: updates.logActivity.minutesSpent ?? null,
-          impactScore: 5,
-        },
-      });
-      await applyMentionsToActivityText(
-        userId,
-        `${updates.logActivity.title} ${updates.logActivity.notes ?? ""}`,
-        targetDate,
-        updates.logActivity.title.trim(),
-      );
-      applied.push(
-        `Logged: ${updates.logActivity.title.trim()}${targetDate !== today ? ` on ${targetDate}` : ""}`,
-      );
+          `${title} ${updates.logActivity.notes ?? ""}`,
+          targetDate,
+          title,
+        );
+        applied.push(
+          `Logged: ${title}${targetDate !== today ? ` on ${targetDate}` : ""}`,
+        );
+      }
     }
   }
 
