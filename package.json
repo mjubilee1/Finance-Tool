@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
@@ -19,7 +19,8 @@
     "version:patch": "VERSION_BUMP=patch node scripts/bump-version.mjs --manual --no-prompt",
     "version:minor": "VERSION_BUMP=minor node scripts/bump-version.mjs --manual --no-prompt",
     "version:major": "VERSION_BUMP=major node scripts/bump-version.mjs --manual --no-prompt",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
