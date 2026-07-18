@@ -4,6 +4,8 @@ import { getCostControlConfig } from "./env";
 import {
   carUpcomingBills,
   formatCarBillLine,
+  formatOdometer,
+  summarizeCarPayoff,
   type CarProfileLike,
 } from "./car";
 import { getOrCreateCarProfile } from "./car-profile";
@@ -281,6 +283,14 @@ ${buildKnownCashScheduleContext(DateTime.local(), { carProfile })}
 
 OWNED CAR OBLIGATIONS (Capital One — include in upcomingBills when due):
 ${carBillLines.length > 0 ? carBillLines.map((line) => `- ${line}`).join("\n") : "- None due in the next 45 days; still track payment and insurance next-due dates from the Car profile."}
+- Loan: ~$${carProfile.loanBalance.toFixed(0)} remaining of $${carProfile.loanAmount.toFixed(0)} financed; ${carProfile.loanTermMonths}-month (3.5y) payoff horizon; aim ~$${carProfile.payoffTargetMonthly}/mo toward the loan when cash allows (contract payment ~$${carProfile.paymentMonthly}).
+- Odometer: ${formatOdometer(carProfile.odometerMiles)} as of ${carProfile.odometerAsOf}. Keep maintenance current so the asset stays healthy through payoff.
+- Payoff pace: ${(() => {
+  const payoff = summarizeCarPayoff(carProfile);
+  return `~${payoff.monthsRemainingOnTerm} mo left on term` +
+    (payoff.payoffDateAtTarget ? `; at $${carProfile.payoffTargetMonthly}/mo target ~${payoff.monthsAtPayoffTarget} mo` : "") +
+    (payoff.onTrackForTerm === false ? " — behind 3.5y target pace at current target" : payoff.onTrackForTerm ? " — on track for 3.5y target" : "");
+})()}.
 
 MEMORIES:
 ${memories}

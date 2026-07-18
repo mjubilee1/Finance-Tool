@@ -76,6 +76,7 @@ model User {
   lifeLeverageProfile     LifeLeverageProfile?
   plannerDayLayouts       PlannerDayLayout[]
   carProfile              CarProfile?
+  carMaintenanceLogs      CarMaintenanceLog[]
   trendDigests            TrendDigest[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
@@ -449,18 +450,55 @@ model LifeLeverageProfile {
 }
 
 /// Owned-car obligations funded from Capital One (payment + insurance).
+/// Also tracks loan payoff pace, odometer, and health/maintenance context.
 model CarProfile {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  paymentMonthly    Float    @default(513)
-  paymentNextDue    String // YYYY-MM-DD
-  insuranceMonthly  Float    @default(352)
-  insuranceNextDue  String // YYYY-MM-DD
-  notes             String?  @db.Text
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  paymentMonthly       Float    @default(513)
+  paymentNextDue       String // YYYY-MM-DD
+  insuranceMonthly     Float    @default(352)
+  insuranceNextDue     String // YYYY-MM-DD
+  /// Original financed amount on the retail installment contract.
+  loanAmount           Float    @default(26436)
+  /// Remaining principal (editable as payments land).
+  loanBalance          Float    @default(26436)
+  /// Target payoff horizon in months (3.5 years = 42).
+  loanTermMonths       Int      @default(42)
+  /// When the loan / ownership clock started (YYYY-MM-DD).
+  loanStartDate        String   @default("2026-07-01")
+  /// Monthly amount Trell aims to put toward the loan (contract + extras).
+  payoffTargetMonthly  Float    @default(800)
+  /// Current odometer reading.
+  odometerMiles        Float    @default(20340)
+  /// When the odometer was last confirmed (YYYY-MM-DD).
+  odometerAsOf         String   @default("2026-07-18")
+  notes                String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maintenanceLogs CarMaintenanceLog[]
+}
+
+/// Service / neatness logs so the financed car stays healthy through payoff.
+model CarMaintenanceLog {
+  id             String   @id @default(cuid())
+  userId         String
+  carProfileId   String
+  /// oil_change | tires | brakes | inspection | fluids | wash | other
+  serviceType    String
+  serviceDate    String // YYYY-MM-DD
+  odometerMiles  Float?
+  cost           Float?
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  carProfile CarProfile @relation(fields: [carProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userId, serviceDate])
+  @@index([carProfileId, serviceDate])
 }
 
 /// Daily curated tech/AI signal digest — not a news firehose

@@ -38,6 +38,13 @@ Goals / plans / fun        →  Capital One after car obligations
 
 Feature and coach logic should respect which account holds which money.
 
+## Car (owned financed vehicle)
+
+- Cap One floor: payment ~$513/mo + insurance ~$352/mo (editable dues in Car tab)
+- Loan: ~$26,436 financed, 3.5-year (42-mo) payoff; ~$800/mo payoff target when cash allows
+- Odometer + maintenance logs live on Car tab — keep the asset healthy/neat through payoff
+- Docs: retail installment, GAP, VSC in Car → Documents
+
 ## Coaching & UX tone
 
 - Encourage: "You had a strong week — room for a small treat"

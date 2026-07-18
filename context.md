@@ -136,9 +136,12 @@ Trell owns a financed vehicle. The **Car** tab holds:
 
 - Payment (~$513/mo from Capital One) with editable next due
 - Insurance (~$352/mo from Capital One) with editable next due
+- Loan payoff: ~$26,436 financed, 3.5-year (42-month) horizon; track remaining balance and an ~$800/mo payoff target (contract payment + extras when cash allows)
+- Odometer (~20,340 mi starting point — ~20,313 at handoff plus a small buffer) with editable as-of date
+- Maintenance / neatness logs (oil, tires, brakes, wash, etc.) so the asset stays healthy through payoff
 - Purchase/protection documents (retail installment contract, GAP, VSC)
 
-Keep Cap One car obligations current before Cap One fun/goals spend.
+Keep Cap One car obligations current before Cap One fun/goals spend. Car health and on-time payoff are first-class goals alongside the monthly floor.
 
 ## Goals & Plans
 
