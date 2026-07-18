@@ -168,6 +168,8 @@ export function CarView() {
   const queryClient = useQueryClient();
   const [subView, setSubView] = useState<CarSubView>("payment");
   const [editing, setEditing] = useState(false);
+  const [editingOdometer, setEditingOdometer] = useState(false);
+  const [odometerDraft, setOdometerDraft] = useState({ miles: "", asOf: "" });
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileForm | null>(null);
@@ -217,6 +219,28 @@ export function CarView() {
       queryClient.setQueryData(["car-profile"], result);
       setEditing(false);
       setForm(null);
+    },
+  });
+
+  const saveOdometerMutation = useMutation({
+    mutationFn: async (draft: { miles: string; asOf: string }) => {
+      const res = await fetch("/api/car/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          odometerMiles: Number(draft.miles),
+          odometerAsOf: draft.asOf,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to save odometer");
+      }
+      return res.json() as Promise<CarProfileResponse>;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(["car-profile"], result);
+      setEditingOdometer(false);
     },
   });
 
@@ -643,21 +667,90 @@ export function CarView() {
           {subView === "health" && (
             <div className="space-y-4">
               <div className="app-card p-5 space-y-3">
-                <p className="app-label">Odometer</p>
-                <p className="text-3xl font-bold tabular-nums text-[var(--ink)]">
-                  {formatOdometer(profile.odometerMiles)}
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="app-label">Odometer</p>
+                    <p className="text-3xl font-bold tabular-nums text-[var(--ink)]">
+                      {formatOdometer(profile.odometerMiles)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingOdometer) {
+                        setEditingOdometer(false);
+                      } else {
+                        setOdometerDraft({
+                          miles: String(Math.round(profile.odometerMiles)),
+                          asOf: profile.odometerAsOf,
+                        });
+                        setEditingOdometer(true);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-[var(--card-border)] bg-white/70 hover:bg-white"
+                  >
+                    <Pencil size={14} />
+                    {editingOdometer ? "Cancel" : "Update"}
+                  </button>
+                </div>
                 <p className="text-sm text-[var(--ink-soft)]">
                   As of <span className="font-semibold">{formatCarDueLabel(profile.odometerAsOf)}</span>
                   {" · "}started at{" "}
                   <span className="font-semibold">
                     {formatOdometer(profile.startOdometerMiles)}
                   </span>
-                  {" · "}edit anytime, or log service with a newer reading
+                  {" · "}update whenever you check the dash, or log service with a newer reading
                 </p>
+                {editingOdometer ? (
+                  <div className="grid sm:grid-cols-2 gap-3 pt-1">
+                    <EditableField label="Current miles">
+                      <input
+                        type="number"
+                        min={0}
+                        step="1"
+                        value={odometerDraft.miles}
+                        onChange={(e) =>
+                          setOdometerDraft((d) => ({ ...d, miles: e.target.value }))
+                        }
+                        className="w-full rounded-xl border border-[var(--card-border)] bg-white/80 px-3 py-2 text-sm"
+                      />
+                    </EditableField>
+                    <EditableField label="As of">
+                      <input
+                        type="date"
+                        value={odometerDraft.asOf}
+                        onChange={(e) =>
+                          setOdometerDraft((d) => ({ ...d, asOf: e.target.value }))
+                        }
+                        className="w-full rounded-xl border border-[var(--card-border)] bg-white/80 px-3 py-2 text-sm"
+                      />
+                    </EditableField>
+                    <div className="sm:col-span-2 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => saveOdometerMutation.mutate(odometerDraft)}
+                        disabled={
+                          saveOdometerMutation.isPending ||
+                          !odometerDraft.miles.trim() ||
+                          !odometerDraft.asOf
+                        }
+                        className="rounded-xl app-btn-primary px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                      >
+                        {saveOdometerMutation.isPending ? "Saving…" : "Save odometer"}
+                      </button>
+                      {saveOdometerMutation.isError ? (
+                        <p className="text-xs text-rose-600">
+                          {saveOdometerMutation.error instanceof Error
+                            ? saveOdometerMutation.error.message
+                            : "Save failed"}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
                 <p className="text-xs text-[var(--muted)] pt-2 border-t border-[var(--card-border)]">
-                  Keep oil, tires, brakes, and wash/cleaning current so this asset stays healthy and
-                  neat through the 3.5-year payoff.
+                  Keep oil, tires, brakes, and biweekly wash/cleaning current so this asset stays
+                  healthy and neat through the 3.5-year payoff.
                 </p>
               </div>
 

@@ -86,8 +86,8 @@ export function CarMaintenanceManageChart({ profile, logs }: Props) {
           <p className="text-sm text-[var(--muted)] mt-1 leading-relaxed">
             Clock started at {formatOdometer(lifespan.startOdometerMiles)} on{" "}
             {formatCarDueLabel(lifespan.ownershipStartDate)}. Bars fill as each service nears its
-            next date or mileage — wash/cleaning stays on a short cadence so the car stays neat
-            through payoff.
+            next date or mileage — wash/cleaning is every 2 weeks so the car stays neat through
+            payoff.
           </p>
         </div>
 
