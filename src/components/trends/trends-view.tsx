@@ -184,6 +184,12 @@ export function TrendsView({
 
   const digest = data?.digest;
 
+  // Must run unconditionally — early returns below used to skip this hook and crash
+  // Tech/DMV when the digest finished loading ("Rendered more hooks than during the previous render").
+  useEffect(() => {
+    stop();
+  }, [lane, digest?.id, stop]);
+
   const patchItem = async (
     id: string,
     payload: { status?: string; logToGrowth?: boolean },
@@ -256,9 +262,19 @@ export function TrendsView({
       text,
     );
 
-  const rawMain = isTech
-    ? (digest.techMain ?? digest.mainThing)
-    : (digest.dmvMain ?? digest.mainThing);
+  const fallbackMain: MainThing = {
+    title: isTech ? "Stay sharp on the stack" : "Know the DMV pulse",
+    why: isTech
+      ? "Tech signal should inform the work you already have open."
+      : "Local news should help commute, housing, and life logistics.",
+    oneAction: isTech
+      ? "Skim the top tech item and apply one note to an existing task."
+      : "Skim the top DMV item; park anything that isn't actionable this week.",
+  };
+
+  const rawMain =
+    (isTech ? (digest.techMain ?? digest.mainThing) : (digest.dmvMain ?? digest.mainThing)) ??
+    fallbackMain;
 
   const topItem = items[0];
   const main =
@@ -269,10 +285,6 @@ export function TrendsView({
           oneAction: `Skim “${topItem.sourceLabel}” and note one implication for an open build task.`,
         }
       : rawMain;
-
-  useEffect(() => {
-    stop();
-  }, [lane, digest.id, stop]);
 
   const listenToDigest = () => {
     if (isSpeaking) {
