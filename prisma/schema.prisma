@@ -468,8 +468,10 @@ model CarProfile {
   loanStartDate        String   @default("2026-07-01")
   /// Monthly amount Trell aims to put toward the loan (contract + extras).
   payoffTargetMonthly  Float    @default(800)
+  /// Odometer at ownership / tracking start (lifespan baseline).
+  startOdometerMiles   Float    @default(20323)
   /// Current odometer reading.
-  odometerMiles        Float    @default(20340)
+  odometerMiles        Float    @default(20323)
   /// When the odometer was last confirmed (YYYY-MM-DD).
   odometerAsOf         String   @default("2026-07-18")
   notes                String?  @db.Text

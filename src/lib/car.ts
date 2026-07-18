@@ -15,8 +15,10 @@ export const CAR_LOAN_TERM_MONTHS = 42;
 export const CAR_LOAN_START_DATE = "2026-07-01";
 /** Monthly amount aimed at the loan (contract payment + extras when cash allows). */
 export const CAR_PAYOFF_TARGET_MONTHLY = 800;
-/** Odometer at handoff (~20,313) plus a small buffer for recent miles. */
-export const CAR_ODOMETER_MILES = 20340;
+/** Odometer when ownership / tracking started. */
+export const CAR_ODOMETER_START_MILES = 20323;
+/** Current odometer default (same as start until newer readings are logged). */
+export const CAR_ODOMETER_MILES = 20323;
 export const CAR_ODOMETER_AS_OF = "2026-07-18";
 
 export const CAR_MAINTENANCE_TYPES = [
@@ -25,7 +27,7 @@ export const CAR_MAINTENANCE_TYPES = [
   { id: "brakes", label: "Brakes" },
   { id: "inspection", label: "Inspection" },
   { id: "fluids", label: "Fluids" },
-  { id: "wash", label: "Wash / detail" },
+  { id: "wash", label: "Wash / cleaning" },
   { id: "other", label: "Other" },
 ] as const;
 
@@ -84,6 +86,8 @@ export type CarProfileLike = {
   loanTermMonths: number;
   loanStartDate: string;
   payoffTargetMonthly: number;
+  /** Odometer at ownership start — lifespan baseline. */
+  startOdometerMiles: number;
   odometerMiles: number;
   odometerAsOf: string;
   notes?: string | null;
@@ -100,6 +104,7 @@ export function defaultCarProfile(): CarProfileLike {
     loanTermMonths: CAR_LOAN_TERM_MONTHS,
     loanStartDate: CAR_LOAN_START_DATE,
     payoffTargetMonthly: CAR_PAYOFF_TARGET_MONTHLY,
+    startOdometerMiles: CAR_ODOMETER_START_MILES,
     odometerMiles: CAR_ODOMETER_MILES,
     odometerAsOf: CAR_ODOMETER_AS_OF,
     notes: null,

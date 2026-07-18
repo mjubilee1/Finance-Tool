@@ -12,6 +12,7 @@ function toCarProfileLike(profile: {
   loanTermMonths: number;
   loanStartDate: string;
   payoffTargetMonthly: number;
+  startOdometerMiles: number;
   odometerMiles: number;
   odometerAsOf: string;
   notes: string | null;
@@ -27,6 +28,7 @@ function toCarProfileLike(profile: {
     loanTermMonths: profile.loanTermMonths,
     loanStartDate: profile.loanStartDate,
     payoffTargetMonthly: profile.payoffTargetMonthly,
+    startOdometerMiles: profile.startOdometerMiles,
     odometerMiles: profile.odometerMiles,
     odometerAsOf: profile.odometerAsOf,
     notes: profile.notes,
@@ -48,6 +50,7 @@ export async function getOrCreateCarProfile(userId: string): Promise<CarProfileL
       loanTermMonths: defaults.loanTermMonths,
       loanStartDate: defaults.loanStartDate,
       payoffTargetMonthly: defaults.payoffTargetMonthly,
+      startOdometerMiles: defaults.startOdometerMiles,
       odometerMiles: defaults.odometerMiles,
       odometerAsOf: defaults.odometerAsOf,
       notes: null,

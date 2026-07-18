@@ -43,6 +43,7 @@ function serializeProfile(profile: Awaited<ReturnType<typeof getOrCreateCarProfi
     loanTermMonths: profile.loanTermMonths,
     loanStartDate: profile.loanStartDate,
     payoffTargetMonthly: profile.payoffTargetMonthly,
+    startOdometerMiles: profile.startOdometerMiles,
     odometerMiles: profile.odometerMiles,
     odometerAsOf: profile.odometerAsOf,
     notes: profile.notes,
@@ -81,6 +82,7 @@ export async function PATCH(request: Request) {
     const loanTermMonths = optionalInt(body.loanTermMonths);
     const loanStartDate = optionalDate(body.loanStartDate);
     const payoffTargetMonthly = optionalNumber(body.payoffTargetMonthly);
+    const startOdometerMiles = optionalNumber(body.startOdometerMiles);
     const odometerMiles = optionalNumber(body.odometerMiles);
     const odometerAsOf = optionalDate(body.odometerAsOf);
     const notes = optionalNotes(body.notes);
@@ -91,6 +93,7 @@ export async function PATCH(request: Request) {
       loanAmount === null ||
       loanBalance === null ||
       payoffTargetMonthly === null ||
+      startOdometerMiles === null ||
       odometerMiles === null
     ) {
       return NextResponse.json({ error: "Invalid amount." }, { status: 400 });
@@ -119,6 +122,7 @@ export async function PATCH(request: Request) {
       loanTermMonths?: number;
       loanStartDate?: string;
       payoffTargetMonthly?: number;
+      startOdometerMiles?: number;
       odometerMiles?: number;
       odometerAsOf?: string;
       notes?: string | null;
@@ -133,6 +137,7 @@ export async function PATCH(request: Request) {
     if (loanTermMonths !== undefined) data.loanTermMonths = loanTermMonths;
     if (loanStartDate !== undefined) data.loanStartDate = loanStartDate;
     if (payoffTargetMonthly !== undefined) data.payoffTargetMonthly = payoffTargetMonthly;
+    if (startOdometerMiles !== undefined) data.startOdometerMiles = startOdometerMiles;
     if (odometerMiles !== undefined) data.odometerMiles = odometerMiles;
     if (odometerAsOf !== undefined) data.odometerAsOf = odometerAsOf;
     if (notes !== undefined) data.notes = notes;
@@ -154,6 +159,7 @@ export async function PATCH(request: Request) {
         loanTermMonths: profile.loanTermMonths,
         loanStartDate: profile.loanStartDate,
         payoffTargetMonthly: profile.payoffTargetMonthly,
+        startOdometerMiles: profile.startOdometerMiles,
         odometerMiles: profile.odometerMiles,
         odometerAsOf: profile.odometerAsOf,
         notes: profile.notes,
