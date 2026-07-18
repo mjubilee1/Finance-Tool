@@ -28,6 +28,7 @@ import {
 } from "@/lib/car";
 import { formatCurrency } from "@/lib/format";
 import { CapitalOneProjectionChart } from "@/components/car/capital-one-projection-chart";
+import { CarMaintenanceManageChart } from "@/components/car/car-maintenance-manage-chart";
 
 type CarSubView = "payment" | "insurance" | "loan" | "health" | "documents";
 
@@ -55,6 +56,7 @@ type ProfileForm = {
   loanTermMonths: string;
   loanStartDate: string;
   payoffTargetMonthly: string;
+  startOdometerMiles: string;
   odometerMiles: string;
   odometerAsOf: string;
   notes: string;
@@ -144,6 +146,7 @@ function profileToForm(profile: CarProfileLike): ProfileForm {
     loanTermMonths: String(profile.loanTermMonths),
     loanStartDate: profile.loanStartDate,
     payoffTargetMonthly: String(profile.payoffTargetMonthly),
+    startOdometerMiles: String(profile.startOdometerMiles),
     odometerMiles: String(profile.odometerMiles),
     odometerAsOf: profile.odometerAsOf,
     notes: profile.notes ?? "",
@@ -198,6 +201,7 @@ export function CarView() {
           loanTermMonths: Number(draft.loanTermMonths),
           loanStartDate: draft.loanStartDate,
           payoffTargetMonthly: Number(draft.payoffTargetMonthly),
+          startOdometerMiles: Number(draft.startOdometerMiles),
           odometerMiles: Number(draft.odometerMiles),
           odometerAsOf: draft.odometerAsOf,
           notes: draft.notes,
@@ -444,7 +448,19 @@ export function CarView() {
                     className="w-full rounded-xl border border-[var(--card-border)] bg-white/80 px-3 py-2 text-sm"
                   />
                 </EditableField>
-                <EditableField label="Odometer (miles)">
+                <EditableField label="Start odometer (miles)">
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={form.startOdometerMiles}
+                    onChange={(e) =>
+                      setForm((f) => (f ? { ...f, startOdometerMiles: e.target.value } : f))
+                    }
+                    className="w-full rounded-xl border border-[var(--card-border)] bg-white/80 px-3 py-2 text-sm"
+                  />
+                </EditableField>
+                <EditableField label="Current odometer (miles)">
                   <input
                     type="number"
                     min={0}
@@ -633,13 +649,29 @@ export function CarView() {
                 </p>
                 <p className="text-sm text-[var(--ink-soft)]">
                   As of <span className="font-semibold">{formatCarDueLabel(profile.odometerAsOf)}</span>
+                  {" · "}started at{" "}
+                  <span className="font-semibold">
+                    {formatOdometer(profile.startOdometerMiles)}
+                  </span>
                   {" · "}edit anytime, or log service with a newer reading
                 </p>
                 <p className="text-xs text-[var(--muted)] pt-2 border-t border-[var(--card-border)]">
-                  Keep oil, tires, brakes, and wash/detail current so this asset stays healthy and neat
-                  through the 3.5-year payoff.
+                  Keep oil, tires, brakes, and wash/cleaning current so this asset stays healthy and
+                  neat through the 3.5-year payoff.
                 </p>
               </div>
+
+              {maintenanceQuery.isLoading ? (
+                <div className="app-card p-6 flex items-center gap-2 text-slate-500 text-sm">
+                  <Loader2 className="animate-spin" size={16} />
+                  Loading manage chart…
+                </div>
+              ) : (
+                <CarMaintenanceManageChart
+                  profile={profile}
+                  logs={maintenanceQuery.data?.logs ?? []}
+                />
+              )}
 
               <div className="app-card p-5 space-y-4">
                 <p className="app-label">Log maintenance</p>
