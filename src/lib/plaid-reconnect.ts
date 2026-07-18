@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { decrypt, isTokenDecryptError } from "@/lib/encryption";
 
 function accountMatchKey(account: {
   mask: string | null;
@@ -11,6 +10,13 @@ function accountMatchKey(account: {
   const subtype = account.subtype?.trim() || "";
   if (mask) return `${account.type}|${subtype}|${mask}`;
   return `${account.type}|${subtype}|${account.name.trim().toLowerCase()}`;
+}
+
+function institutionKey(item: {
+  institutionId: string | null;
+  institutionName: string | null;
+}) {
+  return item.institutionId || item.institutionName || null;
 }
 
 /**
@@ -101,41 +107,18 @@ export async function retireStaleItemsForInstitution(params: {
 }
 
 /**
- * After reconnects, remove old Items whose tokens no longer decrypt when a working
- * Item already exists for the same institution. Unblocks Sync and clears duplicates.
+ * Always keep one Plaid Item per institution (newest updatedAt wins).
+ * Clears reconnect duplicates even when old tokens still decrypt via key recovery.
  */
-export async function cleanupUndecryptableDuplicateItems(userId: string) {
+export async function dedupePlaidItemsByInstitution(userId: string) {
   const items = await prisma.plaidItem.findMany({ where: { userId } });
   if (items.length <= 1) {
-    return { removedInstitutions: 0 };
-  }
-
-  const working: typeof items = [];
-  const broken: typeof items = [];
-
-  for (const item of items) {
-    try {
-      decrypt(item.encryptedAccessToken, {
-        itemId: item.id,
-        label: `cleanup:${item.institutionName ?? item.plaidItemId}`,
-      });
-      working.push(item);
-    } catch (error) {
-      if (isTokenDecryptError(error)) {
-        broken.push(item);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  if (broken.length === 0 || working.length === 0) {
-    return { removedInstitutions: 0 };
+    return { removedInstitutions: 0, removedAccounts: 0 };
   }
 
   const keepByInstitution = new Map<string, (typeof items)[number]>();
-  for (const item of working) {
-    const key = item.institutionId || item.institutionName;
+  for (const item of items) {
+    const key = institutionKey(item);
     if (!key) continue;
     const existing = keepByInstitution.get(key);
     if (!existing || item.updatedAt > existing.updatedAt) {
@@ -144,22 +127,92 @@ export async function cleanupUndecryptableDuplicateItems(userId: string) {
   }
 
   let removedInstitutions = 0;
-  for (const keep of keepByInstitution.values()) {
-    const hasBrokenTwin = broken.some(
-      (item) =>
-        (keep.institutionId && item.institutionId === keep.institutionId) ||
-        (keep.institutionName && item.institutionName === keep.institutionName),
-    );
-    if (!hasBrokenTwin) continue;
+  let removedAccounts = 0;
 
-    await retireStaleItemsForInstitution({
+  for (const keep of keepByInstitution.values()) {
+    const twins = items.filter(
+      (item) =>
+        item.plaidItemId !== keep.plaidItemId &&
+        ((keep.institutionId && item.institutionId === keep.institutionId) ||
+          (keep.institutionName && item.institutionName === keep.institutionName)),
+    );
+    if (twins.length === 0) continue;
+
+    const result = await retireStaleItemsForInstitution({
       userId,
       keepPlaidItemId: keep.plaidItemId,
       institutionId: keep.institutionId,
       institutionName: keep.institutionName,
     });
-    removedInstitutions++;
+    removedInstitutions += result.retiredItems > 0 ? 1 : 0;
+    removedAccounts += result.retiredAccounts;
   }
 
-  return { removedInstitutions };
+  // Safety net: same mask/type under different item ids (orphans).
+  const accountCleanup = await dedupeFinancialAccountsByMask(userId);
+  removedAccounts += accountCleanup.removedAccounts;
+
+  return { removedInstitutions, removedAccounts };
+}
+
+/** @deprecated use dedupePlaidItemsByInstitution */
+export async function cleanupUndecryptableDuplicateItems(userId: string) {
+  return dedupePlaidItemsByInstitution(userId);
+}
+
+/**
+ * If duplicate account rows remain (same mask + type), keep the newest and remap txs.
+ */
+async function dedupeFinancialAccountsByMask(userId: string) {
+  const accounts = await prisma.financialAccount.findMany({ where: { userId } });
+  if (accounts.length <= 1) {
+    return { removedAccounts: 0 };
+  }
+
+  const groups = new Map<string, typeof accounts>();
+  for (const account of accounts) {
+    const key = accountMatchKey(account);
+    const list = groups.get(key) ?? [];
+    list.push(account);
+    groups.set(key, list);
+  }
+
+  let removedAccounts = 0;
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+
+    group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    const [keep, ...dupes] = group;
+
+    for (const dupe of dupes) {
+      await prisma.financialAccount.update({
+        where: { id: keep.id },
+        data: {
+          isPrimary: keep.isPrimary || dupe.isPrimary,
+          creditLimit: keep.creditLimit ?? dupe.creditLimit,
+          aprPercent: keep.aprPercent ?? dupe.aprPercent,
+          minimumPayment: keep.minimumPayment ?? dupe.minimumPayment,
+          dueDay: keep.dueDay ?? dupe.dueDay,
+          statementDay: keep.statementDay ?? dupe.statementDay,
+        },
+      });
+
+      if (dupe.plaidAccountId !== keep.plaidAccountId) {
+        await prisma.transaction.updateMany({
+          where: { userId, accountId: dupe.plaidAccountId },
+          data: { accountId: keep.plaidAccountId },
+        });
+      }
+
+      await prisma.financialAccount.delete({ where: { id: dupe.id } });
+      removedAccounts++;
+    }
+  }
+
+  if (removedAccounts > 0) {
+    console.log(`[PLAID RECONNECT] deduped ${removedAccounts} duplicate account row(s) for user ${userId}`);
+  }
+
+  return { removedAccounts };
 }

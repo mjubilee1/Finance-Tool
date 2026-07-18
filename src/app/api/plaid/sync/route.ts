@@ -8,7 +8,7 @@ import {
   tokenDecryptErrorMessage,
   getEncryptionDiagnostics,
 } from "@/lib/encryption";
-import { cleanupUndecryptableDuplicateItems } from "@/lib/plaid-reconnect";
+import { dedupePlaidItemsByInstitution } from "@/lib/plaid-reconnect";
 
 type SyncRequestBody = {
   bypassCooldown?: boolean;
@@ -29,8 +29,8 @@ export async function POST(req: Request) {
       // Empty body is fine for legacy callers.
     }
 
-    // Clear old Cap One/Chase links that can't decrypt once a working reconnect exists.
-    const cleanup = await cleanupUndecryptableDuplicateItems(session.user.id);
+    // One Item per institution — drops reconnect duplicates from the DB.
+    const cleanup = await dedupePlaidItemsByInstitution(session.user.id);
     if (cleanup.removedInstitutions > 0) {
       console.log(
         `[PLAID SYNC] cleaned ${cleanup.removedInstitutions} stale institution link(s) for user ${session.user.id}`,
