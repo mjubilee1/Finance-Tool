@@ -82,7 +82,10 @@ export async function syncTransactionsForItem(
 
     inFlightSyncs.add(item.id);
 
-    const accessToken = decrypt(item.encryptedAccessToken);
+    const accessToken = decrypt(item.encryptedAccessToken, {
+      itemId: item.id,
+      label: `plaid-item:${item.institutionName ?? item.plaidItemId}`,
+    });
     let cursor = item.cursor || undefined;
     let hasMore = true;
 

@@ -11,7 +11,10 @@ export async function syncCachedAccountsForItem(itemId: string, userId: string) 
   const item = await prisma.plaidItem.findUnique({ where: { id: itemId } });
   if (!item) return 0;
 
-  const accessToken = decrypt(item.encryptedAccessToken);
+  const accessToken = decrypt(item.encryptedAccessToken, {
+    itemId: item.id,
+    label: `plaid-accounts:${item.institutionName ?? item.plaidItemId}`,
+  });
   const response = await withPlaidTracking("accountsGet", userId, () =>
     plaidClient.accountsGet({ access_token: accessToken }),
   );

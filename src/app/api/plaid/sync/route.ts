@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { syncTransactionsForItem } from "@/lib/plaid-sync";
-import { isTokenDecryptError, tokenDecryptErrorMessage } from "@/lib/encryption";
+import { isTokenDecryptError, tokenDecryptErrorMessage, getEncryptionDiagnostics } from "@/lib/encryption";
 
 type SyncRequestBody = {
   bypassCooldown?: boolean;
@@ -44,6 +44,10 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log(
+      `[PLAID SYNC] start user=${session.user.id} items=${items.length} bypassCooldown=${bypassCooldown} crypto=${JSON.stringify(getEncryptionDiagnostics())}`,
+    );
+
     for (const item of items) {
       try {
         const result = await syncTransactionsForItem(item.id, { batchStartedAt, bypassCooldown });
@@ -60,8 +64,13 @@ export async function POST(req: Request) {
         failedCount++;
         if (isTokenDecryptError(err)) {
           tokenDecryptFailures++;
+          console.error(
+            `[PLAID SYNC] token decrypt failed item=${item.id} institution=${item.institutionName ?? "unknown"} crypto=${JSON.stringify(getEncryptionDiagnostics())}`,
+            err,
+          );
+        } else {
+          console.error(`Failed to sync transactions for item ${item.id}`, err);
         }
-        console.error(`Failed to sync transactions for item ${item.id}`, err);
       }
     }
 

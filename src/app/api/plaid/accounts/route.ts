@@ -194,7 +194,10 @@ export async function GET(request: Request) {
             continue;
           }
 
-          const accessToken = decrypt(item.encryptedAccessToken);
+          const accessToken = decrypt(item.encryptedAccessToken, {
+            itemId: item.id,
+            label: `plaid-balance:${item.institutionName ?? item.plaidItemId}`,
+          });
           const balances = await withPlaidTracking(BALANCE_ENDPOINT, userId, () =>
             plaidClient.accountsBalanceGet({
               access_token: accessToken,
