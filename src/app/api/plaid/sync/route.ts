@@ -86,13 +86,24 @@ export async function POST(req: Request) {
     };
 
     if (failedCount > 0 && addedCount === 0 && modifiedCount === 0 && removedCount === 0) {
+      const crypto = getEncryptionDiagnostics();
       const error =
         tokenDecryptFailures > 0
           ? tokenDecryptErrorMessage()
           : "Failed to sync transactions for linked accounts.";
       const code = tokenDecryptFailures > 0 ? "TOKEN_DECRYPT_FAILED" : "SYNC_FAILED";
 
-      return NextResponse.json({ ...payload, success: false, error, code }, { status: 500 });
+      return NextResponse.json(
+        {
+          ...payload,
+          success: false,
+          error,
+          code,
+          // Safe diagnostics for the UI — fingerprints only, no secrets.
+          crypto,
+        },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json(payload);

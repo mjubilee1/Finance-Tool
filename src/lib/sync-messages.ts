@@ -1,11 +1,20 @@
 export type SyncApiResponse = {
   error?: string;
+  code?: string;
   skipped?: number;
   added?: number;
   modified?: number;
   removed?: number;
   skipReasons?: string[];
   syncedItems?: number;
+  crypto?: {
+    primarySource?: string;
+    primaryFingerprint?: string;
+    candidateFingerprints?: Array<{ source: string; fingerprint: string }>;
+    hasTokenEncryptionKey?: boolean;
+    hasNextAuthSecret?: boolean;
+    hasPlaidSecret?: boolean;
+  };
 };
 
 export type SyncFeedbackTone = "success" | "info" | "warning" | "error";
@@ -74,6 +83,16 @@ async function postPlaidSync(bypassCooldown = false) {
   };
 
   if (!response.ok) {
+    if (data.code === "TOKEN_DECRYPT_FAILED" && data.crypto) {
+      const fp = data.crypto.primaryFingerprint ?? "?";
+      const src = data.crypto.primarySource ?? "?";
+      const candidates = (data.crypto.candidateFingerprints ?? [])
+        .map((c) => `${c.source}:${c.fingerprint}`)
+        .join(", ");
+      throw new Error(
+        `${data.error ?? "Could not read saved bank credentials."} [crypto ${src}/${fp}${candidates ? ` | ${candidates}` : ""}]`,
+      );
+    }
     throw new Error(data.error ?? "Failed to sync transactions.");
   }
 

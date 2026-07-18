@@ -3,7 +3,13 @@ import crypto from "crypto";
 const ALGORITHM = "aes-256-gcm";
 
 type KeyCandidate = {
-  source: "TOKEN_ENCRYPTION_KEY" | "NEXTAUTH_SECRET" | "PLAID_SECRET" | "fallback";
+  source:
+    | "TOKEN_ENCRYPTION_KEY"
+    | "NEXTAUTH_SECRET"
+    | "PLAID_SECRET"
+    | "PLAID_PROD_SECRET"
+    | "PLAID_TEST_SECRET"
+    | "fallback";
   value: string;
 };
 
@@ -20,6 +26,8 @@ function collectKeyCandidates(): KeyCandidate[] {
   push("TOKEN_ENCRYPTION_KEY", process.env.TOKEN_ENCRYPTION_KEY);
   push("NEXTAUTH_SECRET", process.env.NEXTAUTH_SECRET);
   push("PLAID_SECRET", process.env.PLAID_SECRET);
+  push("PLAID_PROD_SECRET", process.env.PLAID_PROD_SECRET);
+  push("PLAID_TEST_SECRET", process.env.PLAID_TEST_SECRET);
   if (candidates.length === 0) {
     push("fallback", "default_fallback_key_for_dev_only");
   }
