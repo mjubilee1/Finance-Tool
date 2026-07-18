@@ -60,8 +60,10 @@ export async function retireStaleItemsForInstitution(params: {
   });
 
   const newByKey = new Map(newAccounts.map((account) => [accountMatchKey(account), account]));
-  let remappedTransactions = 0;
 
+  // Prefer copying prefs onto the new accounts. Do NOT remap old transactions onto the
+  // new item — a fresh transactions/sync will re-import history, and remapping causes
+  // doubles (same spend under two different plaidTransactionIds).
   for (const old of oldAccounts) {
     const match = newByKey.get(accountMatchKey(old));
     if (!match) continue;
@@ -77,15 +79,15 @@ export async function retireStaleItemsForInstitution(params: {
         statementDay: match.statementDay ?? old.statementDay,
       },
     });
-
-    if (old.plaidAccountId !== match.plaidAccountId) {
-      const result = await prisma.transaction.updateMany({
-        where: { userId, accountId: old.plaidAccountId },
-        data: { accountId: match.plaidAccountId },
-      });
-      remappedTransactions += result.count;
-    }
   }
+
+  const oldAccountIds = oldAccounts.map((account) => account.plaidAccountId);
+  const deletedTransactions =
+    oldAccountIds.length > 0
+      ? await prisma.transaction.deleteMany({
+          where: { userId, accountId: { in: oldAccountIds } },
+        })
+      : { count: 0 };
 
   const deletedAccounts = await prisma.financialAccount.deleteMany({
     where: { userId, plaidItemId: { in: staleItemIds } },
@@ -96,13 +98,14 @@ export async function retireStaleItemsForInstitution(params: {
   });
 
   console.log(
-    `[PLAID RECONNECT] retired ${staleItems.length} stale item(s) for ${institutionName ?? institutionId} keep=${keepPlaidItemId} accounts=${deletedAccounts.count} txRemapped=${remappedTransactions}`,
+    `[PLAID RECONNECT] retired ${staleItems.length} stale item(s) for ${institutionName ?? institutionId} keep=${keepPlaidItemId} accounts=${deletedAccounts.count} txsRemoved=${deletedTransactions.count}`,
   );
 
   return {
     retiredItems: staleItems.length,
     retiredAccounts: deletedAccounts.count,
-    remappedTransactions,
+    remappedTransactions: 0,
+    removedTransactions: deletedTransactions.count,
   };
 }
 
@@ -215,4 +218,55 @@ async function dedupeFinancialAccountsByMask(userId: string) {
   }
 
   return { removedAccounts };
+}
+
+/**
+ * Reconnect can leave the same real-world spend twice (old item txs remapped + new
+ * item sync). Collapse exact economic duplicates: same date, amount, pending, name.
+ * Keeps the newest row.
+ */
+export async function dedupeDuplicateTransactions(userId: string) {
+  const transactions = await prisma.transaction.findMany({
+    where: { userId },
+    select: {
+      id: true,
+      date: true,
+      amount: true,
+      pending: true,
+      name: true,
+      merchantName: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const keepByKey = new Map<string, string>();
+  const deleteIds: string[] = [];
+
+  for (const tx of transactions) {
+    const label = (tx.merchantName || tx.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const key = `${tx.date}|${tx.amount.toFixed(2)}|${tx.pending ? 1 : 0}|${label}`;
+    const existing = keepByKey.get(key);
+    if (existing) {
+      deleteIds.push(existing);
+    }
+    keepByKey.set(key, tx.id);
+  }
+
+  if (deleteIds.length === 0) {
+    return { removedTransactions: 0 };
+  }
+
+  // Chunk deletes to avoid oversized IN lists.
+  const uniqueDeleteIds = [...new Set(deleteIds)];
+  for (let i = 0; i < uniqueDeleteIds.length; i += 200) {
+    const chunk = uniqueDeleteIds.slice(i, i + 200);
+    await prisma.transaction.deleteMany({ where: { id: { in: chunk } } });
+  }
+
+  console.log(
+    `[PLAID RECONNECT] removed ${uniqueDeleteIds.length} duplicate transaction(s) for user ${userId}`,
+  );
+
+  return { removedTransactions: uniqueDeleteIds.length };
 }

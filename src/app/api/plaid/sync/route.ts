@@ -8,7 +8,7 @@ import {
   tokenDecryptErrorMessage,
   getEncryptionDiagnostics,
 } from "@/lib/encryption";
-import { dedupePlaidItemsByInstitution } from "@/lib/plaid-reconnect";
+import { dedupeDuplicateTransactions, dedupePlaidItemsByInstitution } from "@/lib/plaid-reconnect";
 
 type SyncRequestBody = {
   bypassCooldown?: boolean;
@@ -31,11 +31,14 @@ export async function POST(req: Request) {
 
     // One Item per institution — drops reconnect duplicates from the DB.
     const cleanup = await dedupePlaidItemsByInstitution(session.user.id);
-    if (cleanup.removedInstitutions > 0) {
+    if (cleanup.removedInstitutions > 0 || cleanup.removedAccounts > 0) {
       console.log(
-        `[PLAID SYNC] cleaned ${cleanup.removedInstitutions} stale institution link(s) for user ${session.user.id}`,
+        `[PLAID SYNC] cleaned institutions=${cleanup.removedInstitutions} accounts=${cleanup.removedAccounts} for user ${session.user.id}`,
       );
     }
+
+    // Drop doubled spends left from reconnect remaps + re-sync.
+    const txCleanup = await dedupeDuplicateTransactions(session.user.id);
 
     const items = await prisma.plaidItem.findMany({
       where: { userId: session.user.id },
@@ -105,6 +108,7 @@ export async function POST(req: Request) {
       skipReasons: [...new Set(skipReasons)],
       syncedItems: items.length - skippedCount - failedCount,
       cleanedStaleLinks: cleanup.removedInstitutions,
+      removedDuplicateTransactions: txCleanup.removedTransactions,
     };
 
     const changed = addedCount + modifiedCount + removedCount;

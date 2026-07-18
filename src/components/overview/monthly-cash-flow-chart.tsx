@@ -88,6 +88,25 @@ export function MonthlyCashFlowChart({ months }: Props) {
   const monthOverMonthDelta =
     lastCompleteMonth && priorMonth ? lastCompleteMonth.net - priorMonth.net : null;
 
+  // Headline: this month's pace when partial; otherwise last closed month.
+  const headline = currentMonth.isPartial
+    ? {
+        label: `${currentMonth.label} so far`,
+        net: currentMonth.net,
+        sub:
+          lastCompleteMonth != null
+            ? `${lastCompleteMonth.label} closed at ${formatSignedCurrency(lastCompleteMonth.net)}`
+            : null,
+      }
+    : {
+        label: `${currentMonth.label} net`,
+        net: currentMonth.net,
+        sub:
+          monthOverMonthDelta != null
+            ? `${monthOverMonthDelta >= 0 ? "Up" : "Down"} ${formatCurrency(Math.abs(monthOverMonthDelta))} vs prior month`
+            : null,
+      };
+
   return (
     <div className="app-card p-6 space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -101,30 +120,31 @@ export function MonthlyCashFlowChart({ months }: Props) {
             projection.
           </p>
         </div>
-        {lastCompleteMonth ? (
-          <div
-            className={`rounded-xl px-4 py-3 ring-1 shrink-0 ${
-              lastCompleteMonth.net >= 0
-                ? "bg-[var(--accent-soft)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
-                : "bg-rose-500/10 ring-rose-400/30"
+        <div
+          className={`rounded-xl px-4 py-3 ring-1 shrink-0 ${
+            headline.net >= 0
+              ? "bg-[var(--accent-soft)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
+              : "bg-rose-500/10 ring-rose-400/30"
+          }`}
+        >
+          <p className="app-label mb-0.5">{headline.label}</p>
+          <p
+            className={`text-xl font-bold tabular-nums ${
+              headline.net >= 0 ? "text-[var(--accent-strong)]" : "text-rose-600"
             }`}
           >
-            <p className="app-label mb-0.5">{lastCompleteMonth.label} net</p>
-            <p
-              className={`text-xl font-bold tabular-nums ${
-                lastCompleteMonth.net >= 0 ? "text-[var(--accent-strong)]" : "text-rose-600"
-              }`}
-            >
-              {formatSignedCurrency(lastCompleteMonth.net)}
+            {formatSignedCurrency(headline.net)}
+          </p>
+          {headline.sub ? (
+            <p className="text-[11px] text-[var(--ink-soft)] mt-1">{headline.sub}</p>
+          ) : null}
+          {currentMonth.isPartial && monthOverMonthDelta != null && lastCompleteMonth && priorMonth ? (
+            <p className="text-[11px] text-[var(--ink-soft)] mt-0.5">
+              {lastCompleteMonth.label} was {monthOverMonthDelta >= 0 ? "up" : "down"}{" "}
+              {formatCurrency(Math.abs(monthOverMonthDelta))} vs {priorMonth.label}
             </p>
-            {monthOverMonthDelta != null ? (
-              <p className="text-[11px] text-[var(--ink-soft)] mt-1">
-                {monthOverMonthDelta >= 0 ? "Up" : "Down"}{" "}
-                {formatCurrency(Math.abs(monthOverMonthDelta))} vs prior month
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
