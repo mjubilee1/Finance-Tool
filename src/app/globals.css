@@ -328,6 +328,7 @@ input[type="range"] {
   Keeps backgrounds and text paired so contrast stays readable.
 */
 html.dark .bg-white,
+html.dark .bg-white\/60,
 html.dark .bg-white\/70,
 html.dark .bg-white\/80,
 html.dark .bg-white\/90,

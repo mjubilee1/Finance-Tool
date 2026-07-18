@@ -590,7 +590,7 @@ export function Dashboard() {
           <button
             type="button"
             onClick={handleReloadApp}
-            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 bg-white/60 hover:bg-white ring-1 ring-[var(--card-border)] transition-colors"
+            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--ink)] bg-[var(--card-solid)] hover:bg-[color-mix(in_srgb,var(--card-solid)_88%,var(--accent))] ring-1 ring-[var(--card-border)] transition-colors"
           >
             <RotateCcw size={16} />
             Reload app

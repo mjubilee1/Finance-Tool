@@ -5,7 +5,7 @@ import type { GrowthMetrics } from "@/lib/growth-agent";
 import { WEAK_DOMAIN_THRESHOLD } from "@/lib/growth-scoring";
 import type { DayShape } from "@/lib/joy-ideas-shared";
 
-export type TodayPlanBlockKey = "gym" | "leverage" | "joy";
+export type TodayPlanBlockKey = "lyft" | "work" | "gym" | "leverage" | "joy";
 export type TodayPlanBlockRole = "training" | "focus" | "recovery";
 export type TodayPlanBlockPriority = "locked" | "protect" | "optional";
 
