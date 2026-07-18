@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { applyRuleBasedCategory } from "@/lib/categorization";
 import { getPlaidConfig } from "@/lib/env";
+import { syncCachedAccountsForItem } from "@/lib/plaid-accounts";
 import { getLatestPlaidEndpointCall, isPlaidEndpointDailyLimitReached, withPlaidTracking } from "./plaid-tracker";
 
 const TRANSACTIONS_SYNC_ENDPOINT = "transactionsSync";
@@ -202,6 +203,13 @@ export async function syncTransactionsForItem(
       where: { id: item.id },
       data: { cursor },
     });
+
+    // Refresh DB balances from free/cached /accounts/get (not paid Balance).
+    try {
+      await syncCachedAccountsForItem(item.id, item.userId);
+    } catch (accountErr) {
+      console.error(`Failed to sync cached accounts for item ${item.id}`, accountErr);
+    }
 
     return { added: addedCount, modified: modifiedCount, removed: removedCount };
   } catch (err) {

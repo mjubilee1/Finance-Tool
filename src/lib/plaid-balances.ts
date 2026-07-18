@@ -1,13 +1,25 @@
+export type BalanceRefreshReason =
+  | "cooldown"
+  | "daily_limit"
+  | "in_flight"
+  | "error";
+
 export type BalanceRefreshMeta = {
   usedCachedBalances: boolean;
   balanceCallsToday: number;
   balanceCallLimit: number;
   balanceCallsRemaining: number;
   refreshedItems?: number;
+  /** Server-enforced minimum minutes between paid Balance calls. */
+  cooldownMinutes?: number;
+  /** Seconds until another paid Balance call is allowed (0 = ready). */
+  cooldownRemainingSeconds?: number;
+  reason?: BalanceRefreshReason;
 };
 
 export async function refreshPlaidBalances(): Promise<BalanceRefreshMeta> {
-  const response = await fetch("/api/plaid/accounts");
+  // Explicit fresh=1 — hits paid Plaid /accounts/balance/get (do not call on page load).
+  const response = await fetch("/api/plaid/accounts?fresh=1");
   const data = (await response.json().catch(() => ({}))) as {
     error?: string;
     balanceRefresh?: BalanceRefreshMeta;
@@ -43,4 +55,10 @@ export function getOldestAccountUpdate(accounts: Array<{ updatedAt?: string | Da
     oldest = oldest == null ? ms : Math.min(oldest, ms);
   }
   return oldest == null ? null : new Date(oldest);
+}
+
+export function formatCooldownRemaining(seconds: number) {
+  if (seconds <= 0) return null;
+  const mins = Math.ceil(seconds / 60);
+  return mins <= 1 ? "about a minute" : `${mins} minutes`;
 }

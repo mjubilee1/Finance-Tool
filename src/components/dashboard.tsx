@@ -4,8 +4,6 @@ import { calculateGoalPace, type DailySpendPoint, type MonthlyCashFlowPoint } fr
 import { isLifeGoalType } from "@/lib/goal-types";
 import { formatCurrency } from "@/lib/format";
 import {
-    getOldestAccountUpdate,
-    isBalanceStale,
     refreshPlaidBalances,
     type BalanceRefreshMeta,
 } from "@/lib/plaid-balances";
@@ -197,8 +195,6 @@ export function Dashboard() {
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
   const [balanceMeta, setBalanceMeta] = useState<BalanceRefreshMeta | null>(null);
   const briefRefreshTriggered = useRef(false);
-  const balancesAutoRefreshed = useRef(false);
-  const lastAccountsBalanceRefresh = useRef(0);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"date" | "amount_desc" | "amount_asc">("amount_desc");
@@ -217,19 +213,40 @@ export function Dashboard() {
   };
 
   const handleRefreshBalances = async (options?: { silent?: boolean }) => {
+    if (isRefreshingBalances) return;
+    if ((balanceMeta?.cooldownRemainingSeconds ?? 0) > 0 && !options?.silent) {
+      setSyncFeedback({
+        tone: "warning",
+        message: `Real-time balances are cached for ${balanceMeta?.cooldownMinutes ?? 30} minutes. Try again in ${Math.ceil((balanceMeta?.cooldownRemainingSeconds ?? 0) / 60)} min, or use Sync for normal updates.`,
+      });
+      return;
+    }
+
     setIsRefreshingBalances(true);
     try {
+      // Paid Plaid Balance endpoint — only call when the user (or an explicit action) asks.
       const meta = await refreshPlaidBalances();
       setBalanceMeta(meta);
-      lastAccountsBalanceRefresh.current = Date.now();
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       await refetch();
 
-      if (!options?.silent && meta.usedCachedBalances && meta.balanceCallLimit > 0) {
-        setSyncFeedback({
-          tone: "warning",
-          message: `Balance refresh limit reached (${meta.balanceCallsToday}/${meta.balanceCallLimit} today). Showing last saved balances — try again after midnight UTC.`,
-        });
+      if (!options?.silent) {
+        if (meta.reason === "daily_limit" && meta.balanceCallLimit > 0) {
+          setSyncFeedback({
+            tone: "warning",
+            message: `Balance refresh limit reached (${meta.balanceCallsToday}/${meta.balanceCallLimit} today). Showing last saved balances — try again after midnight UTC.`,
+          });
+        } else if (meta.reason === "cooldown" && (meta.cooldownRemainingSeconds ?? 0) > 0) {
+          setSyncFeedback({
+            tone: "warning",
+            message: `Balances were refreshed recently. Cached for ${meta.cooldownMinutes ?? 30} minutes — try again later, or use Sync for normal updates.`,
+          });
+        } else if (meta.refreshedItems && meta.refreshedItems > 0) {
+          setSyncFeedback({
+            tone: "success",
+            message: "Real-time balances updated from your bank.",
+          });
+        }
       }
 
       return meta;
@@ -237,6 +254,25 @@ export function Dashboard() {
       setIsRefreshingBalances(false);
     }
   };
+
+  // Tick down Balance cooldown so the button re-enables without a reload.
+  useEffect(() => {
+    const remaining = balanceMeta?.cooldownRemainingSeconds ?? 0;
+    if (remaining <= 0) return;
+    const id = window.setInterval(() => {
+      setBalanceMeta((prev) => {
+        if (!prev?.cooldownRemainingSeconds) return prev;
+        const next = Math.max(0, prev.cooldownRemainingSeconds - 1);
+        return {
+          ...prev,
+          cooldownRemainingSeconds: next,
+          reason: next > 0 ? prev.reason : undefined,
+          usedCachedBalances: next > 0 ? prev.usedCachedBalances : false,
+        };
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [balanceMeta?.cooldownRemainingSeconds]);
 
   const handleReloadApp = () => {
     window.location.reload();
@@ -248,13 +284,13 @@ export function Dashboard() {
     setSyncFeedback(null);
 
     try {
-      await handleRefreshBalances({ silent: true });
+      // Sync = transactions + brief only. Paid Balance is Accounts → "Refresh balances".
       const syncData = await postPlaidSync(true);
       const feedback = getSyncFeedback(syncData);
       if (feedback) {
         setSyncFeedback(feedback);
       } else {
-        setSyncFeedback({ tone: "success", message: "Balances and transactions refreshed." });
+        setSyncFeedback({ tone: "success", message: "Transactions refreshed." });
       }
       setSyncStatus('success');
 
@@ -282,29 +318,22 @@ export function Dashboard() {
     }
   }, [data, status, queryClient]);
 
+  // Load Balance cooldown / usage meta without triggering a paid refresh.
   useEffect(() => {
-    if (!data?.accounts.length || status !== "authenticated") return;
-
-    const oldestUpdate = getOldestAccountUpdate(data.accounts);
-    const stale = isBalanceStale(oldestUpdate, 30);
-
-    if (stale && !balancesAutoRefreshed.current) {
-      balancesAutoRefreshed.current = true;
-      handleRefreshBalances({ silent: true }).catch(() => {});
-    }
-  }, [data?.accounts, status]);
-
-  useEffect(() => {
-    if (activeTab !== "accounts" || !data?.accounts.length) return;
-
-    const stale =
-      Date.now() - lastAccountsBalanceRefresh.current > 15 * 60 * 1000 ||
-      isBalanceStale(getOldestAccountUpdate(data.accounts), 15);
-
-    if (stale) {
-      handleRefreshBalances({ silent: true }).catch(() => {});
-    }
-  }, [activeTab, data?.accounts]);
+    if (status !== "authenticated" || activeTab !== "accounts") return;
+    let cancelled = false;
+    fetch("/api/plaid/accounts")
+      .then((res) => res.json())
+      .then((payload: { balanceRefresh?: BalanceRefreshMeta }) => {
+        if (!cancelled && payload.balanceRefresh) {
+          setBalanceMeta(payload.balanceRefresh);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, status]);
 
   const {
     transactions = [],
@@ -408,8 +437,8 @@ export function Dashboard() {
   );
 
   const handleBankLinked = async () => {
-    await handleRefreshBalances({ silent: true });
-    await handleSyncTransactions({ silent: true });
+    // Populate accounts + cached balances via Transactions sync (/accounts/get), not paid Balance.
+    await handleSyncTransactions({ silent: true, bypassCooldown: true });
   };
 
   const handleSyncTransactions = async (options?: { silent?: boolean; bypassCooldown?: boolean }) => {
@@ -417,9 +446,7 @@ export function Dashboard() {
     setSyncFeedback(null);
 
     try {
-      if (!options?.silent) {
-        await handleRefreshBalances({ silent: true }).catch(() => {});
-      }
+      // Sync transactions only — do not hit paid Balance API here.
       const data = await postPlaidSync(options?.bypassCooldown ?? true);
       const feedback = getSyncFeedback(data);
       if (feedback && !options?.silent) {

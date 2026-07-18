@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
 import type { BalanceRefreshMeta } from "@/lib/plaid-balances";
+import { formatCooldownRemaining } from "@/lib/plaid-balances";
 import {
   groupAccountsByInstitution,
   summarizeAccountBuckets,
@@ -244,22 +245,40 @@ export function AccountsView({
           <button
             type="button"
             onClick={() => onRefreshBalances()}
-            disabled={isRefreshingBalances}
-            className="inline-flex items-center gap-2 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold app-card hover:bg-white disabled:opacity-60"
+            disabled={
+              isRefreshingBalances ||
+              (balanceMeta?.cooldownRemainingSeconds ?? 0) > 0
+            }
+            className="inline-flex items-center gap-2 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold app-card hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+            title={
+              (balanceMeta?.cooldownRemainingSeconds ?? 0) > 0
+                ? `Real-time balance refresh available again in ${formatCooldownRemaining(balanceMeta?.cooldownRemainingSeconds ?? 0)}`
+                : "Pull real-time balances from your bank (paid Plaid Balance call)"
+            }
           >
             <RefreshCw size={16} className={isRefreshingBalances ? "animate-spin" : ""} />
-            Refresh balances
+            {isRefreshingBalances
+              ? "Refreshing…"
+              : (balanceMeta?.cooldownRemainingSeconds ?? 0) > 0
+                ? `Wait ${formatCooldownRemaining(balanceMeta?.cooldownRemainingSeconds ?? 0)}`
+                : "Refresh balances"}
           </button>
         ) : null}
       </div>
 
-      {(balanceMeta?.usedCachedBalances || (oldestUpdate && oldestUpdate < DateTime.now().minus({ hours: 2 }))) && (
+      {(balanceMeta?.usedCachedBalances ||
+        balanceMeta?.reason === "cooldown" ||
+        (oldestUpdate && oldestUpdate < DateTime.now().minus({ hours: 2 }))) && (
         <div className={accountNoticeClass}>
-          {balanceMeta?.usedCachedBalances && (balanceMeta.balanceCallLimit ?? 0) > 0
-            ? `Daily Plaid balance limit reached (${balanceMeta.balanceCallsToday}/${balanceMeta.balanceCallLimit}). Amounts may be outdated — tap Refresh balances after midnight UTC, or use the header Refresh button.`
-            : balanceMeta?.usedCachedBalances
-              ? "Could not reach your bank just now — showing last saved balances. Tap Refresh balances to try again."
-              : `Balances last updated ${formatBalanceUpdatedAt(oldestUpdate?.toISO() ?? undefined)}. Tap Refresh balances to pull the latest from your bank.`}
+          {balanceMeta?.reason === "daily_limit" && (balanceMeta.balanceCallLimit ?? 0) > 0
+            ? `Daily real-time balance limit reached (${balanceMeta.balanceCallsToday}/${balanceMeta.balanceCallLimit}). Showing last saved balances — try again after midnight UTC. Sync still updates cached balances from Transactions.`
+            : balanceMeta?.reason === "cooldown" && (balanceMeta.cooldownRemainingSeconds ?? 0) > 0
+              ? `Real-time balances are cached for ${balanceMeta.cooldownMinutes ?? 30} minutes to control Plaid costs. Showing last saved amounts — available again in ${formatCooldownRemaining(balanceMeta.cooldownRemainingSeconds ?? 0)}. Use Sync for normal updates.`
+              : balanceMeta?.reason === "in_flight"
+                ? "A balance refresh is already running — showing last saved balances."
+                : balanceMeta?.usedCachedBalances && balanceMeta?.reason === "error"
+                  ? "Could not reach your bank just now — showing last saved balances. Tap Refresh balances to try again."
+                  : `Balances last updated ${formatBalanceUpdatedAt(oldestUpdate?.toISO() ?? undefined)}. Tap Refresh balances only when you need a real-time pull; Sync keeps cached balances current.`}
         </div>
       )}
 

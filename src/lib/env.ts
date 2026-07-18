@@ -8,7 +8,14 @@ const envSchema = z.object({
   PLAID_PROD_SECRET: z.string().min(1).optional(),
   PLAID_DAILY_BALANCE_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
-    z.coerce.number().int().min(0).default(0),
+    // Default 4: ~2 manual refreshes/day with Chase + Capital One (1 call per item).
+    // Set to 0 only if you intentionally want unlimited Balance API calls.
+    z.coerce.number().int().min(0).default(4),
+  ),
+  // Server-side gate so clients cannot spam paid /accounts/balance/get.
+  PLAID_BALANCE_COOLDOWN_MINUTES: z.preprocess(
+    (value) => (value === undefined || value === "" ? undefined : value),
+    z.coerce.number().int().min(0).default(30),
   ),
   PLAID_DAILY_SYNC_CALL_LIMIT: z.preprocess(
     (value) => (value === undefined || value === "" ? undefined : value),
@@ -64,6 +71,7 @@ export function getPlaidConfig() {
     secret: resolveSecret(parsed),
     env: parsed.PLAID_ENV,
     dailyBalanceCallLimit: parsed.PLAID_DAILY_BALANCE_CALL_LIMIT,
+    balanceCooldownMinutes: parsed.PLAID_BALANCE_COOLDOWN_MINUTES,
     dailySyncCallLimit: parsed.PLAID_DAILY_SYNC_CALL_LIMIT,
     syncCooldownMinutes: parsed.PLAID_SYNC_COOLDOWN_MINUTES,
   };
