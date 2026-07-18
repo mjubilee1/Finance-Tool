@@ -16,8 +16,6 @@ import type { BalanceRefreshMeta } from "@/lib/plaid-balances";
 
 const BALANCE_ENDPOINT = "accountsBalanceGet";
 
-const { dailyBalanceCallLimit, balanceCooldownMinutes } = getPlaidConfig();
-
 /** Prevent concurrent paid Balance refreshes for the same user. */
 const inFlightBalanceRefresh = new Set<string>();
 
@@ -77,6 +75,7 @@ async function buildMeta(
   userId: string,
   partial: Partial<BalanceRefreshMeta> & Pick<BalanceRefreshMeta, "usedCachedBalances">,
 ): Promise<BalanceRefreshMeta> {
+  const { dailyBalanceCallLimit, balanceCooldownMinutes } = getPlaidConfig();
   const balanceCallsToday = await getDailyPlaidEndpointCalls(BALANCE_ENDPOINT, userId);
   const latest = await getLatestPlaidEndpointCall(BALANCE_ENDPOINT, userId);
   const cooldownMs = balanceCooldownMinutes * 60 * 1000;
@@ -135,6 +134,7 @@ export async function GET(request: Request) {
       });
     }
 
+    const { dailyBalanceCallLimit, balanceCooldownMinutes } = getPlaidConfig();
     const latestBalanceCall = await getLatestPlaidEndpointCall(BALANCE_ENDPOINT, userId);
     const cooldownMs = balanceCooldownMinutes * 60 * 1000;
     if (

@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { prisma } from "@/lib/prisma";
+import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-shared";
 
 export type ContactNoteEntry = {
   id: string;
@@ -8,7 +9,7 @@ export type ContactNoteEntry = {
   createdAt: Date | string;
 };
 
-export const MAX_NOTE_IMAGES = 3;
+export { MAX_NOTE_IMAGES } from "@/lib/growth-contact-shared";
 
 export function contactHasNotes(contact: {
   notes?: string | null;

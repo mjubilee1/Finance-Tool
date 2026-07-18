@@ -14,8 +14,31 @@ CREATE TABLE IF NOT EXISTS "GoalContribution" (
 CREATE INDEX IF NOT EXISTS "GoalContribution_goalId_monthKey_idx" ON "GoalContribution"("goalId", "monthKey");
 CREATE INDEX IF NOT EXISTS "GoalContribution_userId_monthKey_idx" ON "GoalContribution"("userId", "monthKey");
 
-ALTER TABLE "GoalContribution" DROP CONSTRAINT IF EXISTS "GoalContribution_userId_fkey";
-ALTER TABLE "GoalContribution" ADD CONSTRAINT "GoalContribution_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Match car migrations: guard FK adds so deploy is idempotent on Neon/Vercel.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'User'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'GoalContribution_userId_fkey'
+  ) THEN
+    ALTER TABLE "GoalContribution"
+      ADD CONSTRAINT "GoalContribution_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "GoalContribution" DROP CONSTRAINT IF EXISTS "GoalContribution_goalId_fkey";
-ALTER TABLE "GoalContribution" ADD CONSTRAINT "GoalContribution_goalId_fkey" FOREIGN KEY ("goalId") REFERENCES "FinancialGoal"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'FinancialGoal'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'GoalContribution_goalId_fkey'
+  ) THEN
+    ALTER TABLE "GoalContribution"
+      ADD CONSTRAINT "GoalContribution_goalId_fkey"
+      FOREIGN KEY ("goalId") REFERENCES "FinancialGoal"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

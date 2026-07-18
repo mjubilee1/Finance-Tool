@@ -17,7 +17,12 @@ import {
   X,
 } from "lucide-react";
 import { useBrowserSpeech } from "@/hooks/use-browser-speech";
-import { isDmvPageTheme, isTechTrendTheme } from "@/lib/trends";
+import {
+  MAX_DMV_TREND_ITEMS,
+  MAX_TECH_TREND_ITEMS,
+  isDmvPageTheme,
+  isTechTrendTheme,
+} from "@/lib/trends-shared";
 import { buildTrendsSpeechText } from "@/lib/trends-speech";
 
 export type TrendsLane = "tech" | "dmv";
@@ -249,9 +254,9 @@ export function TrendsView({
   }
 
   const updatedLabel = DateTime.fromISO(digest.updatedAt).toFormat("MMM d · h:mm a");
-  const maxItems = isTech ? 4 : 3;
+  const maxItems = isTech ? MAX_TECH_TREND_ITEMS : MAX_DMV_TREND_ITEMS;
   const byImportance = (a: TrendItem, b: TrendItem) => b.relevanceScore - a.relevanceScore;
-  const items = digest.items
+  const items = (digest.items ?? [])
     .filter((item) => (isTech ? isTechTrendTheme(item.theme) : isDmvPageTheme(item.theme)))
     .sort(byImportance)
     .slice(0, maxItems);

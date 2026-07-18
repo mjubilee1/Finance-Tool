@@ -19,7 +19,8 @@
     "version:patch": "VERSION_BUMP=patch node scripts/bump-version.mjs --manual --no-prompt",
     "version:minor": "VERSION_BUMP=minor node scripts/bump-version.mjs --manual --no-prompt",
     "version:major": "VERSION_BUMP=major node scripts/bump-version.mjs --manual --no-prompt",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
@@ -41,6 +42,7 @@
     "react-plaid-link": "^4.1.1",
     "recharts": "^3.8.1",
     "resend": "^6.12.4",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },

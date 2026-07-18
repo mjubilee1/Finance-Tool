@@ -30,7 +30,7 @@ import { formatCurrency } from "@/lib/format";
 import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { ActivityTitleInput } from "@/components/growth/activity-title-input";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
-import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-notes";
+import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-shared";
 import { GOOD_WEEK_CHECKLIST } from "@/lib/life-os-north-star";
 
 type DomainScores = {

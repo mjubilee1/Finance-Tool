@@ -1,6 +1,4 @@
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { getResend } from "@/lib/resend";
 
 interface EmailPayload {
   to: string;
@@ -13,16 +11,16 @@ export const sendEmail = async (data: EmailPayload) => {
     console.warn("RESEND_API_KEY not set, skipping email send.");
     return;
   }
-  
+
   try {
     const dataToSend = {
-      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
       to: data.to,
       subject: data.subject,
       html: data.html,
     };
-    
-    const result = await resend.emails.send(dataToSend);
+
+    const result = await getResend().emails.send(dataToSend);
     return result;
   } catch (error) {
     console.error("Failed to send email:", error);

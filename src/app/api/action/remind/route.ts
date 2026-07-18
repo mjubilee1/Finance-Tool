@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { getResend } from "@/lib/resend";
 
 export async function POST(req: Request) {
   try {
@@ -12,10 +10,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      return NextResponse.json({ error: "Email sending is not configured." }, { status: 503 });
+    }
+
     const body = await req.json();
     const { merchant, amount, frequency } = body;
 
-    const yearlySavings = (amount * (frequency === 'monthly' ? 12 : frequency === 'weekly' ? 52 : 1)).toFixed(2);
+    const yearlySavings = (amount * (frequency === "monthly" ? 12 : frequency === "weekly" ? 52 : 1)).toFixed(2);
 
     const emailHtml = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #18181b;">
@@ -36,8 +38,8 @@ export async function POST(req: Request) {
       </div>
     `;
 
-    await resend.emails.send({
-      from: "Coach <onboarding@resend.dev>", 
+    await getResend().emails.send({
+      from: "Coach <onboarding@resend.dev>",
       to: "mjubil96@gmail.com", // Resend free tier requires sending to verified email
       subject: `Cancel ${merchant} to save $${yearlySavings} this year`,
       html: emailHtml,
