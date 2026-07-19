@@ -293,6 +293,54 @@ function stringifyStoredJson(value: unknown) {
   }
 }
 
+type CoachGoalRow = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  monthlyContribution: number | null;
+  targetDate: string | null;
+  category: string | null;
+  status: string;
+};
+
+/** Load active goals even if monthlyContribution column is not migrated yet. */
+async function loadCoachGoals(userId: string): Promise<CoachGoalRow[]> {
+  try {
+    return await prisma.financialGoal.findMany({
+      where: { userId, status: "active" },
+      select: {
+        id: true,
+        name: true,
+        targetAmount: true,
+        currentAmount: true,
+        monthlyContribution: true,
+        targetDate: true,
+        category: true,
+        status: true,
+      },
+    });
+  } catch (error) {
+    console.error("FinancialGoal.monthlyContribution unavailable; legacy goal load:", error);
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        name: string;
+        targetAmount: number;
+        currentAmount: number;
+        targetDate: string | null;
+        category: string | null;
+        status: string;
+      }>
+    >`
+      SELECT id, name, "targetAmount", "currentAmount", "targetDate", category, status
+      FROM "FinancialGoal"
+      WHERE "userId" = ${userId} AND status = 'active'
+    `;
+    return rows.map((row) => ({ ...row, monthlyContribution: null }));
+  }
+}
+
 function normalizeCoachMessage(message: string) {
   let text = message.trim();
   if (!text) return "";
@@ -649,9 +697,7 @@ export async function POST(req: Request) {
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
-      prisma.financialGoal.findMany({
-        where: { userId: session.user.id, status: "active" },
-      }),
+      loadCoachGoals(session.user.id),
       prisma.transaction.findMany({
         where: { userId: session.user.id },
         orderBy: { date: "desc" },
@@ -1016,6 +1062,36 @@ export async function POST(req: Request) {
           error: "OpenAI quota exceeded. Add billing or credits at platform.openai.com, then try again.",
         },
         { status: 429 },
+      );
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      /does not exist in the current database/i.test(message) ||
+      /column .+ does not exist/i.test(message) ||
+      openAiError.code === "P2021" ||
+      openAiError.code === "P2022"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Database is missing a recent schema update. Redeploy so migrations run, then try chat again.",
+        },
+        { status: 503 },
+      );
+    }
+
+    if (/OPENAI_API_KEY is missing/i.test(message)) {
+      return NextResponse.json(
+        { error: "OpenAI is not configured. Add OPENAI_API_KEY and restart." },
+        { status: 503 },
+      );
+    }
+
+    if (/empty chat response/i.test(message)) {
+      return NextResponse.json(
+        { error: "Coach returned an empty reply. Try sending that again." },
+        { status: 502 },
       );
     }
 
