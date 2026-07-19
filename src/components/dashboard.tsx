@@ -9,12 +9,13 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, Car, Cpu, Flame, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, Car, Cpu, Flame, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Utensils, Wallet, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountsView } from "./accounts-view";
 import { AppVersion } from "./app-version";
+import { CaloriesView } from "./calories/calories-view";
 import { CarView } from "./car/car-view";
 import { ChatInterface } from "./chat-interface";
 import { ConnectBankButton } from "./connect-bank-button";
@@ -29,7 +30,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
 import { TrendsView } from "./trends/trends-view";
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car' | 'calories';
 
 type DashboardAccount = {
   id: string;
@@ -556,6 +557,7 @@ export function Dashboard() {
           {renderNavItem("overview", LayoutDashboard, "Overview")}
           {renderNavItem("chat", BrainCircuit, "Coach")}
           {renderNavItem("growth", Flame, "Growth")}
+          {renderNavItem("calories", Utensils, "Calories")}
           {renderNavItem("tech", Cpu, "Tech")}
           {renderNavItem("dmv", MapPin, "DMV")}
           {renderNavItem("goals", Target, "Goals")}
@@ -747,6 +749,7 @@ export function Dashboard() {
             )}
 
             {activeTab === "car" && <CarView />}
+            {activeTab === "calories" && <CaloriesView />}
 
             {/* View: ACCOUNTS */}
             {activeTab === 'accounts' && (

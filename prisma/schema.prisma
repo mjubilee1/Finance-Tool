@@ -78,6 +78,8 @@ model User {
   plannerDayLayouts       PlannerDayLayout[]
   carProfile              CarProfile?
   carMaintenanceLogs      CarMaintenanceLog[]
+  calorieExperiments      CalorieExperiment[]
+  calorieDayLogs          CalorieDayLog[]
   trendDigests            TrendDigest[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
@@ -522,6 +524,52 @@ model CarMaintenanceLog {
 
   @@index([userId, serviceDate])
   @@index([carProfileId, serviceDate])
+}
+
+/// 3–4 week calorie experiment. Judge the week (budget), log the day.
+model CalorieExperiment {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String   @default("Calorie experiment")
+  /// Experiment start (YYYY-MM-DD). Weeks run Mon–Sun from this date's week.
+  startDate     String
+  durationWeeks Int      @default(4)
+  /// Mon–Wed daily target (easier stick days).
+  monWedTarget  Int      @default(2250)
+  /// Thu–Sun daily target (looser weekend / harder stretch).
+  thuSunTarget  Int      @default(2600)
+  /// Weekly calorie budget: monWedTarget*3 + thuSunTarget*4 (default 17,150).
+  weeklyBudget  Int      @default(17150)
+  /// active | completed | abandoned
+  status        String   @default("active")
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayLogs CalorieDayLog[]
+
+  @@index([userId, status])
+  @@index([userId, startDate])
+}
+
+/// One calorie total per day for an experiment.
+model CalorieDayLog {
+  id           String   @id @default(cuid())
+  userId       String
+  experimentId String
+  date         String // YYYY-MM-DD
+  calories     Int
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experiment CalorieExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([experimentId, date])
+  @@index([userId, date])
 }
 
 /// Daily curated tech/AI signal digest — not a news firehose
