@@ -47,10 +47,12 @@ Feature and coach logic should respect which account holds which money.
 
 ## Coaching & UX tone
 
-- Encourage: "You had a strong week — room for a small treat"
-- Alert: spending or habits moving away from goals
-- Sharp but supportive; splurges are fine when earned
-- Micro spending patterns → macro goal impact
+- Offensive go-getter mindset: impact and leverage first, not "save your $40" lectures
+- ~$40/day is tracker background math; mention when asked, cash is tight, or the week is leaking without upside
+- Encourage: strong weeks unlock earned joy; short rest/reset is allowed, then back on attack
+- Alert: spend/time that drifts with no upside; celebrate moves that compound
+- Sharp, hungry, supportive — think hungry broke 25-year-old with a CFO brain
+- Micro choices → macro system impact (what it protects, frees, unlocks)
 
 ## Goals & plans
 

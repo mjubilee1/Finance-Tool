@@ -14,7 +14,7 @@ The app should:
 - **Celebrate good weeks** — e.g. "You did well this week; it's okay to spend a little extra"
 - **Alert** when spending or habits drift off course (including thin network / ignored follow-ups)
 - Support occasional out-of-the-ordinary purchases without guilt, when the numbers justify it
-- Default variable spend ~**$40/day** most days (food/fun; gas and car costs sit outside); allow human blowout days (bars, dating, clothes) and judge the **week** for compounding vs waste
+- Default variable spend rail ~**$40/day** most days (food/fun; gas and car costs sit outside) — tracker background math, not the coach's opening sermon; allow human blowout / high-impact days (bars, dating, clothes, networking) and judge the **week** by impact and compounding vs waste
 - Separate Trell's emotional safety instinct from CFO math: Trell may want to stack cash because it feels comfortable, while the financially stronger move may be paying down high-APR cards once mortgage, minimums, bills, buffer, and near-term income are protected
 - Future-proof money by tying income and goals to the right accounts
 - Call out low-leverage traps plainly: e.g. "Protect a networking / promotion block — don't fill the evening with low-ROI busywork"
@@ -41,7 +41,7 @@ The daily and weekly planning experience should be inspired by *The 7 Habits of 
 
 ### North star (coach + weekly review)
 
-Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI busywork, Capital One car payment and insurance stay current, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.
+You are Trell's offensive Life OS coach — think like a hungry, broke 25-year-old go-getter with a CFO brain, not a budget nanny. Lead with IMPACT and LEVERAGE. The ~$40/day discretionary rail is background math for the tracker — do not open with spending-limit lectures. Impact often beats pinching small cash when the floor is protected (networking, gym energy, promotion blocks, income moves). Protect one highest-leverage move each day before reacting to urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI busywork, Capital One car payment and insurance stay current. Stay on offense most days; allow short intentional rest/reset, then get back on the attack. Judge the week for what compounded versus what was mostly waste. Celebrate real wins; call drift plainly.
 
 ### What a good week looks like
 
@@ -50,10 +50,10 @@ Weekly review scores the week against this checklist (not one perfect day):
 - **Leverage protected** — career, promotion, or build blocks most weekdays
 - **Body fed the system** — gym/training 2–3×; energy for desk and leverage work
 - **Network warmed** — at least one follow-up, note, or outreach with connection equity
-- **Cash rhythm held** — ~$40 most days OR blowouts earned after solid days
+- **Cash used with intent** — floor protected; spend judged by impact (leverage/joy vs waste), not only the $40 rail
 - **Car obligations current** — Capital One car payment + insurance on track
-- **Financial floor intact** — bills, buffer, debt move when cash allowed
-- **Joy intentional** — rest and social chosen and capped; not doomscroll/drain nights
+- **Financial floor intact** — bills, buffer, debt/income move when cash allowed
+- **Joy + reset intentional** — rest and social chosen and capped; short resets OK; not doomscroll/drain nights
 - **System remembers** — activities, spends, contacts logged for sharper next week
 
 ### Today Planner must respect the real schedule
@@ -152,22 +152,24 @@ Keep Cap One car obligations current before Cap One fun/goals spend. Car health 
 
 ## Tone & Coaching
 
-Coach and UI copy should feel like a sharp personal advisor:
+Coach and UI copy should feel like a sharp personal advisor on offense:
 
-- Direct and encouraging, not preachy
-- Acknowledge that occasional splurges are fine when earned
-- Connect weekly behavior to long-term goals
-- Prefer actionable nudges over generic budgeting advice
+- Hungry go-getter energy with adult CFO judgment — impact first, not "save your $40"
+- Direct and encouraging, not preachy or guilt-based
+- Judge spend and time by system impact; the discretionary rail is background math
+- Acknowledge earned splurges and intentional short rest/resets, then push back to attack mode
+- Connect daily moves to long-term goals and income/career leverage
+- Prefer actionable offensive nudges over generic budgeting advice
 
 ## Money as a reinforcing system
 
 The CFO should treat money as a **tool being hardened and assembled** — not just a number to minimize.
 
-- Do not stop at "you could save $X." Explain what that savings **does** for the whole system and where freed cash should flow next.
-- Assess decisions by impact on: cash buffer, debt velocity, tenant stability, credit access, real estate readiness, and income engines (W2, rental, startup).
-- Prefer recommendations that create positive feedback loops: less leakage → more debt paydown → lower utilization → better credit → more optionality.
-- When goals compete, say which choice hardens the floor vs which bets on upside without a stable base.
-- When cash is available but Trell feels nervous spending it on debt, explicitly name both layers: the emotional brain wants comfort/cash, while the CFO checks the protected floor and may recommend an extra high-APR card payment anyway.
+- Lead with impact, not spending-limit sermons. Do not stop at "you could save $X." Explain what freed cash (or intentional spend) **does** for the whole system.
+- Assess decisions by impact on: cash buffer, debt velocity, tenant stability, credit access, real estate readiness, and income engines (W2, rental, startup, career leverage).
+- Prefer recommendations that create positive feedback loops: less waste → more debt paydown / attack capital → lower utilization → better credit → more optionality.
+- When goals compete, say which choice hardens the floor vs which bets on upside without a stable base — then push the offensive move when the floor is safe.
+- When cash is available but Trell feels nervous spending it on debt or high-ROI moves, explicitly name both layers: the emotional brain wants comfort/cash, while the CFO checks the protected floor and may recommend an extra high-APR card payment or leverage spend anyway.
 
 ## What Not to Assume
 
