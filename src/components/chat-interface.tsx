@@ -148,8 +148,34 @@ export function ChatInterface({
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [readAloudEnabled, setReadAloudEnabled] = useState(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // Let chat UI paint first; spending radar is secondary to the conversation.
+  const [radarEnabled, setRadarEnabled] = useState(false);
   const readAloudBaselineRef = useRef(0);
   const prevMessageCountRef = useRef(initialCoachMessages.length);
+
+  useEffect(() => {
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const enable = () => {
+      if (!cancelled) setRadarEnabled(true);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(enable, { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(enable, 0);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, []);
 
   const {
     speak,
@@ -171,6 +197,7 @@ export function ChatInterface({
   const { data: radarData, isLoading: radarLoading } = useQuery({
     queryKey: ["spending-alerts"],
     queryFn: fetchSpendingAlerts,
+    enabled: radarEnabled,
   });
 
   useEffect(() => {
@@ -490,7 +517,7 @@ export function ChatInterface({
         <SpendingRadar
           alerts={radarData?.alerts ?? []}
           estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
-          isLoading={radarLoading}
+          isLoading={!radarEnabled || radarLoading}
           dismissingId={dismissingId}
           onAskAbout={handleAskAboutAlert}
           onDismiss={handleDismissAlert}
