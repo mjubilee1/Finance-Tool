@@ -485,8 +485,8 @@ export function ChatInterface({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 sm:gap-3">
-      <div className="shrink-0">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
+      <div className="shrink-0 empty:hidden">
         <SpendingRadar
           alerts={radarData?.alerts ?? []}
           estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
@@ -508,7 +508,7 @@ export function ChatInterface({
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >
-            Coach
+            Chat
           </button>
           <button
             type="button"

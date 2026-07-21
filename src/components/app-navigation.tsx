@@ -45,10 +45,10 @@ export type NavSection = {
   items: NavItem[];
 };
 
-/** Primary destinations — daily loop + goals. Shown in the mobile bottom bar. */
+/** Primary destinations — Coach first (daily default), then loop + goals. */
 export const PRIMARY_NAV: NavItem[] = [
-  { tab: "overview", label: "Overview", Icon: LayoutDashboard },
   { tab: "chat", label: "Coach", Icon: BrainCircuit },
+  { tab: "overview", label: "Overview", Icon: LayoutDashboard },
   { tab: "growth", label: "Growth", Icon: Flame },
   { tab: "goals", label: "Goals", Icon: Target },
 ];

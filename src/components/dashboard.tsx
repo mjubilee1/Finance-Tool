@@ -199,7 +199,7 @@ export function Dashboard() {
     enabled: status === "authenticated",
   });
 
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
@@ -616,7 +616,16 @@ export function Dashboard() {
       <main className="flex h-full min-w-0 flex-1 flex-col bg-transparent pb-[calc(3.75rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 app-shell-header">
           <div className="flex items-center gap-2">
-            <span className="text-base font-semibold text-slate-900 md:hidden">{getTabLabel(activeTab)}</span>
+            {activeTab === "chat" ? (
+              <div className="flex items-center gap-2 md:hidden">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]">
+                  <BrainCircuit size={14} className="text-white" />
+                </div>
+                <span className="text-base font-semibold text-slate-900">Coach</span>
+              </div>
+            ) : (
+              <span className="text-base font-semibold text-slate-900 md:hidden">{getTabLabel(activeTab)}</span>
+            )}
           </div>
 
           {plaidUsage && activeTab === "accounts" && plaidUsage.dailyBalanceCallLimit > 0 && (
@@ -658,7 +667,7 @@ export function Dashboard() {
         <div
           className={`flex-1 overflow-x-hidden ${
             activeTab === "chat"
-              ? "flex min-h-0 flex-col overflow-hidden p-3 md:p-8"
+              ? "flex min-h-0 flex-col overflow-hidden p-2 sm:p-3 md:p-8"
               : "overflow-y-auto p-4 md:p-8"
           }`}
         >
@@ -672,9 +681,18 @@ export function Dashboard() {
             {/* View: CHAT */}
             {activeTab === 'chat' && (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="mb-3 hidden shrink-0 md:block">
-                  <h1 className="text-2xl app-display text-slate-900 tracking-tight">Coach</h1>
-                  <p className="text-slate-500 mt-1">Ask about money, career, body, what to buy, or what to protect today.</p>
+                <div className="mb-2 hidden shrink-0 md:block">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--accent)] shadow-sm shadow-blue-600/20">
+                      <BrainCircuit size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <h1 className="app-display text-2xl tracking-tight text-slate-900">Coach</h1>
+                      <p className="mt-0.5 text-slate-500">
+                        Your daily AI chat — money, career, body, and what to protect today.
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 <div className="min-h-0 flex-1">
                   <ChatInterface
