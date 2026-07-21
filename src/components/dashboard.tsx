@@ -9,10 +9,11 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, Car, Cpu, Flame, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Utensils, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Wallet } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { NAV_GROUPS, NAV_ITEMS, tabLabel, type TabType } from "@/lib/nav";
 import { AccountsView } from "./accounts-view";
 import { AppVersion } from "./app-version";
 import { CaloriesView } from "./calories/calories-view";
@@ -22,6 +23,7 @@ import { ConnectBankButton } from "./connect-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
 import { GrowthView } from "./growth/growth-view";
+import { MobileBottomNav, MobileMoreSheet } from "./mobile-nav";
 import { OverviewHome } from "./overview/overview-home";
 import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
@@ -29,8 +31,6 @@ import { RecurringView } from "./recurring/recurring-view";
 import { ThemeToggle } from "./theme-toggle";
 import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
 import { TrendsView } from "./trends/trends-view";
-
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car' | 'calories';
 
 type DashboardAccount = {
   id: string;
@@ -195,7 +195,7 @@ export function Dashboard() {
   });
 
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
   const [balanceMeta, setBalanceMeta] = useState<BalanceRefreshMeta | null>(null);
@@ -506,10 +506,19 @@ export function Dashboard() {
     );
   }
 
-  const renderNavItem = (tab: TabType, Icon: LucideIcon, label: string) => (
+  const selectTab = (tab: TabType) => {
+    setActiveTab(tab);
+    setIsMoreOpen(false);
+  };
+
+  const renderNavItem = (
+    tab: TabType,
+    Icon: (typeof NAV_ITEMS)[TabType]["icon"],
+    label: string,
+  ) => (
     <button
       key={tab}
-      onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
+      onClick={() => selectTab(tab)}
       className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-sm ${
         activeTab === tab
           ? "app-nav-active"
@@ -524,17 +533,9 @@ export function Dashboard() {
   return (
     <div className="flex h-screen app-page overflow-hidden">
       <PlaidOAuthHandler />
-      
-      {/* Mobile Menu Overlay */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/25 backdrop-blur-sm z-40 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 app-shell-sidebar transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Desktop sidebar — grouped; mobile uses bottom nav + More sheet */}
+      <aside className="hidden md:flex w-64 app-shell-sidebar flex-col shrink-0">
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5 px-2">
             <div className="relative w-9 h-9 app-brand-mark rounded-xl flex items-center justify-center">
@@ -548,24 +549,17 @@ export function Dashboard() {
               </span>
             </div>
           </div>
-          <button className="md:hidden p-2 text-slate-400 hover:bg-blue-50/60 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
-            <X size={20} />
-          </button>
         </div>
 
-        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
-          {renderNavItem("overview", LayoutDashboard, "Overview")}
-          {renderNavItem("chat", BrainCircuit, "Coach")}
-          {renderNavItem("growth", Flame, "Growth")}
-          {renderNavItem("calories", Utensils, "Calories")}
-          {renderNavItem("tech", Cpu, "Tech")}
-          {renderNavItem("dmv", MapPin, "DMV")}
-          {renderNavItem("goals", Target, "Goals")}
-          {renderNavItem("projections", TrendingUp, "Projections")}
-          {renderNavItem("accounts", Wallet, "Accounts")}
-          {renderNavItem("car", Car, "Car")}
-          {renderNavItem("transactions", Receipt, "Transactions")}
-          {renderNavItem("recurring", Repeat, "Recurring")}
+        <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.id}>
+              <p className="app-label px-3 mb-1.5">{group.label}</p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => renderNavItem(item.tab, item.icon, item.label))}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="p-4 border-t border-[var(--card-border)]">
@@ -622,11 +616,10 @@ export function Dashboard() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full min-w-0 bg-transparent">
         <header className="flex items-center justify-between px-4 py-3 app-shell-header sticky top-0 z-30">
-          <div className="flex items-center gap-2">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 -ml-2 text-slate-600 hover:bg-blue-50/70 rounded-lg">
-              <Menu size={22} />
-            </button>
-            <span className="md:hidden font-semibold text-base capitalize text-slate-900">{activeTab}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="md:hidden font-semibold text-base text-slate-900 truncate">
+              {tabLabel(activeTab)}
+            </span>
           </div>
 
           {plaidUsage && activeTab === "accounts" && plaidUsage.dailyBalanceCallLimit > 0 && (
@@ -645,7 +638,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={handleReloadApp}
-              className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white transition-colors sm:px-3"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white transition-colors sm:px-3"
               title="Reload the app (useful on home-screen install)"
               aria-label="Reload app"
             >
@@ -666,7 +659,7 @@ export function Dashboard() {
         </header>
 
         <div
-          className={`flex-1 overflow-x-hidden ${
+          className={`flex-1 overflow-x-hidden pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0 ${
             activeTab === "chat"
               ? "flex min-h-0 flex-col overflow-hidden p-3 md:p-8"
               : "overflow-y-auto p-4 md:p-8"
@@ -708,11 +701,11 @@ export function Dashboard() {
                   refreshHours={briefRefreshInfo?.refreshHours}
                   dailySpendSeries={dailySpendSeries}
                   monthlyCashFlowSeries={monthlyCashFlowSeries}
-                  onOpenChat={() => setActiveTab('chat')}
-                  onOpenRecurring={() => setActiveTab('recurring')}
-                  onOpenGrowth={() => setActiveTab('growth')}
-                  onOpenGoals={() => setActiveTab('goals')}
-                  onOpenTrends={() => setActiveTab('tech')}
+                  onOpenChat={() => selectTab('chat')}
+                  onOpenRecurring={() => selectTab('recurring')}
+                  onOpenGrowth={() => selectTab('growth')}
+                  onOpenGoals={() => selectTab('goals')}
+                  onOpenTrends={() => selectTab('tech')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                   userName={session?.user?.name}
@@ -727,14 +720,14 @@ export function Dashboard() {
 
             {/* View: GROWTH */}
             {activeTab === 'growth' && (
-              <GrowthView onOpenTrends={() => setActiveTab("tech")} />
+              <GrowthView onOpenTrends={() => selectTab("tech")} />
             )}
             {activeTab === "tech" && (
               <TrendsErrorBoundary lane="tech">
                 <TrendsView
                   lane="tech"
-                  onOpenGrowth={() => setActiveTab("growth")}
-                  onOpenOtherLane={() => setActiveTab("dmv")}
+                  onOpenGrowth={() => selectTab("growth")}
+                  onOpenOtherLane={() => selectTab("dmv")}
                 />
               </TrendsErrorBoundary>
             )}
@@ -742,8 +735,8 @@ export function Dashboard() {
               <TrendsErrorBoundary lane="dmv">
                 <TrendsView
                   lane="dmv"
-                  onOpenGrowth={() => setActiveTab("growth")}
-                  onOpenOtherLane={() => setActiveTab("tech")}
+                  onOpenGrowth={() => selectTab("growth")}
+                  onOpenOtherLane={() => selectTab("tech")}
                 />
               </TrendsErrorBoundary>
             )}
@@ -769,7 +762,7 @@ export function Dashboard() {
                 } : null)}
                 onViewTransactions={(plaidAccountId) => {
                   setSelectedAccountId(plaidAccountId);
-                  setActiveTab('transactions');
+                  selectTab('transactions');
                   setCurrentPage(1);
                 }}
               />
@@ -780,13 +773,13 @@ export function Dashboard() {
               <RecurringView
                 onAskCfo={(prompt) => {
                   setChatSeedPrompt(prompt);
-                  setActiveTab("chat");
+                  selectTab("chat");
                 }}
                 onViewTransactions={(merchant) => {
                   setSearchQuery(merchant);
                   setSelectedAccountId(null);
                   setCurrentPage(1);
-                  setActiveTab("transactions");
+                  selectTab("transactions");
                 }}
               />
             )}
@@ -929,6 +922,43 @@ export function Dashboard() {
           </div>
         </div>
       </main>
+
+      <MobileBottomNav
+        activeTab={activeTab}
+        moreOpen={isMoreOpen}
+        onSelectTab={selectTab}
+        onToggleMore={() => setIsMoreOpen((open) => !open)}
+      />
+      <MobileMoreSheet
+        open={isMoreOpen}
+        activeTab={activeTab}
+        onClose={() => setIsMoreOpen(false)}
+        onSelectTab={selectTab}
+        accountsCount={accounts.length}
+        connectBankSlot={
+          <ConnectBankButton
+            onLinked={handleBankLinked}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--ink)] bg-[var(--card-solid)] ring-1 ring-[var(--card-border)]"
+          />
+        }
+        syncStatus={syncStatus}
+        syncFeedback={
+          syncFeedback ? (
+            <p className={`text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
+              {syncFeedback.message}
+            </p>
+          ) : null
+        }
+        onSync={() => {
+          void handleSyncTransactions({ bypassCooldown: true });
+        }}
+        onReload={handleReloadApp}
+        userLabel={session?.user?.name || "User"}
+        onSignOut={() => {
+          void signOut();
+        }}
+        versionSlot={<AppVersion />}
+      />
     </div>
   );
 }

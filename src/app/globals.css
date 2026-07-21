@@ -139,6 +139,26 @@ html.dark .app-page::before {
   -webkit-backdrop-filter: blur(14px);
 }
 
+.app-shell-bottom-nav {
+  background: var(--header);
+  border-top: 1px solid var(--card-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.app-shell-more-sheet {
+  background: var(--sidebar);
+  border: 1px solid var(--card-border);
+  border-bottom: none;
+  box-shadow: 0 -12px 40px rgba(11, 18, 32, 0.14);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+html.dark .app-shell-more-sheet {
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+}
+
 .app-brand-mark {
   background: linear-gradient(145deg, #3b82f6 0%, #2563eb 45%, #ea580c 120%);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
