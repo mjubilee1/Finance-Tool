@@ -13,8 +13,14 @@ import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Wallet } from 
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NAV_GROUPS, NAV_ITEMS, tabLabel, type TabType } from "@/lib/nav";
 import { AccountsView } from "./accounts-view";
+import {
+  getTabLabel,
+  MobileBottomNav,
+  MobileMoreSheet,
+  SidebarNav,
+  type TabType,
+} from "./app-navigation";
 import { AppVersion } from "./app-version";
 import { CaloriesView } from "./calories/calories-view";
 import { CarView } from "./car/car-view";
@@ -23,7 +29,6 @@ import { ConnectBankButton } from "./connect-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
 import { GrowthView } from "./growth/growth-view";
-import { MobileBottomNav, MobileMoreSheet } from "./mobile-nav";
 import { OverviewHome } from "./overview/overview-home";
 import { PlaidOAuthHandler } from "./plaid-oauth-handler";
 import { Projections } from "./projections";
@@ -511,36 +516,72 @@ export function Dashboard() {
     setIsMoreOpen(false);
   };
 
-  const renderNavItem = (
-    tab: TabType,
-    Icon: (typeof NAV_ITEMS)[TabType]["icon"],
-    label: string,
-  ) => (
-    <button
-      key={tab}
-      onClick={() => selectTab(tab)}
-      className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-sm ${
-        activeTab === tab
-          ? "app-nav-active"
-          : "text-slate-600 hover:bg-blue-50/60 hover:text-slate-900"
-      }`}
-    >
-      <Icon size={18} className={activeTab === tab ? "text-blue-600" : "text-slate-400"} />
-      {label}
-    </button>
+  const shellFooter = (
+    <>
+      <div className="app-card mb-4 p-3 text-center text-sm">
+        {accounts.length > 0 ? (
+          <>
+            <p className="mb-2 font-medium text-slate-900">{accounts.length} accounts linked</p>
+            <ConnectBankButton
+              onLinked={handleBankLinked}
+              className="w-full border-none bg-white/70 px-3 py-1.5 text-xs text-slate-800 shadow-none ring-1 ring-[var(--card-border)] hover:bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => handleSyncTransactions({ bypassCooldown: true })}
+              disabled={syncStatus === "loading"}
+              className="app-btn-primary mt-2 w-full rounded-lg px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncStatus === "loading" ? "Syncing..." : "Sync transactions"}
+            </button>
+            {syncFeedback ? (
+              <p className={`mt-2 text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
+                {syncFeedback.message}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleReloadApp}
+        className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--card-solid)] px-3 py-2.5 text-sm font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--card-solid)_88%,var(--accent))]"
+      >
+        <RotateCcw size={16} />
+        Reload app
+      </button>
+
+      <div className="mb-3">
+        <p className="app-label mb-1.5 px-1">Theme</p>
+        <ThemeToggle />
+      </div>
+
+      <div className="flex items-center justify-between px-2">
+        <span className="truncate pr-2 text-sm font-medium text-slate-700">
+          {session?.user?.name || "User"}
+        </span>
+        <button onClick={() => signOut()} className="text-xs text-slate-400 transition hover:text-slate-700">
+          Sign out
+        </button>
+      </div>
+      <AppVersion className="mt-2 px-2 text-center" />
+    </>
   );
 
   return (
     <div className="flex h-screen app-page overflow-hidden">
       <PlaidOAuthHandler />
 
-      {/* Desktop sidebar — grouped; mobile uses bottom nav + More sheet */}
-      <aside className="hidden md:flex w-64 app-shell-sidebar flex-col shrink-0">
-        <div className="p-4 flex items-center justify-between">
+      {/* Desktop sidebar */}
+      <aside className="hidden w-64 shrink-0 flex-col app-shell-sidebar md:flex">
+        <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-2.5 px-2">
-            <div className="relative w-9 h-9 app-brand-mark rounded-xl flex items-center justify-center">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl app-brand-mark">
               <span className="absolute top-1 right-1 app-live-dot" aria-hidden />
-              <BrainCircuit className="text-white relative z-[1]" size={18} />
+              <BrainCircuit className="relative z-[1] text-white" size={18} />
             </div>
             <div className="leading-tight">
               <span className="app-display block text-[1.05rem] text-slate-900">Life OS</span>
@@ -551,75 +592,31 @@ export function Dashboard() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.id}>
-              <p className="app-label px-3 mb-1.5">{group.label}</p>
-              <div className="space-y-0.5">
-                {group.items.map((item) => renderNavItem(item.tab, item.icon, item.label))}
-              </div>
-            </div>
-          ))}
-        </nav>
+        <SidebarNav activeTab={activeTab} onSelectTab={selectTab} />
 
-        <div className="p-4 border-t border-[var(--card-border)]">
-          <div className="app-card p-3 mb-4 text-center text-sm">
-             {accounts.length > 0 ? (
-               <>
-                 <p className="font-medium text-slate-900 mb-2">{accounts.length} accounts linked</p>
-                 <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-white/70 text-slate-800 hover:bg-white border-none py-1.5 px-3 text-xs shadow-none ring-1 ring-[var(--card-border)]" />
-                 <button
-                   type="button"
-                   onClick={() => handleSyncTransactions({ bypassCooldown: true })}
-                   disabled={syncStatus === 'loading'}
-                   className="mt-2 w-full rounded-lg app-btn-primary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                 >
-                   {syncStatus === 'loading' ? 'Syncing...' : 'Sync transactions'}
-                 </button>
-                 {syncFeedback ? (
-                   <p className={`mt-2 text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
-                     {syncFeedback.message}
-                   </p>
-                 ) : null}
-               </>
-             ) : (
-               <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
-             )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleReloadApp}
-            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--ink)] bg-[var(--card-solid)] hover:bg-[color-mix(in_srgb,var(--card-solid)_88%,var(--accent))] ring-1 ring-[var(--card-border)] transition-colors"
-          >
-            <RotateCcw size={16} />
-            Reload app
-          </button>
-
-          <div className="mb-3">
-            <p className="app-label mb-1.5 px-1">Theme</p>
-            <ThemeToggle />
-          </div>
-
-          <div className="flex items-center justify-between px-2">
-            <span className="text-sm font-medium text-slate-700 truncate pr-2">
-              {session?.user?.name || "User"}
-            </span>
-            <button onClick={() => signOut()} className="text-xs text-slate-400 hover:text-slate-700 transition">
-              Sign out
-            </button>
-          </div>
-          <AppVersion className="mt-2 px-2 text-center" />
-        </div>
+        <div className="border-t border-[var(--card-border)] p-4">{shellFooter}</div>
       </aside>
 
+      <MobileBottomNav
+        activeTab={activeTab}
+        moreOpen={isMoreOpen}
+        onSelectTab={selectTab}
+        onToggleMore={() => setIsMoreOpen((open) => !open)}
+      />
+
+      <MobileMoreSheet
+        open={isMoreOpen}
+        activeTab={activeTab}
+        onClose={() => setIsMoreOpen(false)}
+        onSelectTab={selectTab}
+        footer={shellFooter}
+      />
+
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full min-w-0 bg-transparent">
-        <header className="flex items-center justify-between px-4 py-3 app-shell-header sticky top-0 z-30">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="md:hidden font-semibold text-base text-slate-900 truncate">
-              {tabLabel(activeTab)}
-            </span>
+      <main className="flex h-full min-w-0 flex-1 flex-col bg-transparent pb-[calc(3.75rem+env(safe-area-inset-bottom))] md:pb-0">
+        <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 app-shell-header">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-semibold text-slate-900 md:hidden">{getTabLabel(activeTab)}</span>
           </div>
 
           {plaidUsage && activeTab === "accounts" && plaidUsage.dailyBalanceCallLimit > 0 && (
@@ -659,7 +656,7 @@ export function Dashboard() {
         </header>
 
         <div
-          className={`flex-1 overflow-x-hidden pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0 ${
+          className={`flex-1 overflow-x-hidden ${
             activeTab === "chat"
               ? "flex min-h-0 flex-col overflow-hidden p-3 md:p-8"
               : "overflow-y-auto p-4 md:p-8"
@@ -922,43 +919,6 @@ export function Dashboard() {
           </div>
         </div>
       </main>
-
-      <MobileBottomNav
-        activeTab={activeTab}
-        moreOpen={isMoreOpen}
-        onSelectTab={selectTab}
-        onToggleMore={() => setIsMoreOpen((open) => !open)}
-      />
-      <MobileMoreSheet
-        open={isMoreOpen}
-        activeTab={activeTab}
-        onClose={() => setIsMoreOpen(false)}
-        onSelectTab={selectTab}
-        accountsCount={accounts.length}
-        connectBankSlot={
-          <ConnectBankButton
-            onLinked={handleBankLinked}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--ink)] bg-[var(--card-solid)] ring-1 ring-[var(--card-border)]"
-          />
-        }
-        syncStatus={syncStatus}
-        syncFeedback={
-          syncFeedback ? (
-            <p className={`text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
-              {syncFeedback.message}
-            </p>
-          ) : null
-        }
-        onSync={() => {
-          void handleSyncTransactions({ bypassCooldown: true });
-        }}
-        onReload={handleReloadApp}
-        userLabel={session?.user?.name || "User"}
-        onSignOut={() => {
-          void signOut();
-        }}
-        versionSlot={<AppVersion />}
-      />
     </div>
   );
 }

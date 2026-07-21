@@ -139,35 +139,26 @@ html.dark .app-page::before {
   -webkit-backdrop-filter: blur(14px);
 }
 
-.app-shell-bottom-nav {
-  background: var(--header);
+.app-mobile-tabbar {
+  background: color-mix(in srgb, var(--header) 92%, transparent);
   border-top: 1px solid var(--card-border);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-.app-shell-more-sheet {
-  background: var(--sidebar);
-  border: 1px solid var(--card-border);
-  border-bottom: none;
-  box-shadow: 0 -12px 40px rgba(11, 18, 32, 0.14);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-html.dark .app-shell-more-sheet {
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
-}
-
-@keyframes more-sheet-in {
+@keyframes app-more-sheet-up {
   from {
     transform: translateY(12%);
-    opacity: 0.72;
+    opacity: 0.85;
   }
   to {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+.app-more-sheet {
+  animation: app-more-sheet-up 180ms ease-out;
 }
 
 .app-brand-mark {
