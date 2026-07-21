@@ -32,6 +32,20 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/car/documents/[id]": ["./storage/car-documents/**/*"],
   },
+  // Single-user app: always allow mic + camera for voice input and photo uploads.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "microphone=(self), camera=(self)",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

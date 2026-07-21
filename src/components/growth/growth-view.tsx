@@ -30,6 +30,7 @@ import { formatCurrency } from "@/lib/format";
 import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { ActivityTitleInput } from "@/components/growth/activity-title-input";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
+import { MEDIA_IMAGE_ACCEPT } from "@/lib/media-permissions";
 import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-shared";
 import { GOOD_WEEK_CHECKLIST } from "@/lib/life-os-north-star";
 
@@ -1241,7 +1242,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                                       <ImagePlus className="h-4 w-4" />
                                       <input
                                         type="file"
-                                        accept="image/jpeg,image/png,image/webp,image/gif"
+                                        accept={MEDIA_IMAGE_ACCEPT}
                                         multiple
                                         className="sr-only"
                                         disabled={busy === "contact-notes"}
