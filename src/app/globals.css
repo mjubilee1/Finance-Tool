@@ -159,6 +159,17 @@ html.dark .app-shell-more-sheet {
   box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
 }
 
+@keyframes more-sheet-in {
+  from {
+    transform: translateY(12%);
+    opacity: 0.72;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .app-brand-mark {
   background: linear-gradient(145deg, #3b82f6 0%, #2563eb 45%, #ea580c 120%);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);

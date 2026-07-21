@@ -9,7 +9,7 @@ import {
   type TabType,
 } from "@/lib/nav";
 import { Ellipsis, RefreshCw, RotateCcw, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 type MobileBottomNavProps = {
   activeTab: TabType;
@@ -116,6 +116,15 @@ export function MobileMoreSheet({
   onSignOut,
   versionSlot,
 }: MobileMoreSheetProps) {
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const secondaryGroups = NAV_GROUPS.filter((g) => g.id !== "daily");
@@ -132,9 +141,12 @@ export function MobileMoreSheet({
         role="dialog"
         aria-modal="true"
         aria-label="More destinations"
-        className="app-shell-more-sheet md:hidden fixed inset-x-0 bottom-0 z-50 flex max-h-[min(88dvh,40rem)] flex-col rounded-t-2xl"
+        className="app-shell-more-sheet md:hidden fixed inset-x-0 bottom-0 z-50 flex max-h-[min(88dvh,40rem)] flex-col rounded-t-2xl animate-[more-sheet-in_180ms_ease-out]"
       >
-        <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0">
+        <div className="flex justify-center pt-2.5 pb-1 shrink-0" aria-hidden>
+          <span className="h-1 w-10 rounded-full bg-[color-mix(in_srgb,var(--ink)_18%,transparent)]" />
+        </div>
+        <div className="flex items-center justify-between px-4 pt-1 pb-2 shrink-0">
           <div className="min-w-0">
             <p className="app-display text-lg text-[var(--ink)] leading-none">More</p>
             <p className="text-[11px] text-[var(--muted)] mt-1">
