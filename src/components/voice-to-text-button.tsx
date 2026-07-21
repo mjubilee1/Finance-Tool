@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, MicOff } from "lucide-react";
+import { ensureMicrophoneAccess } from "@/lib/media-permissions";
 
 type Props = {
   value: string;
@@ -81,7 +82,7 @@ export function VoiceToTextButton({
     setError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await ensureMicrophoneAccess();
       mediaStreamRef.current = stream;
       chunksRef.current = [];
 
@@ -110,8 +111,8 @@ export function VoiceToTextButton({
       mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
-    } catch {
-      setError("Microphone access is required.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Microphone access is required.");
       stopRecordingTracks();
     }
   };

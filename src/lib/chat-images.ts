@@ -1,13 +1,27 @@
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const ACCEPTED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+]);
+
+const IMAGE_EXTENSION = /\.(jpe?g|png|webp|gif|heic|heif)$/i;
 
 export function isAcceptedChatImage(file: File) {
-  return ACCEPTED_IMAGE_TYPES.has(file.type);
+  if (ACCEPTED_IMAGE_TYPES.has(file.type)) return true;
+  // Mobile camera rolls sometimes omit MIME type or use a generic octet-stream.
+  if (!file.type || file.type === "application/octet-stream") {
+    return IMAGE_EXTENSION.test(file.name);
+  }
+  return file.type.startsWith("image/");
 }
 
 export async function readImageAsDataUrl(file: File): Promise<string> {
   if (!isAcceptedChatImage(file)) {
-    throw new Error("Use a JPG, PNG, WebP, or GIF photo.");
+    throw new Error("Use a camera photo or JPG, PNG, WebP, HEIC, or GIF.");
   }
 
   if (file.size <= MAX_IMAGE_BYTES) {
@@ -58,6 +72,12 @@ async function compressImageFile(file: File, maxWidth = 1600, quality = 0.82): P
     }
 
     return dataUrl;
+  } catch {
+    // HEIC/HEIF and some camera formats can't be decoded in-browser for resize.
+    if (file.size <= MAX_IMAGE_BYTES) {
+      return fileToDataUrl(file);
+    }
+    throw new Error("Photo is too large. Try a smaller screenshot or crop.");
   } finally {
     URL.revokeObjectURL(objectUrl);
   }

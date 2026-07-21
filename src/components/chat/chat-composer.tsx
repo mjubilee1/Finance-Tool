@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Mic, MicOff, Plus, X } from "lucide-react";
+import { ArrowUp, Camera, ImagePlus, Mic, MicOff, Plus, X } from "lucide-react";
 import { readImageAsDataUrl } from "@/lib/chat-images";
+import { ensureMicrophoneAccess, MEDIA_IMAGE_ACCEPT } from "@/lib/media-permissions";
 import { ContactMentionMenu } from "@/components/contact-mention-menu";
 import { useContactMention } from "@/hooks/use-contact-mention";
 
@@ -28,7 +29,9 @@ export function ChatComposer({
   isLoading = false,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -36,6 +39,7 @@ export function ChatComposer({
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   const mention = useContactMention({
     value,
@@ -57,6 +61,18 @@ export function ChatComposer({
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   }, [value, pendingImages.length]);
+
+  useEffect(() => {
+    if (!showAttachMenu) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (attachMenuRef.current?.contains(event.target as Node)) return;
+      setShowAttachMenu(false);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showAttachMenu]);
 
   const canSend =
     (value.trim().length > 0 || pendingImages.length > 0) && !disabled && !isLoading && !isTranscribing;
@@ -85,9 +101,8 @@ export function ChatComposer({
   const handlePickImages = async (files: FileList | null) => {
     if (!files?.length) return;
     await addImages(Array.from(files));
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (libraryInputRef.current) libraryInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -145,7 +160,7 @@ export function ChatComposer({
     setComposerError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await ensureMicrophoneAccess();
       mediaStreamRef.current = stream;
       chunksRef.current = [];
 
@@ -174,8 +189,10 @@ export function ChatComposer({
       mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
-    } catch {
-      setComposerError("Microphone access is required for voice input.");
+    } catch (error) {
+      setComposerError(
+        error instanceof Error ? error.message : "Microphone access is required for voice input.",
+      );
       stopRecordingTracks();
     }
   };
@@ -197,6 +214,9 @@ export function ChatComposer({
   const removeImage = (index: number) => {
     onPendingImagesChange(pendingImages.filter((_, imageIndex) => imageIndex !== index));
   };
+
+  const attachDisabled =
+    disabled || isLoading || isTranscribing || pendingImages.length >= MAX_IMAGES;
 
   const placeholder = isTranscribing
     ? "Transcribing voice..."
@@ -250,26 +270,72 @@ export function ChatComposer({
 
         <div className="flex items-end gap-1.5 px-2 py-2 sm:gap-2 sm:px-3">
           <input
-            ref={fileInputRef}
+            ref={libraryInputRef}
             type="file"
-            accept={["image/jpeg", "image/png", "image/webp", "image/gif"].join(",")}
+            accept={MEDIA_IMAGE_ACCEPT}
             multiple
             className="hidden"
             onChange={(event) => {
               void handlePickImages(event.target.files);
             }}
           />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept={MEDIA_IMAGE_ACCEPT}
+            capture="environment"
+            className="hidden"
+            onChange={(event) => {
+              void handlePickImages(event.target.files);
+            }}
+          />
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || isLoading || isTranscribing || pendingImages.length >= MAX_IMAGES}
-            className="mb-0.5 shrink-0 rounded-full p-2 text-[var(--ink-soft)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] disabled:opacity-50"
-            title="Add photo"
-            aria-label="Add photo"
-          >
-            <Plus size={20} />
-          </button>
+          <div ref={attachMenuRef} className="relative mb-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowAttachMenu((open) => !open)}
+              disabled={attachDisabled}
+              className="rounded-full p-2 text-[var(--ink-soft)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] disabled:opacity-50"
+              title="Add photo"
+              aria-label="Add photo"
+              aria-expanded={showAttachMenu}
+              aria-haspopup="menu"
+            >
+              <Plus size={20} />
+            </button>
+
+            {showAttachMenu ? (
+              <div
+                role="menu"
+                className="absolute bottom-full left-0 z-20 mb-2 min-w-[10.5rem] overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card-solid)] shadow-lg"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--ink)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
+                  onClick={() => {
+                    setShowAttachMenu(false);
+                    cameraInputRef.current?.click();
+                  }}
+                >
+                  <Camera size={16} className="text-[var(--ink-soft)]" />
+                  Take photo
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--ink)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
+                  onClick={() => {
+                    setShowAttachMenu(false);
+                    libraryInputRef.current?.click();
+                  }}
+                >
+                  <ImagePlus size={16} className="text-[var(--ink-soft)]" />
+                  Choose photos
+                </button>
+              </div>
+            ) : null}
+          </div>
 
           <textarea
             ref={textareaRef}
