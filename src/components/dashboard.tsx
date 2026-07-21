@@ -9,11 +9,18 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, Car, Cpu, Flame, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Utensils, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Wallet } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountsView } from "./accounts-view";
+import {
+  getTabLabel,
+  MobileBottomNav,
+  MobileMoreSheet,
+  SidebarNav,
+  type TabType,
+} from "./app-navigation";
 import { AppVersion } from "./app-version";
 import { CaloriesView } from "./calories/calories-view";
 import { CarView } from "./car/car-view";
@@ -29,8 +36,6 @@ import { RecurringView } from "./recurring/recurring-view";
 import { ThemeToggle } from "./theme-toggle";
 import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
 import { TrendsView } from "./trends/trends-view";
-
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car' | 'calories';
 
 type DashboardAccount = {
   id: string;
@@ -195,7 +200,7 @@ export function Dashboard() {
   });
 
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
   const [balanceMeta, setBalanceMeta] = useState<BalanceRefreshMeta | null>(null);
@@ -506,40 +511,77 @@ export function Dashboard() {
     );
   }
 
-  const renderNavItem = (tab: TabType, Icon: LucideIcon, label: string) => (
-    <button
-      key={tab}
-      onClick={() => { setActiveTab(tab); setIsSidebarOpen(false); }}
-      className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all text-sm ${
-        activeTab === tab
-          ? "app-nav-active"
-          : "text-slate-600 hover:bg-blue-50/60 hover:text-slate-900"
-      }`}
-    >
-      <Icon size={18} className={activeTab === tab ? "text-blue-600" : "text-slate-400"} />
-      {label}
-    </button>
+  const selectTab = (tab: TabType) => {
+    setActiveTab(tab);
+    setIsMoreOpen(false);
+  };
+
+  const shellFooter = (
+    <>
+      <div className="app-card mb-4 p-3 text-center text-sm">
+        {accounts.length > 0 ? (
+          <>
+            <p className="mb-2 font-medium text-slate-900">{accounts.length} accounts linked</p>
+            <ConnectBankButton
+              onLinked={handleBankLinked}
+              className="w-full border-none bg-white/70 px-3 py-1.5 text-xs text-slate-800 shadow-none ring-1 ring-[var(--card-border)] hover:bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => handleSyncTransactions({ bypassCooldown: true })}
+              disabled={syncStatus === "loading"}
+              className="app-btn-primary mt-2 w-full rounded-lg px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncStatus === "loading" ? "Syncing..." : "Sync transactions"}
+            </button>
+            {syncFeedback ? (
+              <p className={`mt-2 text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
+                {syncFeedback.message}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleReloadApp}
+        className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--card-solid)] px-3 py-2.5 text-sm font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--card-solid)_88%,var(--accent))]"
+      >
+        <RotateCcw size={16} />
+        Reload app
+      </button>
+
+      <div className="mb-3">
+        <p className="app-label mb-1.5 px-1">Theme</p>
+        <ThemeToggle />
+      </div>
+
+      <div className="flex items-center justify-between px-2">
+        <span className="truncate pr-2 text-sm font-medium text-slate-700">
+          {session?.user?.name || "User"}
+        </span>
+        <button onClick={() => signOut()} className="text-xs text-slate-400 transition hover:text-slate-700">
+          Sign out
+        </button>
+      </div>
+      <AppVersion className="mt-2 px-2 text-center" />
+    </>
   );
 
   return (
     <div className="flex h-screen app-page overflow-hidden">
       <PlaidOAuthHandler />
-      
-      {/* Mobile Menu Overlay */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/25 backdrop-blur-sm z-40 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 app-shell-sidebar transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-4 flex items-center justify-between">
+      {/* Desktop sidebar */}
+      <aside className="hidden w-64 shrink-0 flex-col app-shell-sidebar md:flex">
+        <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-2.5 px-2">
-            <div className="relative w-9 h-9 app-brand-mark rounded-xl flex items-center justify-center">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl app-brand-mark">
               <span className="absolute top-1 right-1 app-live-dot" aria-hidden />
-              <BrainCircuit className="text-white relative z-[1]" size={18} />
+              <BrainCircuit className="relative z-[1] text-white" size={18} />
             </div>
             <div className="leading-tight">
               <span className="app-display block text-[1.05rem] text-slate-900">Life OS</span>
@@ -548,85 +590,33 @@ export function Dashboard() {
               </span>
             </div>
           </div>
-          <button className="md:hidden p-2 text-slate-400 hover:bg-blue-50/60 rounded-lg" onClick={() => setIsSidebarOpen(false)}>
-            <X size={20} />
-          </button>
         </div>
 
-        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
-          {renderNavItem("overview", LayoutDashboard, "Overview")}
-          {renderNavItem("chat", BrainCircuit, "Coach")}
-          {renderNavItem("growth", Flame, "Growth")}
-          {renderNavItem("calories", Utensils, "Calories")}
-          {renderNavItem("tech", Cpu, "Tech")}
-          {renderNavItem("dmv", MapPin, "DMV")}
-          {renderNavItem("goals", Target, "Goals")}
-          {renderNavItem("projections", TrendingUp, "Projections")}
-          {renderNavItem("accounts", Wallet, "Accounts")}
-          {renderNavItem("car", Car, "Car")}
-          {renderNavItem("transactions", Receipt, "Transactions")}
-          {renderNavItem("recurring", Repeat, "Recurring")}
-        </nav>
+        <SidebarNav activeTab={activeTab} onSelectTab={selectTab} />
 
-        <div className="p-4 border-t border-[var(--card-border)]">
-          <div className="app-card p-3 mb-4 text-center text-sm">
-             {accounts.length > 0 ? (
-               <>
-                 <p className="font-medium text-slate-900 mb-2">{accounts.length} accounts linked</p>
-                 <ConnectBankButton onLinked={handleBankLinked} className="w-full bg-white/70 text-slate-800 hover:bg-white border-none py-1.5 px-3 text-xs shadow-none ring-1 ring-[var(--card-border)]" />
-                 <button
-                   type="button"
-                   onClick={() => handleSyncTransactions({ bypassCooldown: true })}
-                   disabled={syncStatus === 'loading'}
-                   className="mt-2 w-full rounded-lg app-btn-primary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                 >
-                   {syncStatus === 'loading' ? 'Syncing...' : 'Sync transactions'}
-                 </button>
-                 {syncFeedback ? (
-                   <p className={`mt-2 text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
-                     {syncFeedback.message}
-                   </p>
-                 ) : null}
-               </>
-             ) : (
-               <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
-             )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleReloadApp}
-            className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--ink)] bg-[var(--card-solid)] hover:bg-[color-mix(in_srgb,var(--card-solid)_88%,var(--accent))] ring-1 ring-[var(--card-border)] transition-colors"
-          >
-            <RotateCcw size={16} />
-            Reload app
-          </button>
-
-          <div className="mb-3">
-            <p className="app-label mb-1.5 px-1">Theme</p>
-            <ThemeToggle />
-          </div>
-
-          <div className="flex items-center justify-between px-2">
-            <span className="text-sm font-medium text-slate-700 truncate pr-2">
-              {session?.user?.name || "User"}
-            </span>
-            <button onClick={() => signOut()} className="text-xs text-slate-400 hover:text-slate-700 transition">
-              Sign out
-            </button>
-          </div>
-          <AppVersion className="mt-2 px-2 text-center" />
-        </div>
+        <div className="border-t border-[var(--card-border)] p-4">{shellFooter}</div>
       </aside>
 
+      <MobileBottomNav
+        activeTab={activeTab}
+        moreOpen={isMoreOpen}
+        onSelectTab={selectTab}
+        onToggleMore={() => setIsMoreOpen((open) => !open)}
+      />
+
+      <MobileMoreSheet
+        open={isMoreOpen}
+        activeTab={activeTab}
+        onClose={() => setIsMoreOpen(false)}
+        onSelectTab={selectTab}
+        footer={shellFooter}
+      />
+
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full min-w-0 bg-transparent">
-        <header className="flex items-center justify-between px-4 py-3 app-shell-header sticky top-0 z-30">
+      <main className="flex h-full min-w-0 flex-1 flex-col bg-transparent pb-[calc(3.75rem+env(safe-area-inset-bottom))] md:pb-0">
+        <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 app-shell-header">
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 -ml-2 text-slate-600 hover:bg-blue-50/70 rounded-lg">
-              <Menu size={22} />
-            </button>
-            <span className="md:hidden font-semibold text-base capitalize text-slate-900">{activeTab}</span>
+            <span className="text-base font-semibold text-slate-900 md:hidden">{getTabLabel(activeTab)}</span>
           </div>
 
           {plaidUsage && activeTab === "accounts" && plaidUsage.dailyBalanceCallLimit > 0 && (
@@ -645,7 +635,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={handleReloadApp}
-              className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white transition-colors sm:px-3"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 app-card hover:bg-white transition-colors sm:px-3"
               title="Reload the app (useful on home-screen install)"
               aria-label="Reload app"
             >
@@ -708,11 +698,11 @@ export function Dashboard() {
                   refreshHours={briefRefreshInfo?.refreshHours}
                   dailySpendSeries={dailySpendSeries}
                   monthlyCashFlowSeries={monthlyCashFlowSeries}
-                  onOpenChat={() => setActiveTab('chat')}
-                  onOpenRecurring={() => setActiveTab('recurring')}
-                  onOpenGrowth={() => setActiveTab('growth')}
-                  onOpenGoals={() => setActiveTab('goals')}
-                  onOpenTrends={() => setActiveTab('tech')}
+                  onOpenChat={() => selectTab('chat')}
+                  onOpenRecurring={() => selectTab('recurring')}
+                  onOpenGrowth={() => selectTab('growth')}
+                  onOpenGoals={() => selectTab('goals')}
+                  onOpenTrends={() => selectTab('tech')}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                   userName={session?.user?.name}
@@ -727,14 +717,14 @@ export function Dashboard() {
 
             {/* View: GROWTH */}
             {activeTab === 'growth' && (
-              <GrowthView onOpenTrends={() => setActiveTab("tech")} />
+              <GrowthView onOpenTrends={() => selectTab("tech")} />
             )}
             {activeTab === "tech" && (
               <TrendsErrorBoundary lane="tech">
                 <TrendsView
                   lane="tech"
-                  onOpenGrowth={() => setActiveTab("growth")}
-                  onOpenOtherLane={() => setActiveTab("dmv")}
+                  onOpenGrowth={() => selectTab("growth")}
+                  onOpenOtherLane={() => selectTab("dmv")}
                 />
               </TrendsErrorBoundary>
             )}
@@ -742,8 +732,8 @@ export function Dashboard() {
               <TrendsErrorBoundary lane="dmv">
                 <TrendsView
                   lane="dmv"
-                  onOpenGrowth={() => setActiveTab("growth")}
-                  onOpenOtherLane={() => setActiveTab("tech")}
+                  onOpenGrowth={() => selectTab("growth")}
+                  onOpenOtherLane={() => selectTab("tech")}
                 />
               </TrendsErrorBoundary>
             )}
@@ -769,7 +759,7 @@ export function Dashboard() {
                 } : null)}
                 onViewTransactions={(plaidAccountId) => {
                   setSelectedAccountId(plaidAccountId);
-                  setActiveTab('transactions');
+                  selectTab('transactions');
                   setCurrentPage(1);
                 }}
               />
@@ -780,13 +770,13 @@ export function Dashboard() {
               <RecurringView
                 onAskCfo={(prompt) => {
                   setChatSeedPrompt(prompt);
-                  setActiveTab("chat");
+                  selectTab("chat");
                 }}
                 onViewTransactions={(merchant) => {
                   setSearchQuery(merchant);
                   setSelectedAccountId(null);
                   setCurrentPage(1);
-                  setActiveTab("transactions");
+                  selectTab("transactions");
                 }}
               />
             )}
