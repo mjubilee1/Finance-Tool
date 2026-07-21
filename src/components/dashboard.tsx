@@ -9,7 +9,7 @@ import {
 } from "@/lib/plaid-balances";
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, Car, Cpu, Flame, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Utensils, Wallet, X, type LucideIcon } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, Car, Cpu, Flame, Home, LayoutDashboard, MapPin, Menu, Receipt, RefreshCw, Repeat, RotateCcw, Search, Target, TrendingUp, Utensils, Wallet, X, type LucideIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import { AppVersion } from "./app-version";
 import { CaloriesView } from "./calories/calories-view";
 import { CarView } from "./car/car-view";
 import { ChatInterface } from "./chat-interface";
+import { HomeView } from "./home/home-view";
 import { ConnectBankButton } from "./connect-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { GoalsView } from "./goals-view";
@@ -30,7 +31,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
 import { TrendsView } from "./trends/trends-view";
 
-type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car' | 'calories';
+type TabType = 'chat' | 'overview' | 'accounts' | 'transactions' | 'recurring' | 'projections' | 'goals' | 'growth' | 'tech' | 'dmv' | 'car' | 'home' | 'calories';
 
 type DashboardAccount = {
   id: string;
@@ -564,6 +565,7 @@ export function Dashboard() {
           {renderNavItem("projections", TrendingUp, "Projections")}
           {renderNavItem("accounts", Wallet, "Accounts")}
           {renderNavItem("car", Car, "Car")}
+          {renderNavItem("home", Home, "Home")}
           {renderNavItem("transactions", Receipt, "Transactions")}
           {renderNavItem("recurring", Repeat, "Recurring")}
         </nav>
@@ -749,6 +751,7 @@ export function Dashboard() {
             )}
 
             {activeTab === "car" && <CarView />}
+            {activeTab === "home" && <HomeView />}
             {activeTab === "calories" && <CaloriesView />}
 
             {/* View: ACCOUNTS */}

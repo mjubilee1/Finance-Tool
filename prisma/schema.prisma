@@ -78,6 +78,10 @@ model User {
   plannerDayLayouts       PlannerDayLayout[]
   carProfile              CarProfile?
   carMaintenanceLogs      CarMaintenanceLog[]
+  homeProfile             HomeProfile?
+  homeTenants             HomeTenant[]
+  homeRentPayments        HomeRentPayment[]
+  homeMaintenanceLogs     HomeMaintenanceLog[]
   calorieExperiments      CalorieExperiment[]
   calorieDayLogs          CalorieDayLog[]
   trendDigests            TrendDigest[]
@@ -524,6 +528,101 @@ model CarMaintenanceLog {
 
   @@index([userId, serviceDate])
   @@index([carProfileId, serviceDate])
+}
+
+/// Oxon Hill house-hack: mortgage floor, tenants, rent collected, and repair/issues.
+model HomeProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  /// Monthly mortgage payment (principal + escrow as paid).
+  mortgageMonthly    Float    @default(2659)
+  /// Next mortgage due date (YYYY-MM-DD) — typically the 1st.
+  mortgageNextDue    String
+  propertyLabel      String   @default("Oxon Hill row home")
+  notes              String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenants         HomeTenant[]
+  rentPayments    HomeRentPayment[]
+  maintenanceLogs HomeMaintenanceLog[]
+}
+
+/// A rented room / unit in the house (upstairs rooms, basement, etc.).
+model HomeTenant {
+  id              String   @id @default(cuid())
+  userId          String
+  homeProfileId   String
+  /// Display name (tenant or room nickname).
+  name            String   @default("")
+  /// e.g. Upstairs room A, Basement
+  unitLabel       String
+  expectedRent    Float
+  /// active | moved_out
+  status          String   @default("active")
+  moveInDate      String? // YYYY-MM-DD
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeProfile  HomeProfile       @relation(fields: [homeProfileId], references: [id], onDelete: Cascade)
+  rentPayments HomeRentPayment[]
+
+  @@index([userId, status])
+  @@index([homeProfileId, status])
+}
+
+/// Actual rent (or partial) received from a tenant — amount + payment date.
+model HomeRentPayment {
+  id            String   @id @default(cuid())
+  userId        String
+  homeProfileId String
+  tenantId      String?
+  amount        Float
+  /// When the money actually landed (YYYY-MM-DD).
+  paidOn        String
+  /// Optional month the payment covers, e.g. 2026-07
+  periodLabel   String?
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeProfile HomeProfile  @relation(fields: [homeProfileId], references: [id], onDelete: Cascade)
+  tenant      HomeTenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([userId, paidOn])
+  @@index([homeProfileId, paidOn])
+  @@index([tenantId, paidOn])
+}
+
+/// House maintenance, repairs, and open issues.
+model HomeMaintenanceLog {
+  id            String   @id @default(cuid())
+  userId        String
+  homeProfileId String
+  /// plumbing | electrical | hvac | appliance | pest | roof | flooring | paint | issue | other
+  issueType     String
+  /// Short title of the repair or issue.
+  title         String
+  /// open | in_progress | resolved
+  status        String   @default("open")
+  /// When noticed / started (YYYY-MM-DD).
+  issueDate     String
+  resolvedDate  String? // YYYY-MM-DD
+  cost          Float?
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeProfile HomeProfile @relation(fields: [homeProfileId], references: [id], onDelete: Cascade)
+
+  @@index([userId, issueDate])
+  @@index([homeProfileId, status])
+  @@index([homeProfileId, issueDate])
 }
 
 /// 3–4 week calorie experiment. Judge the week (budget), log the day.

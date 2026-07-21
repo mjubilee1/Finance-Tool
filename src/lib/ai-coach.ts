@@ -9,6 +9,8 @@ import {
   type CarProfileLike,
 } from "./car";
 import { getOrCreateCarProfile } from "./car-profile";
+import { buildHomePropertyContext, formatHomeBillLine, homeUpcomingBills, type HomeProfileLike } from "./home";
+import { getOrCreateHomeProfile } from "./home-profile";
 import { buildKnownCashScheduleContext, CFO_AGENT_INSTRUCTIONS, CFO_BRIEF_JSON_CONTRACT } from "./cfo-agent";
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
@@ -68,17 +70,20 @@ type CfoRecurringPattern = {
 
 function mergeUpcomingBills(
   aiBills: unknown,
-  carBills: string[],
+  trackedBills: string[],
   fallbackBills: string[],
 ) {
   const fromAi = Array.isArray(aiBills)
     ? aiBills.filter((item): item is string => typeof item === "string")
     : [];
   const base = fromAi.length > 0 ? fromAi : fallbackBills;
-  const merged = [...carBills];
+  const merged = [...trackedBills];
   for (const bill of base) {
-    const isCarBill = /car (payment|insurance)/i.test(bill);
-    if (isCarBill && carBills.some((car) => bill.includes(car.split(" • ")[1] ?? ""))) {
+    const isTrackedBill = /car (payment|insurance)|mortgage/i.test(bill);
+    if (
+      isTrackedBill &&
+      trackedBills.some((tracked) => bill.includes(tracked.split(" • ")[1] ?? ""))
+    ) {
       continue;
     }
     if (!merged.includes(bill)) merged.push(bill);
@@ -91,6 +96,7 @@ function buildFallbackCfoInsight(params: {
   recentTransactions: CfoTransaction[];
   recurringPatterns: CfoRecurringPattern[];
   carProfile?: CarProfileLike | null;
+  homeProfile?: HomeProfileLike | null;
 }) {
   const checkingBalance = params.accounts
     .filter((account) => account.type === "depository")
@@ -118,7 +124,13 @@ function buildFallbackCfoInsight(params: {
         return `${day} • ${bill.label} • $${bill.amount.toFixed(0)} • ${bill.account}`;
       })
     : [];
-  const upcomingBills = [...carBills, ...recurringBills].slice(0, 8);
+  const mortgageBills = params.homeProfile
+    ? homeUpcomingBills(params.homeProfile, 45).map((bill) => {
+        const day = DateTime.fromISO(bill.dueDate).toFormat("ccc LLL d");
+        return `${day} • ${bill.label} • $${bill.amount.toFixed(0)}`;
+      })
+    : [];
+  const upcomingBills = [...mortgageBills, ...carBills, ...recurringBills].slice(0, 8);
 
   const buffer = 1000;
   const safeSpendToday = Math.max(0, Math.min(40, Math.floor((checkingBalance - buffer) / 14)));
@@ -231,26 +243,54 @@ export async function generateDailyInsight(userId: string) {
     take: 100,
   });
 
-  const [recurringPatterns, memoryRecords, accounts, goals, carProfile] = await Promise.all([
-    prisma.recurringPattern.findMany({
-      where: { userId },
-      take: 20,
+  const [recurringPatterns, memoryRecords, accounts, goals, carProfile, homeProfile] =
+    await Promise.all([
+      prisma.recurringPattern.findMany({
+        where: { userId },
+        take: 20,
+      }),
+      prisma.financialMemory.findMany({
+        where: { userId },
+        orderBy: { importanceScore: "desc" },
+        take: 5,
+      }),
+      prisma.financialAccount.findMany({
+        where: { userId },
+      }),
+      prisma.financialGoal.findMany({
+        where: { userId, status: "active" },
+      }),
+      getOrCreateCarProfile(userId),
+      getOrCreateHomeProfile(userId),
+    ]);
+
+  const [homeTenants, homeRentPayments, homeOpenIssues] = await Promise.all([
+    prisma.homeTenant.findMany({
+      where: { userId, homeProfileId: homeProfile.id },
+      orderBy: [{ status: "asc" }, { unitLabel: "asc" }],
     }),
-    prisma.financialMemory.findMany({
-      where: { userId },
-      orderBy: { importanceScore: "desc" },
-      take: 5,
+    prisma.homeRentPayment.findMany({
+      where: { userId, homeProfileId: homeProfile.id },
+      orderBy: { paidOn: "desc" },
+      take: 40,
     }),
-    prisma.financialAccount.findMany({
-      where: { userId },
+    prisma.homeMaintenanceLog.count({
+      where: {
+        userId,
+        homeProfileId: homeProfile.id,
+        status: { not: "resolved" },
+      },
     }),
-    prisma.financialGoal.findMany({
-      where: { userId, status: "active" },
-    }),
-    getOrCreateCarProfile(userId),
   ]);
 
   const carBillLines = carUpcomingBills(carProfile, 45).map(formatCarBillLine);
+  const homeBillLines = homeUpcomingBills(homeProfile, 45).map(formatHomeBillLine);
+  const homePropertyContext = buildHomePropertyContext({
+    profile: homeProfile,
+    tenants: homeTenants,
+    payments: homeRentPayments,
+    openIssueCount: homeOpenIssues,
+  });
 
   const focusAccounts = getFocusAccounts(accounts);
   const focusTransactions = filterTransactionsByFocus(recentTransactions, accounts);
@@ -274,7 +314,12 @@ Analyze the user's data and provide JSON. This is the daily brief, so lead with 
 Assess impact on the bigger financial system — not just savings tips. Explain how today's move hardens stability or accelerates growth (debt, credit, reserves, rental readiness).
 Crucially, look at Current Accounts, Financial Goals, recent income, recurring obligations, debt accounts, and spending patterns. Look for opportunities to optimize daily transaction costs while protecting mortgage, minimum payments, upcoming bills, and cash buffer first.
 
-${buildKnownCashScheduleContext(DateTime.local(), { carProfile })}
+${buildKnownCashScheduleContext(DateTime.local(), { carProfile, homeProfile })}
+
+${homePropertyContext}
+
+MORTGAGE (Home tab — include in upcomingBills when due):
+${homeBillLines.length > 0 ? homeBillLines.map((line) => `- ${line}`).join("\n") : "- None due in the next 45 days; still track mortgage next-due from the Home profile."}
 
 OWNED CAR OBLIGATIONS (Capital One — include in upcomingBills when due):
 ${carBillLines.length > 0 ? carBillLines.map((line) => `- ${line}`).join("\n") : "- None due in the next 45 days; still track payment and insurance next-due dates from the Car profile."}
@@ -470,11 +515,17 @@ Generate a JSON response exactly matching this structure:
     recentTransactions: recentTransactions as CfoTransaction[],
     recurringPatterns: recurringPatterns as CfoRecurringPattern[],
     carProfile,
+    homeProfile,
   });
   const carUpcomingLines = carUpcomingBills(carProfile, 45).map((bill) => {
     const day = DateTime.fromISO(bill.dueDate).toFormat("ccc LLL d");
     return `${day} • ${bill.label} • $${bill.amount.toFixed(0)} • ${bill.account}`;
   });
+  const homeUpcomingLines = homeUpcomingBills(homeProfile, 45).map((bill) => {
+    const day = DateTime.fromISO(bill.dueDate).toFormat("ccc LLL d");
+    return `${day} • ${bill.label} • $${bill.amount.toFixed(0)}`;
+  });
+  const trackedUpcomingLines = [...homeUpcomingLines, ...carUpcomingLines];
   const insight = parsedInsight?.cfoBrief
     ? {
         ...fallbackInsight,
@@ -484,7 +535,7 @@ Generate a JSON response exactly matching this structure:
           ...parsedInsight.cfoBrief,
           upcomingBills: mergeUpcomingBills(
             parsedInsight.cfoBrief?.upcomingBills,
-            carUpcomingLines,
+            trackedUpcomingLines,
             fallbackInsight.cfoBrief.upcomingBills,
           ),
         },

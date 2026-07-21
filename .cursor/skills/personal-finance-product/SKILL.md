@@ -45,6 +45,13 @@ Feature and coach logic should respect which account holds which money.
 - Odometer + maintenance logs live on Car tab — keep the asset healthy/neat through payoff
 - Docs: retail installment, GAP, VSC in Car → Documents
 
+## Home (Oxon Hill house-hack)
+
+- Mortgage ~$2,659/mo with editable next due (Home tab) — protect first
+- Tenants/rooms with expected rent; log actual rent received (amount + payment date)
+- Maintenance / issues log for repairs (open → resolved)
+- Coach should prefer Home tab rent logs over guessed tenant income when judging cash safety
+
 ## Coaching & UX tone
 
 - Encourage: "You had a strong week — room for a small treat"

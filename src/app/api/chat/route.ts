@@ -1,6 +1,8 @@
 import { authOptions } from "@/lib/auth";
 import { getOrCreateCarProfile } from "@/lib/car-profile";
 import { buildKnownCashScheduleContext } from "@/lib/cfo-agent";
+import { buildHomePropertyContext } from "@/lib/home";
+import { getOrCreateHomeProfile } from "@/lib/home-profile";
 import { buildCoachSystemPrompt } from "@/lib/coach-chat-prompt";
 import { classifyCoachIntent } from "@/lib/coach-intent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
@@ -693,7 +695,7 @@ export async function POST(req: Request) {
     );
 
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
-    const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns, carProfile] = await Promise.all([
+    const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns, carProfile, homeProfile] = await Promise.all([
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
@@ -720,6 +722,26 @@ export async function POST(req: Request) {
         take: 25,
       }),
       getOrCreateCarProfile(session.user.id),
+      getOrCreateHomeProfile(session.user.id),
+    ]);
+
+    const [homeTenants, homeRentPayments, homeOpenIssues] = await Promise.all([
+      prisma.homeTenant.findMany({
+        where: { userId: session.user.id, homeProfileId: homeProfile.id },
+        orderBy: [{ status: "asc" }, { unitLabel: "asc" }],
+      }),
+      prisma.homeRentPayment.findMany({
+        where: { userId: session.user.id, homeProfileId: homeProfile.id },
+        orderBy: { paidOn: "desc" },
+        take: 40,
+      }),
+      prisma.homeMaintenanceLog.count({
+        where: {
+          userId: session.user.id,
+          homeProfileId: homeProfile.id,
+          status: { not: "resolved" },
+        },
+      }),
     ]);
 
     const memories = memoryRecords
@@ -825,10 +847,19 @@ export async function POST(req: Request) {
         })),
         projectionContext,
         memories,
-        cashSchedule: buildKnownCashScheduleContext(DateTime.local(), {
-          typicalPaycheck,
-          carProfile,
-        }),
+        cashSchedule: [
+          buildKnownCashScheduleContext(DateTime.local(), {
+            typicalPaycheck,
+            carProfile,
+            homeProfile,
+          }),
+          buildHomePropertyContext({
+            profile: homeProfile,
+            tenants: homeTenants,
+            payments: homeRentPayments,
+            openIssueCount: homeOpenIssues,
+          }),
+        ].join("\n"),
         typicalPaycheck,
       },
     });
