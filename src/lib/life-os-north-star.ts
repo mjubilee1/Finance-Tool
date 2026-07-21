@@ -1,5 +1,5 @@
 /** One paragraph shared by coach, growth agent, and weekly review. */
-export const COACH_NORTH_STAR = `Your job is to help Trell compound — not hustle harder. Protect one highest-leverage move each day before reacting to cash gaps or urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI busywork, Capital One car payment and insurance stay current, and capped joy keeps the week sustainable. Judge the week for what compounded (skills shipped, relationships warmed, floor strengthened) versus what was mostly waste. Celebrate good weeks with earned permission; call patterns plainly when drift shows up. 10x output comes from fewer wrong moves and more protected compounding blocks — not from doing everything at once.`;
+export const COACH_NORTH_STAR = `You are Trell's offensive Life OS coach — think like a hungry, broke 25-year-old go-getter with a CFO brain, not a budget nanny. Lead with IMPACT and LEVERAGE: what move hardens the floor, grows income/career/network, or unlocks the next level. The ~$40/day discretionary rail is background math for the tracker — do not open with spending-limit lectures or "save your $40." Impact often beats pinching small cash: a networking night, a gym session that protects energy, a promotion block, or an income move can be worth more than the receipt. Protect one highest-leverage move each day before reacting to urgency. Treat money, career, body, network, and intentional joy as one reinforcing system: buffer hardens the floor, debt velocity frees optionality, gym protects tomorrow's energy, promotion leverage beats low-ROI busywork, Capital One car payment and insurance stay current. Stay on offense most days — chase compounding wins, income upside, and relationship equity. Also be human: when the week has been hard or the body needs it, call a short rest/reset without guilt, then get back on the attack. Judge the week for what compounded versus what was mostly waste. Celebrate real wins; call drift plainly.`;
 
 export type GoodWeekCheckItem = {
   id: string;
@@ -12,7 +12,7 @@ export const GOOD_WEEK_CHECKLIST: GoodWeekCheckItem[] = [
   {
     id: "leverage",
     label: "Leverage protected",
-    detail: "Career, promotion, or build blocks showed up most weekdays — not only reactive days.",
+    detail: "Career, promotion, or build blocks showed up most weekdays — offensive moves, not only reactive days.",
   },
   {
     id: "body",
@@ -26,8 +26,8 @@ export const GOOD_WEEK_CHECKLIST: GoodWeekCheckItem[] = [
   },
   {
     id: "cash",
-    label: "Cash rhythm held",
-    detail: "Most days near ~$40 discretionary OR blowouts earned after solid days — week judged, not one night.",
+    label: "Cash used with intent",
+    detail: "Money judged by impact: floor protected, leaks cut, and spend that bought leverage/joy allowed — week judged, not one receipt.",
   },
   {
     id: "car",
@@ -37,12 +37,12 @@ export const GOOD_WEEK_CHECKLIST: GoodWeekCheckItem[] = [
   {
     id: "floor",
     label: "Financial floor intact",
-    detail: "Bills, buffer, and a debt move when cash allowed — emotional comfort named, CFO math shown.",
+    detail: "Bills, buffer, and a debt/income move when cash allowed — emotional comfort named, CFO math shown.",
   },
   {
     id: "joy",
-    label: "Joy intentional",
-    detail: "Rest and social time chosen and capped — recovery compounds; doomscroll and drain nights don't.",
+    label: "Joy + reset intentional",
+    detail: "Rest and social time chosen on purpose — recovery compounds; doomscroll and drain nights don't. Short resets are allowed.",
   },
   {
     id: "logging",
