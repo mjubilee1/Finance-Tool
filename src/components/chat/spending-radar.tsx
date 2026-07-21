@@ -4,7 +4,7 @@ import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
-import { Check, HelpCircle, Radar, Sparkles, X } from "lucide-react";
+import { Check, ChevronDown, HelpCircle, Radar, X } from "lucide-react";
 
 type Props = {
   alerts: SpendingAlert[];
@@ -68,6 +68,7 @@ export function SpendingRadar({
   onAskAbout,
   onDismiss,
 }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const [activeDismissId, setActiveDismissId] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
@@ -81,71 +82,98 @@ export function SpendingRadar({
     setNote("");
   };
 
-  if (isLoading) {
-    return (
-      <div className="app-card px-3 py-2.5 animate-pulse sm:px-4">
-        <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 shrink-0 rounded-xl bg-[color-mix(in_srgb,var(--ink)_12%,transparent)]" />
-          <div className="h-3 w-44 rounded bg-[color-mix(in_srgb,var(--ink)_10%,transparent)]" />
-        </div>
-      </div>
-    );
-  }
-
-  if (alerts.length === 0) {
-    return (
-      <div className="app-hero-gradient app-card px-3 py-2 sm:px-4 sm:py-2.5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]">
-            <Sparkles size={14} className="text-[var(--accent-strong)] dark:text-[var(--accent-bright)]" />
-          </div>
-          <p className="min-w-0 text-sm font-semibold text-[var(--ink)]">
-            Spending radar is clear
-            <span className="mt-0.5 block font-normal text-xs text-[var(--muted)] sm:mt-0 sm:ml-2 sm:inline">
-              Nothing unusual needs review.
-            </span>
-          </p>
-        </div>
-      </div>
-    );
+  // Keep Coach chat full-height — don't render a "clear" banner.
+  if (isLoading || alerts.length === 0) {
+    return null;
   }
 
   const activeAlert = alerts.find((alert) => alert.id === activeDismissId) ?? null;
+  const topAlert = alerts[0];
+  const topLabel = topAlert.merchantName ?? topAlert.name;
+  const moreCount = alerts.length - 1;
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="app-card flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:brightness-[1.03] sm:px-3.5"
+        aria-expanded={false}
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] shadow-sm shadow-blue-600/20">
+          <Radar size={14} className="text-white" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--ink)]">
+            Spending radar
+            <span className="font-normal text-[var(--muted)]"> · {topLabel}</span>
+          </p>
+          <p className="truncate text-[11px] text-[var(--muted)]">
+            {formatCurrency(topAlert.amount)}
+            {moreCount > 0 ? ` · +${moreCount} more` : ""}
+            {estimatedMonthlyLeak > 0
+              ? ` · possible leak ~${formatCurrency(estimatedMonthlyLeak)}/mo`
+              : " · tap to review"}
+          </p>
+        </div>
+        <ChevronDown size={16} className="shrink-0 text-[var(--muted)]" />
+      </button>
+    );
+  }
 
   return (
     <div className="app-card overflow-hidden">
-      <div className="px-5 pt-5 pb-4 border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--accent-soft)_55%,var(--card-solid))]">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[var(--accent)] flex items-center justify-center shadow-sm shadow-blue-600/20">
-              <Radar size={18} className="text-white" />
+      <div className="border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--accent-soft)_55%,var(--card-solid))] px-4 py-3 sm:px-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent)] shadow-sm shadow-blue-600/20">
+              <Radar size={16} className="text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="font-semibold text-[var(--ink)]">Spending radar</p>
-              <p className="text-sm text-[var(--muted)] mt-0.5">
-                Tap approve if it belongs, decline if you want it cut, or ask the Coach.
+              <p className="mt-0.5 text-xs text-[var(--muted)] sm:text-sm">
+                Approve if it belongs, decline to cut it, or ask the Coach.
               </p>
             </div>
           </div>
-          {estimatedMonthlyLeak > 0 ? (
-            <div className="text-right shrink-0">
-              <p className="app-label text-[var(--ember-strong)] dark:text-[var(--ember)]">Possible leak</p>
-              <p className="text-lg font-bold text-[var(--ember-strong)] dark:text-[var(--ember)] tabular-nums">
-                ~{formatCurrency(estimatedMonthlyLeak)}/mo
-              </p>
-            </div>
-          ) : null}
+          <div className="flex shrink-0 items-start gap-2">
+            {estimatedMonthlyLeak > 0 ? (
+              <div className="hidden text-right sm:block">
+                <p className="app-label text-[var(--ember-strong)] dark:text-[var(--ember)]">Possible leak</p>
+                <p className="text-base font-bold tabular-nums text-[var(--ember-strong)] dark:text-[var(--ember)]">
+                  ~{formatCurrency(estimatedMonthlyLeak)}/mo
+                </p>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded(false);
+                setActiveDismissId(null);
+                setNote("");
+              }}
+              className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--card-solid)] hover:text-[var(--ink)]"
+              aria-label="Collapse spending radar"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
+        {estimatedMonthlyLeak > 0 ? (
+          <p className="mt-2 text-xs font-semibold text-[var(--ember-strong)] dark:text-[var(--ember)] sm:hidden">
+            Possible leak ~{formatCurrency(estimatedMonthlyLeak)}/mo
+          </p>
+        ) : null}
       </div>
 
       {activeAlert ? (
-        <div className="p-4 border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]">
-          <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)] p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-[var(--ink)]">
                 Mark reviewed: {activeAlert.merchantName ?? activeAlert.name}
               </p>
-              <p className="text-xs text-[var(--muted)] mt-0.5">
+              <p className="mt-0.5 text-xs text-[var(--muted)]">
                 Saves context for your Coach so this charge stays off the radar.
               </p>
             </div>
@@ -155,23 +183,23 @@ export function SpendingRadar({
                 setActiveDismissId(null);
                 setNote("");
               }}
-              className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--card-solid)] hover:text-[var(--ink)]"
+              className="rounded-lg p-1.5 text-[var(--muted)] hover:bg-[var(--card-solid)] hover:text-[var(--ink)]"
             >
               <X size={16} />
             </button>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-2 mb-3">
+          <div className="mb-3 grid gap-2 sm:grid-cols-2">
             {DISPOSITION_OPTIONS.map((option) => (
               <button
                 key={option.value}
                 type="button"
                 disabled={dismissingId === activeAlert.id}
                 onClick={() => reviewAlert(activeAlert, option.value, note)}
-                className="rounded-xl bg-[var(--card-solid)] px-3 py-3 text-left ring-1 ring-[var(--card-border)] hover:ring-[color-mix(in_srgb,var(--accent)_35%,transparent)] hover:bg-[var(--accent-soft)] transition-colors disabled:opacity-60"
+                className="rounded-xl bg-[var(--card-solid)] px-3 py-3 text-left ring-1 ring-[var(--card-border)] transition-colors hover:bg-[var(--accent-soft)] hover:ring-[color-mix(in_srgb,var(--accent)_35%,transparent)] disabled:opacity-60"
               >
                 <p className="text-sm font-semibold text-[var(--ink)]">{option.label}</p>
-                <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">{option.description}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-[var(--muted)]">{option.description}</p>
               </button>
             ))}
           </div>
@@ -186,7 +214,7 @@ export function SpendingRadar({
         </div>
       ) : null}
 
-      <div className="p-3 sm:p-4 sm:overflow-x-auto">
+      <div className="p-3 sm:overflow-x-auto sm:p-4">
         <div className="grid gap-3 sm:flex sm:min-w-min sm:pb-1">
           {alerts.map((alert) => {
             const label = alert.merchantName ?? alert.name;
@@ -195,7 +223,7 @@ export function SpendingRadar({
             return (
               <div
                 key={alert.id}
-                className={`relative w-full sm:w-72 sm:shrink-0 rounded-2xl p-4 ring-1 ${alertAccent(alert.reason)}`}
+                className={`relative w-full rounded-2xl p-4 ring-1 sm:w-72 sm:shrink-0 ${alertAccent(alert.reason)}`}
               >
                 <button
                   type="button"
@@ -208,7 +236,7 @@ export function SpendingRadar({
                   title="More review choices"
                 >
                   {isDismissing ? (
-                    <span className="block w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                    <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
                   ) : (
                     <>
                       <Check size={12} />
@@ -218,17 +246,17 @@ export function SpendingRadar({
                 </button>
 
                 <div className="pr-16">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="inline-flex rounded-full bg-[var(--card-solid)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-[var(--card-border)] text-[var(--ink-soft)]">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="inline-flex rounded-full bg-[var(--card-solid)] px-2.5 py-1 text-[10px] font-semibold tracking-wide text-[var(--ink-soft)] uppercase ring-1 ring-[var(--card-border)]">
                       {alert.reasonLabel}
                     </span>
                   </div>
-                  <p className="font-semibold text-[var(--ink)] truncate pr-2">{label}</p>
-                  <p className="text-xl font-bold text-[var(--ink)] tabular-nums mt-1">
+                  <p className="truncate pr-2 font-semibold text-[var(--ink)]">{label}</p>
+                  <p className="mt-1 text-xl font-bold tabular-nums text-[var(--ink)]">
                     {formatCurrency(alert.amount)}
                   </p>
-                  <p className="text-xs text-[var(--muted)] mt-1">{alert.date}</p>
-                  <p className="text-xs text-[var(--ink-soft)] leading-relaxed mt-3 line-clamp-2">
+                  <p className="mt-1 text-xs text-[var(--muted)]">{alert.date}</p>
+                  <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-[var(--ink-soft)]">
                     {alert.savingsHint}
                   </p>
                 </div>
@@ -253,7 +281,7 @@ export function SpendingRadar({
                   <button
                     type="button"
                     onClick={() => onAskAbout(alert)}
-                    className="col-span-2 min-h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--card-solid)] px-3 py-2 text-sm font-semibold text-[var(--accent-strong)] ring-1 ring-[var(--card-border)] transition hover:brightness-110 dark:text-[var(--accent-bright)]"
+                    className="col-span-2 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[var(--card-solid)] px-3 py-2 text-sm font-semibold text-[var(--accent-strong)] ring-1 ring-[var(--card-border)] transition hover:brightness-110 dark:text-[var(--accent-bright)]"
                   >
                     <HelpCircle size={13} />
                     Ask the Coach
