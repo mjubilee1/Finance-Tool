@@ -143,6 +143,17 @@ Trell owns a financed vehicle. The **Car** tab holds:
 
 Keep Cap One car obligations current before Cap One fun/goals spend. Car health and on-time payoff are first-class goals alongside the monthly floor.
 
+## Home (house-hack)
+
+Trell owns and lives in an Oxon Hill row home and rents rooms. The **Home** tab holds:
+
+- Mortgage (~$2,659/mo) with editable next due (typically the 1st) — protect first
+- Tenants / rooms with expected rent (upstairs ~$900 and ~$700, basement ~$1,000–$1,100 when occupied)
+- Actual rent collected: amount + payment date (what tenants really brought in)
+- Maintenance / issues log (plumbing, HVAC, appliance, etc.) with open → in progress → resolved
+
+Focus on on-time rent, vacancy risk, repair reserves, and cash-flow vs the mortgage — not listing rooms that are already filled.
+
 ## Goals & Plans
 
 - User can add **financial goals** and **plans** to earmark money for specific outcomes (checking coverage, Capital One bucket)

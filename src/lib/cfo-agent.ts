@@ -8,6 +8,13 @@ import {
   carUpcomingBills,
   formatCarBillLine,
 } from "@/lib/car";
+import {
+  defaultHomeProfile,
+  formatHomeBillLine,
+  HOME_MORTGAGE_MONTHLY,
+  type HomeProfileLike,
+  homeUpcomingBills,
+} from "@/lib/home";
 
 export const REAL_LIFE_FINANCE_CATEGORIES = [
   "mortgage",
@@ -90,12 +97,20 @@ function fridayPaydaysThrough(referenceDate: DateTime, endDateIso: string | null
 /**
  * Shared paycheck / mortgage / car cadence for coach + brief.
  * Optional typicalPaycheck overrides the ~$1,555 Amergis default when live payroll is known.
+ * Prefer Home profile mortgage amount/due when present (editable in the Home tab).
  */
 export function buildKnownCashScheduleContext(
   referenceDate = DateTime.local(),
-  options?: { typicalPaycheck?: number | null; carProfile?: CarProfileLike | null },
+  options?: {
+    typicalPaycheck?: number | null;
+    carProfile?: CarProfileLike | null;
+    homeProfile?: HomeProfileLike | null;
+  },
 ) {
-  const nextMortgageDue = nextMonthlyFirst(referenceDate);
+  const home = options?.homeProfile ?? defaultHomeProfile(referenceDate.toISODate() ?? undefined);
+  const nextMortgageDue =
+    home.mortgageNextDue || nextMonthlyFirst(referenceDate);
+  const mortgageAmount = home.mortgageMonthly || HOME_MORTGAGE_MONTHLY;
   const paydaysBeforeMortgage = fridayPaydaysThrough(referenceDate, nextMortgageDue);
   const upcomingPaydays = nextWeekdayDates(referenceDate, 5, 4);
   const typicalPaycheck =
@@ -112,12 +127,23 @@ export function buildKnownCashScheduleContext(
       ? carBills.map((bill) => `  - ${formatCarBillLine(bill)}`).join("\n")
       : `  - Car payment ~$${car.paymentMonthly}/mo and insurance ~$${car.insuranceMonthly}/mo from ${CAR_FUNDED_BY} (next dues: payment ${car.paymentNextDue}, insurance ${car.insuranceNextDue}).`;
 
+  const mortgageBills = homeUpcomingBills(
+    home,
+    60,
+    referenceDate.toISODate() ?? undefined,
+  );
+  const mortgageBillLines =
+    mortgageBills.length > 0
+      ? mortgageBills.map((bill) => `  - ${formatHomeBillLine(bill)}`).join("\n")
+      : `  - Mortgage ~$${mortgageAmount}/mo due ${nextMortgageDue} (track dues + tenant rent in the Home tab).`;
+
   return `
 KNOWN CASH SCHEDULE:
 - W2 paycheck cadence: every Friday into Chase (primary). Typical take-home recently ~$${typicalPaycheck.toFixed(2)} per check (Amergis payroll pattern — prefer live payroll amounts from transactions when present).
 - Upcoming Fridays: ${upcomingPaydays.join(", ") || "none listed"}.
 - Fridays still landing on/before next mortgage (${nextMortgageDue}): ${checksBeforeMortgage} check(s) — ${paydaysBeforeMortgage.join(", ") || "none"} — about $${incomeBeforeMortgage.toFixed(2)} of W2 inflow before that mortgage if the pattern holds.
-- Mortgage cadence: due around the 1st; next known due: ${nextMortgageDue}. Rough amount ~$2,659/month.
+- Mortgage (Home tab — protect first):
+${mortgageBillLines}
 - Capital One (secondary) funds owned-car obligations and goals/fun:
 ${carBillLines}
 - Treat live bank transactions and explicit memories as stronger than these defaults if they disagree.

@@ -35,6 +35,11 @@ export const GOOD_WEEK_CHECKLIST: GoodWeekCheckItem[] = [
     detail: "Capital One car payment and insurance stayed on track — owned-car floor protected.",
   },
   {
+    id: "home",
+    label: "Home / rent rhythm held",
+    detail: "Mortgage protected; tenant rent collected or late risk named; open house issues not ignored.",
+  },
+  {
     id: "floor",
     label: "Financial floor intact",
     detail: "Bills, buffer, and a debt move when cash allowed — emotional comfort named, CFO math shown.",
