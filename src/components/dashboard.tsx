@@ -10,10 +10,10 @@ import {
 import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Wallet } from "lucide-react";
+import dynamic from "next/dynamic";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AccountsView } from "./accounts-view";
 import {
   getTabLabel,
   MobileBottomNav,
@@ -22,20 +22,60 @@ import {
   type TabType,
 } from "./app-navigation";
 import { AppVersion } from "./app-version";
-import { CaloriesView } from "./calories/calories-view";
-import { CarView } from "./car/car-view";
 import { ChatInterface } from "./chat-interface";
-import { ConnectBankButton } from "./connect-bank-button";
 import { DashboardSkeleton } from "./dashboard-skeleton";
-import { GoalsView } from "./goals-view";
-import { GrowthView } from "./growth/growth-view";
-import { OverviewHome } from "./overview/overview-home";
-import { PlaidOAuthHandler } from "./plaid-oauth-handler";
-import { Projections } from "./projections";
-import { RecurringView } from "./recurring/recurring-view";
+import { LazyPlaidOAuthHandler } from "./lazy-plaid-oauth-handler";
 import { ThemeToggle } from "./theme-toggle";
 import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
-import { TrendsView } from "./trends/trends-view";
+
+/** Non-default tabs load on demand so Coach boots with a smaller JS graph. */
+const OverviewHome = dynamic(
+  () => import("./overview/overview-home").then((m) => m.OverviewHome),
+  { loading: () => <DashboardSkeleton /> },
+);
+const GrowthView = dynamic(
+  () => import("./growth/growth-view").then((m) => m.GrowthView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const TrendsView = dynamic(
+  () => import("./trends/trends-view").then((m) => m.TrendsView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const CarView = dynamic(
+  () => import("./car/car-view").then((m) => m.CarView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const CaloriesView = dynamic(
+  () => import("./calories/calories-view").then((m) => m.CaloriesView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const AccountsView = dynamic(
+  () => import("./accounts-view").then((m) => m.AccountsView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const RecurringView = dynamic(
+  () => import("./recurring/recurring-view").then((m) => m.RecurringView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const Projections = dynamic(
+  () => import("./projections").then((m) => m.Projections),
+  { loading: () => <DashboardSkeleton /> },
+);
+const GoalsView = dynamic(
+  () => import("./goals-view").then((m) => m.GoalsView),
+  { loading: () => <DashboardSkeleton /> },
+);
+const ConnectBankButton = dynamic(
+  () => import("./connect-bank-button").then((m) => m.ConnectBankButton),
+  {
+    ssr: false,
+    loading: () => (
+      <span className="inline-flex h-10 min-w-[10rem] items-center justify-center rounded-xl bg-slate-100 text-sm font-medium text-slate-400">
+        Loading…
+      </span>
+    ),
+  },
+);
 
 type DashboardAccount = {
   id: string;
@@ -573,7 +613,7 @@ export function Dashboard() {
 
   return (
     <div className="flex h-screen app-page overflow-hidden">
-      <PlaidOAuthHandler />
+      <LazyPlaidOAuthHandler />
 
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col app-shell-sidebar md:flex">
