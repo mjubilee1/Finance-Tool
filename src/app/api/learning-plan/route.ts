@@ -90,6 +90,7 @@ export async function PATCH(request: Request) {
     const data: {
       weeklyHours?: number;
       categoryPercentages?: CategoryPercentages;
+      autoQueueYoutube?: boolean;
     } = {};
 
     if (body.weeklyHours != null) {
@@ -101,6 +102,10 @@ export async function PATCH(request: Request) {
         );
       }
       data.weeklyHours = Math.round(hours * 100) / 100;
+    }
+
+    if (typeof body.autoQueueYoutube === "boolean") {
+      data.autoQueueYoutube = body.autoQueueYoutube;
     }
 
     if (body.categoryPercentages != null) {
@@ -139,6 +144,9 @@ export async function PATCH(request: Request) {
           ...(data.categoryPercentages != null
             ? { categoryPercentages: data.categoryPercentages }
             : {}),
+          ...(data.autoQueueYoutube != null
+            ? { autoQueueYoutube: data.autoQueueYoutube }
+            : {}),
         },
       });
     } else {
@@ -147,6 +155,7 @@ export async function PATCH(request: Request) {
           userId: session.user.id,
           weeklyHours: data.weeklyHours ?? DEFAULT_WEEKLY_HOURS,
           categoryPercentages: data.categoryPercentages ?? DEFAULT_CATEGORY_PERCENTAGES,
+          autoQueueYoutube: data.autoQueueYoutube ?? true,
         },
       });
     }

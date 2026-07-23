@@ -6,6 +6,8 @@ import {
   isLearningPriority,
   isLearningStatus,
   serializeContentItem,
+  youtubeAutoplayUrl,
+  youtubeVideoIdFromUrl,
 } from "@/lib/learning-plan";
 import { prisma } from "@/lib/prisma";
 
@@ -68,15 +70,20 @@ export async function POST(request: Request) {
         ? body.status
         : "saved";
 
+    const videoId = youtubeVideoIdFromUrl(url);
+    const storedUrl = videoId ? youtubeAutoplayUrl(videoId) : url.slice(0, 2000);
+
     const item = await prisma.learningContentItem.create({
       data: {
         userId: session.user.id,
         title: title.slice(0, 200),
-        url: url.slice(0, 2000),
+        url: storedUrl,
         category,
         durationMinutes: Math.round(durationMinutes),
         priority,
         status,
+        source: "manual",
+        externalId: videoId,
         completedAt: status === "completed" ? new Date() : null,
       },
     });

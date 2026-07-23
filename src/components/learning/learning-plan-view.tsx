@@ -8,8 +8,11 @@ import {
   ExternalLink,
   Loader2,
   MapPin,
+  Play,
   Plus,
+  RefreshCw,
   Trash2,
+  Video,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
@@ -22,6 +25,8 @@ import {
   categoryLabel,
   priorityLabel,
   statusLabel,
+  youtubeAutoplayUrl,
+  youtubeVideoIdFromUrl,
   type CategoryHoursRow,
   type CategoryPercentages,
   type LearningCategoryId,
@@ -45,7 +50,7 @@ const TrendsView = dynamic(
   }
 );
 
-type LearningSubView = "plan" | "queue" | "tech" | "dmv";
+type LearningSubView = "plan" | "youtube" | "queue" | "tech" | "dmv";
 
 type LearningBundle = {
   settings: LearningPlanSettingsLike;
@@ -55,6 +60,33 @@ type LearningBundle = {
   percentagesValid: boolean;
   percentTotal: number;
   categories: { id: LearningCategoryId; label: string }[];
+};
+
+type YoutubePick = {
+  id: string;
+  videoId: string;
+  title: string;
+  url: string;
+  autoplayUrl: string;
+  channelLabel: string;
+  category: LearningCategoryId;
+  durationMinutes: number;
+  summary: string | null;
+  relevanceScore: number;
+  status: string;
+  queuedItemId: string | null;
+};
+
+type YoutubeDigestResponse = {
+  digest: {
+    id: string;
+    date: string;
+    autoQueued: boolean;
+    picks: YoutubePick[];
+  } | null;
+  refreshed?: boolean;
+  alreadyFresh?: boolean;
+  autoQueued?: boolean;
 };
 
 type AddForm = {
@@ -68,6 +100,7 @@ type AddForm = {
 
 const SUB_NAV: { id: LearningSubView; label: string; Icon: typeof BookOpen }[] = [
   { id: "plan", label: "Plan", Icon: BookOpen },
+  { id: "youtube", label: "YouTube", Icon: Video },
   { id: "queue", label: "Queue", Icon: Plus },
   { id: "tech", label: "Tech news", Icon: Cpu },
   { id: "dmv", label: "DMV news", Icon: MapPin },
@@ -118,10 +151,31 @@ export function LearningPlanView({
     queryFn: fetchLearningPlan,
   });
 
+  const {
+    data: youtubeData,
+    isLoading: youtubeLoading,
+    error: youtubeError,
+    refetch: refetchYoutube,
+    isFetching: youtubeFetching,
+  } = useQuery({
+    queryKey: ["learning-youtube"],
+    queryFn: async (): Promise<YoutubeDigestResponse> => {
+      const res = await fetch("/api/learning-plan/youtube");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || "Failed to load YouTube picks");
+      }
+      return res.json();
+    },
+    enabled: subView === "youtube" || subView === "plan",
+    staleTime: 5 * 60 * 1000,
+  });
+
   const settingsMutation = useMutation({
     mutationFn: async (payload: {
       weeklyHours?: number;
       categoryPercentages?: Partial<CategoryPercentages>;
+      autoQueueYoutube?: boolean;
     }) => {
       const res = await fetch("/api/learning-plan", {
         method: "PATCH",
@@ -136,6 +190,45 @@ export function LearningPlanView({
       queryClient.setQueryData(["learning-plan"], bundle);
       setLocalPercents(null);
       setWeeklyHoursInput(null);
+    },
+  });
+
+  const youtubeRefreshMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/learning-plan/youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error || "Failed to refresh");
+      return body as YoutubeDigestResponse;
+    },
+    onSuccess: (body) => {
+      queryClient.setQueryData(["learning-youtube"], body);
+      void queryClient.invalidateQueries({ queryKey: ["learning-plan"] });
+    },
+  });
+
+  const youtubeQueueMutation = useMutation({
+    mutationFn: async (pickIds?: string[]) => {
+      const res = await fetch("/api/learning-plan/youtube/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pickIds ? { pickIds } : {}),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error || "Failed to queue");
+      return body as { queued: number; digest: YoutubeDigestResponse["digest"] };
+    },
+    onSuccess: (body) => {
+      if (body.digest) {
+        queryClient.setQueryData(["learning-youtube"], {
+          digest: body.digest,
+          alreadyFresh: true,
+        } satisfies YoutubeDigestResponse);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["learning-plan"] });
     },
   });
 
@@ -513,6 +606,179 @@ export function LearningPlanView({
         </div>
       )}
 
+      {subView === "youtube" && (
+        <div className="space-y-6">
+          <section className="app-card p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="app-label mb-1">Daily YouTube</p>
+                <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">
+                  Drive-time picks for today
+                </h2>
+                <p className="mt-1 text-xs text-[var(--muted)] max-w-xl">
+                  Real videos from founder / AI / sales / finance channels, weighted by your
+                  topic mix — not random recommendations.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={youtubeRefreshMutation.isPending}
+                onClick={() => youtubeRefreshMutation.mutate()}
+                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
+              >
+                {youtubeRefreshMutation.isPending || youtubeFetching ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                Refresh
+              </button>
+            </div>
+
+            <label className="flex items-start gap-3 rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3 py-3 ring-1 ring-[var(--card-border)]">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={data?.settings.autoQueueYoutube !== false}
+                disabled={settingsMutation.isPending}
+                onChange={(e) =>
+                  settingsMutation.mutate({ autoQueueYoutube: e.target.checked })
+                }
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-[var(--ink)]">
+                  Auto-queue daily picks
+                </span>
+                <span className="block text-xs text-[var(--muted)] mt-0.5">
+                  When on, today’s YouTube picks are added to your Learning queue automatically.
+                </span>
+              </span>
+            </label>
+
+            {(youtubeData?.digest?.picks.length ?? 0) > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={youtubeQueueMutation.isPending}
+                  onClick={() => youtubeQueueMutation.mutate(undefined)}
+                  className="app-btn-primary disabled:opacity-50"
+                >
+                  {youtubeQueueMutation.isPending ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    "Queue all for learning"
+                  )}
+                </button>
+                {youtubeQueueMutation.isSuccess ? (
+                  <p className="text-xs self-center text-[var(--accent-strong)]">
+                    Queued {youtubeQueueMutation.data.queued} item
+                    {youtubeQueueMutation.data.queued === 1 ? "" : "s"}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {youtubeRefreshMutation.isError || youtubeQueueMutation.isError ? (
+              <p className="text-sm text-rose-600" role="alert">
+                {(youtubeRefreshMutation.error || youtubeQueueMutation.error) instanceof Error
+                  ? (
+                      (youtubeRefreshMutation.error || youtubeQueueMutation.error) as Error
+                    ).message
+                  : "Something went wrong."}
+              </p>
+            ) : null}
+          </section>
+
+          {youtubeLoading && !youtubeData ? (
+            <div className="flex items-center justify-center py-16 text-[var(--muted)] gap-2">
+              <Loader2 className="animate-spin" size={18} />
+              Curating today’s YouTube picks…
+            </div>
+          ) : youtubeError && !youtubeData ? (
+            <div className="app-card p-6 text-center space-y-3">
+              <p className="font-medium text-[var(--ink)]">Couldn’t load YouTube picks</p>
+              <p className="text-sm text-[var(--muted)]">
+                {youtubeError instanceof Error ? youtubeError.message : "Try again."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void refetchYoutube()}
+                className="app-btn-primary mx-auto"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (youtubeData?.digest?.picks.length ?? 0) === 0 ? (
+            <div className="app-card p-8 text-center space-y-2">
+              <p className="font-medium text-[var(--ink)]">No picks yet</p>
+              <p className="text-sm text-[var(--muted)]">
+                Hit Refresh to pull today’s videos from your learning channels.
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {youtubeData!.digest!.picks.map((pick) => (
+                <li key={pick.id} className="app-card p-4 sm:p-5 space-y-3">
+                  <div className="space-y-1">
+                    <p className="font-semibold text-[var(--ink)] leading-snug">{pick.title}</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {pick.channelLabel} · {categoryLabel(pick.category)} ·{" "}
+                      {pick.durationMinutes} min
+                      {pick.status === "queued" ? " · Queued" : ""}
+                    </p>
+                    {pick.summary ? (
+                      <p className="text-sm text-[var(--ink-soft)] leading-relaxed">
+                        {pick.summary}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={pick.autoplayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-[var(--accent)] hover:opacity-90"
+                      onClick={() => {
+                        void fetch("/api/learning-plan/youtube/queue", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: pick.id, status: "played" }),
+                        }).then(() =>
+                          queryClient.invalidateQueries({ queryKey: ["learning-youtube"] })
+                        );
+                      }}
+                    >
+                      <Play size={13} />
+                      Autoplay
+                    </a>
+                    {pick.status !== "queued" ? (
+                      <button
+                        type="button"
+                        disabled={youtubeQueueMutation.isPending}
+                        onClick={() => youtubeQueueMutation.mutate([pick.id])}
+                        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
+                      >
+                        <Plus size={13} />
+                        Add to queue
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSubView("queue")}
+                        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--accent-soft)]"
+                      >
+                        <Check size={13} />
+                        In queue
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {subView === "queue" && (
         <div className="space-y-6">
           <section className="app-card p-5 sm:p-6 space-y-4">
@@ -723,16 +989,30 @@ export function LearningPlanView({
                         <p className="text-xs text-[var(--muted)]">
                           {categoryLabel(item.category)} · {item.durationMinutes} min ·{" "}
                           {priorityLabel(item.priority)}
+                          {item.source === "youtube_daily" ? " · YouTube daily" : ""}
                         </p>
                       </div>
                       <a
-                        href={item.url}
+                        href={
+                          youtubeVideoIdFromUrl(item.url)
+                            ? youtubeAutoplayUrl(youtubeVideoIdFromUrl(item.url)!)
+                            : item.url
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--accent-soft)]"
                       >
-                        Open
-                        <ExternalLink size={12} />
+                        {youtubeVideoIdFromUrl(item.url) ? (
+                          <>
+                            <Play size={12} />
+                            Play
+                          </>
+                        ) : (
+                          <>
+                            Open
+                            <ExternalLink size={12} />
+                          </>
+                        )}
                       </a>
                     </div>
 
