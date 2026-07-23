@@ -209,13 +209,22 @@ export function youtubeAutoplayUrl(videoId: string): string {
  * handing off to the YouTube app (and its related-video autoplay).
  * rel=0 reduces cross-channel recommendations after the video ends.
  */
-export function youtubeEmbedUrl(videoId: string, options?: { autoplay?: boolean }): string {
+export function youtubeEmbedUrl(
+  videoId: string,
+  options?: { autoplay?: boolean; enableJsApi?: boolean }
+): string {
   const url = new URL(`https://www.youtube.com/embed/${encodeURIComponent(videoId)}`);
   url.searchParams.set("playsinline", "1");
   url.searchParams.set("rel", "0");
   url.searchParams.set("modestbranding", "1");
   if (options?.autoplay !== false) {
     url.searchParams.set("autoplay", "1");
+  }
+  if (options?.enableJsApi !== false) {
+    url.searchParams.set("enablejsapi", "1");
+    if (typeof window !== "undefined" && window.location?.origin) {
+      url.searchParams.set("origin", window.location.origin);
+    }
   }
   return url.toString();
 }

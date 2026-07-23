@@ -84,6 +84,7 @@ model User {
   learningPlanSettings    LearningPlanSettings?
   learningContentItems    LearningContentItem[]
   learningYoutubeDigests  LearningYoutubeDigest[]
+  learningWatchedVideos   LearningWatchedVideo[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
 }
@@ -703,6 +704,21 @@ model LearningYoutubePick {
 
   @@index([digestId, status])
   @@index([videoId])
+}
+
+/// Permanent watch history so regenerating picks never repeats a finished video.
+model LearningWatchedVideo {
+  id        String   @id @default(cuid())
+  userId    String
+  videoId   String
+  title     String?
+  watchedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@index([userId, watchedAt])
 }
 
 model CoachSession {
