@@ -17,6 +17,7 @@ import {
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
+import { loadCoachNetworkPack } from "@/lib/coach-network";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
@@ -367,9 +368,22 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
   }
 
   try {
-    const parsed = JSON.parse(content) as Partial<ChatResponsePayload>;
-    const message =
-      typeof parsed.message === "string" ? normalizeCoachMessage(parsed.message) : "";
+    const parsed = JSON.parse(content) as Partial<ChatResponsePayload> & {
+      reply?: unknown;
+      response?: unknown;
+      text?: unknown;
+    };
+    const rawMessage =
+      typeof parsed.message === "string"
+        ? parsed.message
+        : typeof parsed.reply === "string"
+          ? parsed.reply
+          : typeof parsed.response === "string"
+            ? parsed.response
+            : typeof parsed.text === "string"
+              ? parsed.text
+              : "";
+    const message = normalizeCoachMessage(rawMessage);
     const memoriesToStore = Array.isArray(parsed.memoriesToStore)
       ? parsed.memoriesToStore.filter((memory): memory is ChatMemory =>
           typeof memory?.title === "string" &&
@@ -743,10 +757,11 @@ export async function POST(req: Request) {
     })();
 
     const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const [todayBrief, weekCalendarEvents, userPlanActivities] = await Promise.all([
+    const [todayBrief, weekCalendarEvents, userPlanActivities, networkPack] = await Promise.all([
       buildTodayBriefContext(session.user.id),
       loadCoachWeekCalendarEvents(session.user.id),
       loadCoachWeekUserPlanActivities(session.user.id),
+      loadCoachNetworkPack(session.user.id),
     ]);
     const weeklyPlan = buildWeeklyOperatingPlan({
       start: userNow(),
@@ -759,6 +774,7 @@ export async function POST(req: Request) {
       userName: session.user.name ?? null,
       todayBrief,
       weeklyPlan,
+      networkPack,
       calendarContext: {
         nowIso: userNow().toISO() ?? new Date().toISOString(),
         timeZone: USER_TIME_ZONE,
@@ -833,21 +849,41 @@ export async function POST(req: Request) {
       },
     });
 
-    const response = await openai.chat.completions.create({
+    const openAiMessages = [
+      { role: "system" as const, content: systemPrompt },
+      ...toOpenAiMessages(recentMessages),
+    ];
+
+    let response = (await openai.chat.completions.create({
       model: "gpt-5",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...toOpenAiMessages(recentMessages),
-      ],
+      messages: openAiMessages,
       response_format: { type: "json_object" },
       max_completion_tokens: 3000,
       reasoning_effort: "minimal",
       verbosity: "low",
-    }) as ChatCompletion;
+    })) as ChatCompletion;
 
-    const chatResponse = parseChatResponse(response);
+    let chatResponse = parseChatResponse(response);
+    // GPT-5 + verbosity:low sometimes returns empty content; one retry with medium verbosity.
     if (!chatResponse.message) {
-      throw new Error(`OpenAI returned an empty chat response. Finish reason: ${response.choices[0]?.finish_reason ?? "unknown"}`);
+      console.warn(
+        `[CHAT] empty reply finish=${response.choices[0]?.finish_reason ?? "unknown"} — retrying with verbosity=medium`,
+      );
+      response = (await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: openAiMessages,
+        response_format: { type: "json_object" },
+        max_completion_tokens: 4000,
+        reasoning_effort: "minimal",
+        verbosity: "medium",
+      })) as ChatCompletion;
+      chatResponse = parseChatResponse(response);
+    }
+
+    if (!chatResponse.message) {
+      throw new Error(
+        `OpenAI returned an empty chat response. Finish reason: ${response.choices[0]?.finish_reason ?? "unknown"}`,
+      );
     }
 
     const savedMemoryTitles = chatResponse.memoriesToStore.length > 0

@@ -158,8 +158,9 @@ Coach and UI copy should feel like a sharp personal advisor on offense:
 - Direct and encouraging, not preachy or guilt-based
 - Judge spend and time by system impact; the discretionary rail is background math
 - Acknowledge earned splurges and intentional short rest/resets, then push back to attack mode
-- Connect daily moves to long-term goals and income/career leverage
+- Connect daily moves to long-term goals — default to **startup / build / founder network** leverage; W2 promotion help only when asked
 - Prefer actionable offensive nudges over generic budgeting advice
+- When suggesting who to contact, use Growth contact notes (founders, builders, YC, connectors) — do not invent corporate manager/EM outreach unless asked about promo at work
 
 ## Money as a reinforcing system
 

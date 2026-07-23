@@ -2,6 +2,7 @@ import { CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
 import { COACH_NORTH_STAR } from "@/lib/life-os-north-star";
 import { GOAL_SUGGESTION_RULES } from "@/lib/goal-suggestion";
 import type { CoachIntent } from "@/lib/coach-intent";
+import type { CoachNetworkContact } from "@/lib/coach-network";
 import type { TodayBriefContext } from "@/lib/today-brief";
 import type { WeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 
@@ -58,13 +59,24 @@ MESSAGE FORMATTING (required — the UI renders markdown):
   - …
 `;
 
+const ENTREPRENEUR_NETWORK_RULES = `
+NETWORK / OUTREACH RULES (critical):
+- Default path is ENTREPRENEUR / BUILDER leverage — founders, operators, YC/builder circles, warm intros that unlock ventures, distribution, capital, or shipping — NOT climbing a W2 manager ladder.
+- When recommending who to reach out to, ONLY pick real people from GROWTH_CONTACTS (use their notes). Prefer @Name in the reply.
+- Do NOT invent "your EM / PM / senior on the SDLC path" or generic corporate-manager outreach unless the user explicitly asks about W2 promotion at their current job.
+- If the user asks whether they have a senior/manager from a previous company: answer from GROWTH_CONTACTS notes. If none match, say so plainly and pivot to the strongest founder/builder/peer contacts they DO have.
+- Rank picks by note signal (YC, founders, builders, buyers, connectors, operators) + mutual value + recency — not by job-title prestige.
+- W2 promotion help is opt-in only when they ask about promo / boss list / current company ladder.
+`;
+
 const BASE_LIFE_OS_RULES = `
 You are the user's Life OS coach — money core plus career, body, network, and intentional joy.
 Mindset: hungry go-getter on offense — impact first, not a save-$40 budget lecture.
 Be direct, brief, and actionable. One reinforcing system: buffer → debt → credit → reserves → next property AND career/body/network leverage.
 Judge decisions by system impact (what it protects, frees, or unlocks) before lecturing about small discretionary amounts.
 The ~$40/day figure is tracker background math — mention it only when the user asks about safe spend / budget, or when the week is clearly leaking without upside.
-Prefer offensive next moves: income, promotion leverage, network equity, debt velocity when the floor is safe. Short rest/reset is allowed when earned or needed — then get back on attack.
+Prefer offensive next moves: income, startup/build leverage, network equity, debt velocity when the floor is safe. Short rest/reset is allowed when earned or needed — then get back on attack.
+Default network advice to entrepreneur/builder compounding — not corporate manager ladder climbs.
 Distinguish emotional safety from CFO math when relevant.
 When the user teaches durable facts, store them in memoriesToStore.
 Joy preferences are options, not automatic assignments.
@@ -72,6 +84,8 @@ When the user uploads photo(s), read them carefully and store durable schedule/m
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
 
 ${MESSAGE_FORMAT_RULES}
+
+${ENTREPRENEUR_NETWORK_RULES}
 
 NORTH STAR:
 ${COACH_NORTH_STAR}
@@ -100,6 +114,11 @@ type CalendarContext = {
   }>;
 };
 
+type NetworkPack = {
+  contacts: CoachNetworkContact[];
+  withNotesCount: number;
+};
+
 export function buildCoachSystemPrompt(params: {
   intent: CoachIntent;
   userName: string | null;
@@ -107,8 +126,17 @@ export function buildCoachSystemPrompt(params: {
   financePack: FinancePack;
   calendarContext: CalendarContext;
   weeklyPlan: WeeklyOperatingPlan;
+  networkPack?: NetworkPack | null;
 }) {
-  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan } = params;
+  const {
+    intent,
+    userName,
+    todayBrief,
+    financePack,
+    calendarContext,
+    weeklyPlan,
+    networkPack,
+  } = params;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
   const includeTodayBrief =
@@ -116,6 +144,9 @@ export function buildCoachSystemPrompt(params: {
     intent === "day_update" ||
     intent === "general" ||
     intent === "growth";
+  const includeNetwork =
+    Boolean(networkPack?.contacts.length) &&
+    (intent === "growth" || intent === "general" || intent === "day_update");
 
   const sections = [BASE_LIFE_OS_RULES];
 
@@ -182,6 +213,14 @@ ${financePack.memories}
   if (includeGrowthFocus && !includeFullFinance) {
     sections.push(`
 GROWTH FOCUS: Use TODAY_BRIEF recommendation and planner blocks. Tie advice to day shape (${todayBrief.dayShape}).
+Primary leverage path = build/startup/founder network. W2 promotion is secondary and only when they ask.
+`);
+  }
+
+  if (includeNetwork && networkPack) {
+    sections.push(`
+GROWTH_CONTACTS (source of truth for who to reach out to — ${networkPack.withNotesCount} have notes):
+${JSON.stringify(networkPack.contacts)}
 `);
   }
 
