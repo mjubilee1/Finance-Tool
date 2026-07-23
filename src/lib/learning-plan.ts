@@ -37,6 +37,7 @@ export type LearningPlanSettingsLike = {
   id: string;
   weeklyHours: number;
   categoryPercentages: CategoryPercentages;
+  autoQueueYoutube: boolean;
 };
 
 export type LearningContentItemLike = {
@@ -47,6 +48,8 @@ export type LearningContentItemLike = {
   durationMinutes: number;
   priority: LearningPriority;
   status: LearningStatus;
+  source: string;
+  externalId: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -170,15 +173,48 @@ export function computeLearningProgress(
   };
 }
 
+export function youtubeVideoIdFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes("youtu.be")) {
+      const id = parsed.pathname.replace(/^\//, "").slice(0, 11);
+      return id.length >= 8 ? id : null;
+    }
+    if (parsed.hostname.includes("youtube.com")) {
+      const v = parsed.searchParams.get("v");
+      if (v && v.length >= 8) return v.slice(0, 11);
+      const embed = /\/embed\/([A-Za-z0-9_-]{8,})/.exec(parsed.pathname);
+      if (embed) return embed[1].slice(0, 11);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function youtubeWatchUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+}
+
+/** Opens YouTube ready to play (browser / YouTube app may still require a tap). */
+export function youtubeAutoplayUrl(videoId: string): string {
+  const url = new URL("https://www.youtube.com/watch");
+  url.searchParams.set("v", videoId);
+  url.searchParams.set("autoplay", "1");
+  return url.toString();
+}
+
 export function serializeSettings(row: {
   id: string;
   weeklyHours: number;
   categoryPercentages: unknown;
+  autoQueueYoutube?: boolean;
 }): LearningPlanSettingsLike {
   return {
     id: row.id,
     weeklyHours: row.weeklyHours,
     categoryPercentages: normalizeCategoryPercentages(row.categoryPercentages),
+    autoQueueYoutube: row.autoQueueYoutube !== false,
   };
 }
 
@@ -190,6 +226,8 @@ export function serializeContentItem(row: {
   durationMinutes: number;
   priority: string;
   status: string;
+  source?: string | null;
+  externalId?: string | null;
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -202,6 +240,8 @@ export function serializeContentItem(row: {
     durationMinutes: row.durationMinutes,
     priority: isLearningPriority(row.priority) ? row.priority : "medium",
     status: isLearningStatus(row.status) ? row.status : "saved",
+    source: row.source || "manual",
+    externalId: row.externalId ?? null,
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

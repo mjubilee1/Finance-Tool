@@ -83,6 +83,7 @@ model User {
   trendDigests            TrendDigest[]
   learningPlanSettings    LearningPlanSettings?
   learningContentItems    LearningContentItem[]
+  learningYoutubeDigests  LearningYoutubeDigest[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
 }
@@ -628,6 +629,8 @@ model LearningPlanSettings {
   weeklyHours          Float    @default(10)
   /// JSON map of category id → percentage (0–100). Must sum to 100 when valid.
   categoryPercentages  Json
+  /// When true, daily YouTube picks are auto-added to the content queue.
+  autoQueueYoutube     Boolean  @default(true)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -647,6 +650,10 @@ model LearningContentItem {
   priority        String   @default("medium")
   /// saved | in_progress | completed | skipped
   status          String   @default("saved")
+  /// manual | youtube_daily
+  source          String   @default("manual")
+  /// YouTube video id (or other external id) for dedupe.
+  externalId      String?
   completedAt     DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -656,6 +663,46 @@ model LearningContentItem {
   @@index([userId, status])
   @@index([userId, category])
   @@index([userId, createdAt])
+  @@index([userId, externalId])
+}
+
+/// Daily curated YouTube drive-time picks (real videos from channel RSS).
+model LearningYoutubeDigest {
+  id          String   @id @default(cuid())
+  userId      String
+  date        String // YYYY-MM-DD
+  autoQueued  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  picks LearningYoutubePick[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model LearningYoutubePick {
+  id               String   @id @default(cuid())
+  digestId         String
+  videoId          String
+  title            String
+  url              String
+  channelLabel     String
+  category         String
+  durationMinutes  Int
+  summary          String?  @db.Text
+  relevanceScore   Float    @default(5)
+  /// suggested | queued | skipped | played
+  status           String   @default("suggested")
+  queuedItemId     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  digest LearningYoutubeDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+
+  @@index([digestId, status])
+  @@index([videoId])
 }
 
 model CoachSession {
