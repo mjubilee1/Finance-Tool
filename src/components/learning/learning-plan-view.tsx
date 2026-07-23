@@ -25,7 +25,6 @@ import {
   categoryLabel,
   priorityLabel,
   statusLabel,
-  youtubeAutoplayUrl,
   youtubeVideoIdFromUrl,
   type CategoryHoursRow,
   type CategoryPercentages,
@@ -36,6 +35,10 @@ import {
   type LearningProgress,
   type LearningStatus,
 } from "@/lib/learning-plan";
+import {
+  YoutubePlayerModal,
+  type YoutubePlayerTarget,
+} from "@/components/learning/youtube-player-modal";
 import { TrendsErrorBoundary } from "@/components/trends/trends-error-boundary";
 
 const TrendsView = dynamic(
@@ -145,6 +148,19 @@ export function LearningPlanView({
   const [formError, setFormError] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [activePlayer, setActivePlayer] = useState<YoutubePlayerTarget | null>(null);
+
+  function openYoutubePlayer(target: YoutubePlayerTarget) {
+    setActivePlayer(target);
+  }
+
+  function markYoutubePickPlayed(pickId: string) {
+    void fetch("/api/learning-plan/youtube/queue", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pickId, status: "played" }),
+    }).then(() => queryClient.invalidateQueries({ queryKey: ["learning-youtube"] }));
+  }
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["learning-plan"],
@@ -733,24 +749,21 @@ export function LearningPlanView({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <a
-                      href={pick.autoplayUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
                       className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-[var(--accent)] hover:opacity-90"
                       onClick={() => {
-                        void fetch("/api/learning-plan/youtube/queue", {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ id: pick.id, status: "played" }),
-                        }).then(() =>
-                          queryClient.invalidateQueries({ queryKey: ["learning-youtube"] })
-                        );
+                        openYoutubePlayer({
+                          videoId: pick.videoId,
+                          title: pick.title,
+                          channelLabel: pick.channelLabel,
+                        });
+                        markYoutubePickPlayed(pick.id);
                       }}
                     >
                       <Play size={13} />
-                      Autoplay
-                    </a>
+                      Play here
+                    </button>
                     {pick.status !== "queued" ? (
                       <button
                         type="button"
@@ -992,28 +1005,37 @@ export function LearningPlanView({
                           {item.source === "youtube_daily" ? " · YouTube daily" : ""}
                         </p>
                       </div>
-                      <a
-                        href={
-                          youtubeVideoIdFromUrl(item.url)
-                            ? youtubeAutoplayUrl(youtubeVideoIdFromUrl(item.url)!)
-                            : item.url
+                      {(() => {
+                        const videoId = youtubeVideoIdFromUrl(item.url);
+                        if (videoId) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openYoutubePlayer({
+                                  videoId,
+                                  title: item.title,
+                                })
+                              }
+                              className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--accent-soft)]"
+                            >
+                              <Play size={12} />
+                              Play here
+                            </button>
+                          );
                         }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--accent-soft)]"
-                      >
-                        {youtubeVideoIdFromUrl(item.url) ? (
-                          <>
-                            <Play size={12} />
-                            Play
-                          </>
-                        ) : (
-                          <>
+                        return (
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--accent-soft)]"
+                          >
                             Open
                             <ExternalLink size={12} />
-                          </>
-                        )}
-                      </a>
+                          </a>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -1091,6 +1113,10 @@ export function LearningPlanView({
           />
         </TrendsErrorBoundary>
       )}
+
+      {activePlayer ? (
+        <YoutubePlayerModal video={activePlayer} onClose={() => setActivePlayer(null)} />
+      ) : null}
     </div>
   );
 }
