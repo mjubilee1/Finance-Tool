@@ -79,7 +79,9 @@ Prefer offensive next moves: income, startup/build leverage, network equity, deb
 Default network advice to entrepreneur/builder compounding — not corporate manager ladder climbs.
 Distinguish emotional safety from CFO math when relevant.
 When the user teaches durable facts, store them in memoriesToStore.
-When the user teaches facts about a person (outreach, no reply, met, intro), also populate contactNotesToStore with @Name matching GROWTH_CONTACTS so Growth notes stay current.
+When the user teaches facts about a person (met someone new, outreach, no reply, intro), populate contactNotesToStore:
+- Existing people: match GROWTH_CONTACTS with @Name and append notes.
+- New people: set createIfMissing true, include relationshipType label + note so Growth gets a new contact.
 Joy preferences are options, not automatic assignments.
 When the user uploads photo(s), read them carefully and store durable schedule/money facts in memoriesToStore.
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
@@ -281,11 +283,14 @@ Return JSON only with this exact shape:
   },
   "contactNotesToStore": [
     {
-      "contactMention": "@PaulTheConnector",
-      "note": "Reached out in March — no response back.",
-      "lastContactDate": "2026-03-15",
-      "status": "fading",
-      "suggestedNextAction": "One short bump this week"
+      "contactMention": "@Alex Rivera",
+      "note": "Met at National Harbor mixer — building a fintech tooling idea.",
+      "lastContactDate": "2026-07-23",
+      "status": "active",
+      "relationshipType": "founder",
+      "mutualValue": "Builder intros / fintech feedback",
+      "suggestedNextAction": "Send LinkedIn + offer 15-min feedback swap",
+      "createIfMissing": true
     }
   ],
   "spotlight": {
@@ -325,13 +330,17 @@ todayUpdates rules:
 - Use category "user_plan" when adding an item to the user's operating plan/list. date is optional YYYY-MM-DD; default is today.
 
 contactNotesToStore rules:
-- When the user teaches a durable fact about a person (reached out, no reply, met, intro, status change), append it here — do NOT only put it in memoriesToStore.
-- contactMention must match someone in GROWTH_CONTACTS (prefer exact @Name). Use their notes language; keep note to 1–2 short sentences.
-- lastContactDate: YYYY-MM-DD when they say when outreach happened (e.g. March → use a mid-month date that year). Omit if unknown.
-- status: "fading" when no reply / going cold, "dormant" when clearly dead, "active" when warm again. Omit if unchanged.
-- suggestedNextAction: optional short next move. Omit if none.
+- When the user teaches a durable fact about a person (met someone, reached out, no reply, intro, label change), use this — do NOT only put it in memoriesToStore.
+- contactMention: preferred @Name. For new people, use the name they said (e.g. "@Alex Rivera").
+- note: 1–2 short sentences capturing what happened / who they are.
+- createIfMissing: true when this is a new person not already in GROWTH_CONTACTS (meeting someone, first intro). false/omit when clearly updating an existing contact.
+- relationshipType (label): one of unlabeled, family, peer, social, dating, mentor, founder, investor, colleague, tenant, other. Prefer founder/peer/mentor/investor for builder network; dating/social when that fits; colleague only for work peers.
+- lastContactDate: YYYY-MM-DD when they say when it happened. Default today for "just met".
+- status: active for new/warm; fading when no reply / going cold; dormant when clearly dead.
+- suggestedNextAction / mutualValue: optional short strings.
+- If the person already exists, match them and append the note (still set relationshipType if the user is labeling them).
 - Return [] when they are only asking questions and not teaching contact facts.
-- Max 5 notes per turn.
+- Max 5 contacts per turn.
 
 Use spotlight null when the user is not asking about a specific transaction.
 Use goalSuggestion null unless one high-value tracked goal clearly helps.

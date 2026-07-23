@@ -20,6 +20,7 @@ import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
 import { loadCoachNetworkPack } from "@/lib/coach-network";
 import {
   applyCoachContactNotes,
+  formatCoachContactNoteSummary,
   parseCoachContactNotes,
 } from "@/lib/coach-contact-notes";
 import { openai } from "@/lib/openai";
@@ -905,10 +906,15 @@ export async function POST(req: Request) {
         })
       : [];
 
-    const contactNotesSaved = await applyCoachContactNotes(
+    const contactNotesResult = await applyCoachContactNotes(
       session.user.id,
       chatResponse.contactNotesToStore ?? [],
     );
+    const contactNotesSaved = [
+      ...contactNotesResult.created,
+      ...contactNotesResult.updated,
+    ];
+    const contactNotesSummary = formatCoachContactNoteSummary(contactNotesResult);
 
     let briefRefreshed = false;
     if (savedMemoryTitles.length > 0 && chatResponse.shouldRefreshBrief) {
@@ -1012,8 +1018,8 @@ export async function POST(req: Request) {
     if (savedMemoryTitles.length > 0) {
       assistantHistoryMessage += `\n\nSaved for your financial overview: ${savedMemoryTitles.join(", ")}.`;
     }
-    if (contactNotesSaved.length > 0) {
-      assistantHistoryMessage += `\n\nUpdated Growth notes for: ${contactNotesSaved.map((name) => `@${name}`).join(", ")}.`;
+    if (contactNotesSummary) {
+      assistantHistoryMessage += `\n\n${contactNotesSummary}`;
     }
     if (briefRefreshed) {
       assistantHistoryMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
@@ -1093,6 +1099,8 @@ export async function POST(req: Request) {
       calendarEventError,
       memoriesSaved: savedMemoryTitles,
       contactNotesSaved,
+      contactNotesCreated: contactNotesResult.created,
+      contactNotesUpdated: contactNotesResult.updated,
       briefRefreshed,
       todayUpdated: todayApplied.length > 0 || contactNotesSaved.length > 0,
       todayApplied,

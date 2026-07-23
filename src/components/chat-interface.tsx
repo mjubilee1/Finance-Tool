@@ -462,10 +462,39 @@ export function ChatInterface({
         assistantMessage += `\n\nSaved for your financial overview: ${data.memoriesSaved.join(", ")}.`;
       }
 
-      if (Array.isArray(data.contactNotesSaved) && data.contactNotesSaved.length > 0) {
-        assistantMessage += `\n\nUpdated Growth notes for: ${(data.contactNotesSaved as string[])
-          .map((name) => `@${name}`)
-          .join(", ")}.`;
+      if (
+        (Array.isArray(data.contactNotesCreated) && data.contactNotesCreated.length > 0) ||
+        (Array.isArray(data.contactNotesUpdated) && data.contactNotesUpdated.length > 0) ||
+        (Array.isArray(data.contactNotesSaved) && data.contactNotesSaved.length > 0)
+      ) {
+        const parts: string[] = [];
+        if (Array.isArray(data.contactNotesCreated) && data.contactNotesCreated.length > 0) {
+          parts.push(
+            `Created Growth contacts: ${(data.contactNotesCreated as string[])
+              .map((name) => `@${name}`)
+              .join(", ")}`,
+          );
+        }
+        if (Array.isArray(data.contactNotesUpdated) && data.contactNotesUpdated.length > 0) {
+          parts.push(
+            `Updated Growth notes for: ${(data.contactNotesUpdated as string[])
+              .map((name) => `@${name}`)
+              .join(", ")}`,
+          );
+        } else if (
+          (!Array.isArray(data.contactNotesCreated) || data.contactNotesCreated.length === 0) &&
+          Array.isArray(data.contactNotesSaved) &&
+          data.contactNotesSaved.length > 0
+        ) {
+          parts.push(
+            `Updated Growth notes for: ${(data.contactNotesSaved as string[])
+              .map((name) => `@${name}`)
+              .join(", ")}`,
+          );
+        }
+        if (parts.length > 0) {
+          assistantMessage += `\n\n${parts.join("\n")}`;
+        }
         await queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
       }
 
