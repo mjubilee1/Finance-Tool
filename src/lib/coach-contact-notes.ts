@@ -66,50 +66,55 @@ function normalizeRelationshipType(value: unknown): CoachContactType | null {
 export function parseCoachContactNotes(value: unknown): CoachContactNoteUpdate[] {
   if (!Array.isArray(value)) return [];
 
-  return value
-    .map((raw) => {
-      if (!raw || typeof raw !== "object") return null;
-      const row = raw as Record<string, unknown>;
-      const contactMention =
-        typeof row.contactMention === "string"
-          ? row.contactMention.trim()
-          : typeof row.contact === "string"
-            ? row.contact.trim()
-            : typeof row.name === "string"
-              ? row.name.trim()
-              : "";
-      const note = typeof row.note === "string" ? row.note.trim() : "";
-      if (!contactMention || !note) return null;
+  const parsed: CoachContactNoteUpdate[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const contactMention =
+      typeof row.contactMention === "string"
+        ? row.contactMention.trim()
+        : typeof row.contact === "string"
+          ? row.contact.trim()
+          : typeof row.name === "string"
+            ? row.name.trim()
+            : "";
+    const note = typeof row.note === "string" ? row.note.trim() : "";
+    if (!contactMention || !note) continue;
 
-      const status =
-        typeof row.status === "string" &&
-        ["active", "fading", "dormant"].includes(row.status.trim().toLowerCase())
-          ? row.status.trim().toLowerCase()
-          : null;
+    const statusRaw =
+      typeof row.status === "string" ? row.status.trim().toLowerCase() : "";
+    const status =
+      statusRaw === "active" || statusRaw === "fading" || statusRaw === "dormant"
+        ? statusRaw
+        : null;
 
-      const createIfMissing = row.createIfMissing !== false && row.action !== "update";
+    const createIfMissing = row.createIfMissing !== false && row.action !== "update";
 
-      return {
-        contactMention,
-        note: note.slice(0, 800),
-        lastContactDate: parseIsoDate(
-          typeof row.lastContactDate === "string" ? row.lastContactDate : null,
-        ),
-        status,
-        suggestedNextAction:
-          typeof row.suggestedNextAction === "string"
-            ? row.suggestedNextAction.trim().slice(0, 200) || null
-            : null,
-        relationshipType: normalizeRelationshipType(row.relationshipType ?? row.label ?? row.type),
-        mutualValue:
-          typeof row.mutualValue === "string"
-            ? row.mutualValue.trim().slice(0, 300) || null
-            : null,
-        createIfMissing,
-      } satisfies CoachContactNoteUpdate;
-    })
-    .filter((row): row is CoachContactNoteUpdate => Boolean(row))
-    .slice(0, 5);
+    parsed.push({
+      contactMention,
+      note: note.slice(0, 800),
+      lastContactDate: parseIsoDate(
+        typeof row.lastContactDate === "string" ? row.lastContactDate : null,
+      ),
+      status,
+      suggestedNextAction:
+        typeof row.suggestedNextAction === "string"
+          ? row.suggestedNextAction.trim().slice(0, 200) || null
+          : null,
+      relationshipType: normalizeRelationshipType(
+        row.relationshipType ?? row.label ?? row.type,
+      ),
+      mutualValue:
+        typeof row.mutualValue === "string"
+          ? row.mutualValue.trim().slice(0, 300) || null
+          : null,
+      createIfMissing,
+    });
+
+    if (parsed.length >= 5) break;
+  }
+
+  return parsed;
 }
 
 async function appendNoteAndSync(
