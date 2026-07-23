@@ -728,7 +728,7 @@ export function LearningPlanView({
                   <button
                     type="button"
                     onClick={() => openYoutubePlaylist(unplayedYoutubePicks, 0)}
-                    className="app-btn-primary"
+                    className="app-btn-primary inline-flex items-center gap-2"
                   >
                     <Play size={16} />
                     Play queue
@@ -738,7 +738,7 @@ export function LearningPlanView({
                     type="button"
                     disabled={youtubeRefreshMutation.isPending}
                     onClick={() => youtubeRefreshMutation.mutate()}
-                    className="app-btn-primary disabled:opacity-50"
+                    className="app-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
                   >
                     {youtubeRefreshMutation.isPending ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -924,7 +924,7 @@ export function LearningPlanView({
               <button
                 type="button"
                 onClick={() => openYoutubePlaylist(unfinishedYoutubeQueue, 0)}
-                className="app-btn-primary"
+                className="app-btn-primary inline-flex items-center gap-2"
               >
                 <Play size={16} />
                 Play queue
@@ -948,7 +948,7 @@ export function LearningPlanView({
                   setSubView("youtube");
                   youtubeRefreshMutation.mutate();
                 }}
-                className="app-btn-primary disabled:opacity-50"
+                className="app-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
               >
                 {youtubeRefreshMutation.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
