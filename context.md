@@ -26,7 +26,7 @@ The app should:
 3. **Log as life happens** — gym, outreach, spend, contact notes, screenshots
 4. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
 5. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
-6. **Trends (optional)** — small curated AI/tech signal digest; note into Growth if useful; never spawn a new unfinished project from a headline
+6. **Learning Plan** — drive-time topic mix + content queue; Tech/DMV news digests live here too. Note into Growth if useful; never spawn a new unfinished project from a headline
 
 The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real leverage tradeoffs. Skipped moves are remembered so the same promo-one-pager advice doesn't keep coming back when he already has boss guidance.
 

@@ -606,7 +606,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               onClick={onOpenTrends}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl ring-1 ring-slate-200/70"
             >
-              Tech →
+              Learning →
             </button>
           ) : null}
           <button
