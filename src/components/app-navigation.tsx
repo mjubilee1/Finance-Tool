@@ -1,12 +1,11 @@
 "use client";
 
 import {
+  BookOpen,
   BrainCircuit,
   Car,
-  Cpu,
   Flame,
   LayoutDashboard,
-  MapPin,
   MoreHorizontal,
   Receipt,
   Repeat,
@@ -28,8 +27,7 @@ export type TabType =
   | "projections"
   | "goals"
   | "growth"
-  | "tech"
-  | "dmv"
+  | "learning"
   | "car"
   | "calories";
 
@@ -65,8 +63,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Life",
     items: [
       { tab: "calories", label: "Calories", Icon: Utensils },
-      { tab: "tech", label: "Tech", Icon: Cpu },
-      { tab: "dmv", label: "DMV", Icon: MapPin },
+      { tab: "learning", label: "Learning", Icon: BookOpen },
     ],
   },
   {

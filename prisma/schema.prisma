@@ -81,6 +81,8 @@ model User {
   calorieExperiments      CalorieExperiment[]
   calorieDayLogs          CalorieDayLog[]
   trendDigests            TrendDigest[]
+  learningPlanSettings    LearningPlanSettings?
+  learningContentItems    LearningContentItem[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
 }
@@ -616,6 +618,44 @@ model TrendItem {
   digest TrendDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
 
   @@index([digestId, status])
+}
+
+/// Drive-time learning mix + weekly hours (one row per user).
+model LearningPlanSettings {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  /// Available learning / drive hours this week.
+  weeklyHours          Float    @default(10)
+  /// JSON map of category id → percentage (0–100). Must sum to 100 when valid.
+  categoryPercentages  Json
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Queued learning content (podcasts, YouTube, articles) for drive time.
+model LearningContentItem {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  url             String
+  /// Matches LEARNING_CATEGORIES ids (e.g. startup_product, ai).
+  category        String
+  durationMinutes Int
+  /// high | medium | low
+  priority        String   @default("medium")
+  /// saved | in_progress | completed | skipped
+  status          String   @default("saved")
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, category])
+  @@index([userId, createdAt])
 }
 
 model CoachSession {

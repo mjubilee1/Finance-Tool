@@ -26,8 +26,6 @@ import { ChatInterface } from "./chat-interface";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { LazyPlaidOAuthHandler } from "./lazy-plaid-oauth-handler";
 import { ThemeToggle } from "./theme-toggle";
-import { TrendsErrorBoundary } from "./trends/trends-error-boundary";
-
 /** Non-default tabs load on demand so Coach boots with a smaller JS graph. */
 const OverviewHome = dynamic(
   () => import("./overview/overview-home").then((m) => m.OverviewHome),
@@ -37,8 +35,8 @@ const GrowthView = dynamic(
   () => import("./growth/growth-view").then((m) => m.GrowthView),
   { loading: () => <DashboardSkeleton /> },
 );
-const TrendsView = dynamic(
-  () => import("./trends/trends-view").then((m) => m.TrendsView),
+const LearningPlanView = dynamic(
+  () => import("./learning/learning-plan-view").then((m) => m.LearningPlanView),
   { loading: () => <DashboardSkeleton /> },
 );
 const CarView = dynamic(
@@ -760,7 +758,7 @@ export function Dashboard() {
                   onOpenRecurring={() => selectTab('recurring')}
                   onOpenGrowth={() => selectTab('growth')}
                   onOpenGoals={() => selectTab('goals')}
-                  onOpenTrends={() => selectTab('tech')}
+                  onOpenTrends={() => selectTab("learning")}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                   userName={session?.user?.name}
@@ -774,26 +772,12 @@ export function Dashboard() {
             )}
 
             {/* View: GROWTH */}
-            {activeTab === 'growth' && (
-              <GrowthView onOpenTrends={() => selectTab("tech")} />
+            {activeTab === "growth" && (
+              <GrowthView onOpenTrends={() => selectTab("learning")} />
             )}
-            {activeTab === "tech" && (
-              <TrendsErrorBoundary lane="tech">
-                <TrendsView
-                  lane="tech"
-                  onOpenGrowth={() => selectTab("growth")}
-                  onOpenOtherLane={() => selectTab("dmv")}
-                />
-              </TrendsErrorBoundary>
-            )}
-            {activeTab === "dmv" && (
-              <TrendsErrorBoundary lane="dmv">
-                <TrendsView
-                  lane="dmv"
-                  onOpenGrowth={() => selectTab("growth")}
-                  onOpenOtherLane={() => selectTab("tech")}
-                />
-              </TrendsErrorBoundary>
+
+            {activeTab === "learning" && (
+              <LearningPlanView onOpenGrowth={() => selectTab("growth")} />
             )}
 
             {activeTab === "car" && <CarView />}
