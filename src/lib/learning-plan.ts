@@ -204,6 +204,22 @@ export function youtubeAutoplayUrl(videoId: string): string {
   return url.toString();
 }
 
+/**
+ * In-app embed URL. Uses playsinline so iOS stays in the webview instead of
+ * handing off to the YouTube app (and its related-video autoplay).
+ * rel=0 reduces cross-channel recommendations after the video ends.
+ */
+export function youtubeEmbedUrl(videoId: string, options?: { autoplay?: boolean }): string {
+  const url = new URL(`https://www.youtube.com/embed/${encodeURIComponent(videoId)}`);
+  url.searchParams.set("playsinline", "1");
+  url.searchParams.set("rel", "0");
+  url.searchParams.set("modestbranding", "1");
+  if (options?.autoplay !== false) {
+    url.searchParams.set("autoplay", "1");
+  }
+  return url.toString();
+}
+
 export function serializeSettings(row: {
   id: string;
   weeklyHours: number;
