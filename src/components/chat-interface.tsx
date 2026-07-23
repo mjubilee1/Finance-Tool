@@ -462,6 +462,13 @@ export function ChatInterface({
         assistantMessage += `\n\nSaved for your financial overview: ${data.memoriesSaved.join(", ")}.`;
       }
 
+      if (Array.isArray(data.contactNotesSaved) && data.contactNotesSaved.length > 0) {
+        assistantMessage += `\n\nUpdated Growth notes for: ${(data.contactNotesSaved as string[])
+          .map((name) => `@${name}`)
+          .join(", ")}.`;
+        await queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
+      }
+
       if (data.briefRefreshed) {
         assistantMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
         await queryClient.invalidateQueries({ queryKey: ["dashboard"] });

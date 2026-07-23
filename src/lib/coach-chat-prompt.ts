@@ -79,6 +79,7 @@ Prefer offensive next moves: income, startup/build leverage, network equity, deb
 Default network advice to entrepreneur/builder compounding — not corporate manager ladder climbs.
 Distinguish emotional safety from CFO math when relevant.
 When the user teaches durable facts, store them in memoriesToStore.
+When the user teaches facts about a person (outreach, no reply, met, intro), also populate contactNotesToStore with @Name matching GROWTH_CONTACTS so Growth notes stay current.
 Joy preferences are options, not automatic assignments.
 When the user uploads photo(s), read them carefully and store durable schedule/money facts in memoriesToStore.
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
@@ -278,6 +279,15 @@ Return JSON only with this exact shape:
     "regenerateTodaysMove": false,
     "logActivity": null
   },
+  "contactNotesToStore": [
+    {
+      "contactMention": "@PaulTheConnector",
+      "note": "Reached out in March — no response back.",
+      "lastContactDate": "2026-03-15",
+      "status": "fading",
+      "suggestedNextAction": "One short bump this week"
+    }
+  ],
   "spotlight": {
     "transactionId": "optional id from RECENT TRANSACTIONS if known",
     "merchant": "Merchant or charge label",
@@ -313,6 +323,15 @@ todayUpdates rules:
 - Use activityId when editing an existing user_plan item so it updates instead of creating a duplicate.
 - Use @Name in logActivity.title or notes to link a contact (e.g. "Coffee with @Jane Smith").
 - Use category "user_plan" when adding an item to the user's operating plan/list. date is optional YYYY-MM-DD; default is today.
+
+contactNotesToStore rules:
+- When the user teaches a durable fact about a person (reached out, no reply, met, intro, status change), append it here — do NOT only put it in memoriesToStore.
+- contactMention must match someone in GROWTH_CONTACTS (prefer exact @Name). Use their notes language; keep note to 1–2 short sentences.
+- lastContactDate: YYYY-MM-DD when they say when outreach happened (e.g. March → use a mid-month date that year). Omit if unknown.
+- status: "fading" when no reply / going cold, "dormant" when clearly dead, "active" when warm again. Omit if unchanged.
+- suggestedNextAction: optional short next move. Omit if none.
+- Return [] when they are only asking questions and not teaching contact facts.
+- Max 5 notes per turn.
 
 Use spotlight null when the user is not asking about a specific transaction.
 Use goalSuggestion null unless one high-value tracked goal clearly helps.

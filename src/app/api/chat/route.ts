@@ -18,6 +18,10 @@ import {
 } from "@/lib/google-calendar";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
 import { loadCoachNetworkPack } from "@/lib/coach-network";
+import {
+  applyCoachContactNotes,
+  parseCoachContactNotes,
+} from "@/lib/coach-contact-notes";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
@@ -91,6 +95,7 @@ type ChatResponsePayload = {
   memoriesToStore: ChatMemory[];
   shouldRefreshBrief: boolean;
   todayUpdates?: TodayUpdatesPayload | null;
+  contactNotesToStore?: import("@/lib/coach-contact-notes").CoachContactNoteUpdate[];
   spotlight?: {
     transactionId?: string;
     merchant: string;
@@ -363,6 +368,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       memoriesToStore: [],
       shouldRefreshBrief: false,
       todayUpdates: null,
+      contactNotesToStore: [],
       goalSuggestion: null,
     };
   }
@@ -402,6 +408,9 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       memoriesToStore,
       shouldRefreshBrief: parsed.shouldRefreshBrief === true,
       todayUpdates,
+      contactNotesToStore: parseCoachContactNotes(
+        (parsed as { contactNotesToStore?: unknown }).contactNotesToStore,
+      ),
       spotlight:
         parsed.spotlight &&
         typeof parsed.spotlight === "object" &&
@@ -418,6 +427,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       memoriesToStore: [],
       shouldRefreshBrief: false,
       todayUpdates: null,
+      contactNotesToStore: [],
       goalSuggestion: null,
       calendarEvent: null,
     };
@@ -895,6 +905,11 @@ export async function POST(req: Request) {
         })
       : [];
 
+    const contactNotesSaved = await applyCoachContactNotes(
+      session.user.id,
+      chatResponse.contactNotesToStore ?? [],
+    );
+
     let briefRefreshed = false;
     if (savedMemoryTitles.length > 0 && chatResponse.shouldRefreshBrief) {
       try {
@@ -997,6 +1012,9 @@ export async function POST(req: Request) {
     if (savedMemoryTitles.length > 0) {
       assistantHistoryMessage += `\n\nSaved for your financial overview: ${savedMemoryTitles.join(", ")}.`;
     }
+    if (contactNotesSaved.length > 0) {
+      assistantHistoryMessage += `\n\nUpdated Growth notes for: ${contactNotesSaved.map((name) => `@${name}`).join(", ")}.`;
+    }
     if (briefRefreshed) {
       assistantHistoryMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
     }
@@ -1074,8 +1092,9 @@ export async function POST(req: Request) {
       calendarEventAction,
       calendarEventError,
       memoriesSaved: savedMemoryTitles,
+      contactNotesSaved,
       briefRefreshed,
-      todayUpdated: todayApplied.length > 0,
+      todayUpdated: todayApplied.length > 0 || contactNotesSaved.length > 0,
       todayApplied,
       refreshedMoveAction,
     });
