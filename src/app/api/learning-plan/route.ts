@@ -91,6 +91,7 @@ export async function PATCH(request: Request) {
       weeklyHours?: number;
       categoryPercentages?: CategoryPercentages;
       autoQueueYoutube?: boolean;
+      autoStartYoutube?: boolean;
     } = {};
 
     if (body.weeklyHours != null) {
@@ -106,6 +107,10 @@ export async function PATCH(request: Request) {
 
     if (typeof body.autoQueueYoutube === "boolean") {
       data.autoQueueYoutube = body.autoQueueYoutube;
+    }
+
+    if (typeof body.autoStartYoutube === "boolean") {
+      data.autoStartYoutube = body.autoStartYoutube;
     }
 
     if (body.categoryPercentages != null) {
@@ -147,6 +152,9 @@ export async function PATCH(request: Request) {
           ...(data.autoQueueYoutube != null
             ? { autoQueueYoutube: data.autoQueueYoutube }
             : {}),
+          ...(data.autoStartYoutube != null
+            ? { autoStartYoutube: data.autoStartYoutube }
+            : {}),
         },
       });
     } else {
@@ -156,6 +164,7 @@ export async function PATCH(request: Request) {
           weeklyHours: data.weeklyHours ?? DEFAULT_WEEKLY_HOURS,
           categoryPercentages: data.categoryPercentages ?? DEFAULT_CATEGORY_PERCENTAGES,
           autoQueueYoutube: data.autoQueueYoutube ?? true,
+          autoStartYoutube: data.autoStartYoutube ?? true,
         },
       });
     }

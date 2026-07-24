@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, RefreshCw, SkipForward, X } from "lucide-react";
+import { ExternalLink, Play, RefreshCw, SkipForward, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { youtubeAutoplayUrl } from "@/lib/learning-plan";
 
@@ -18,6 +18,7 @@ type YtPlayer = {
   destroy: () => void;
   loadVideoById: (videoId: string) => void;
   playVideo?: () => void;
+  getPlayerState?: () => number;
 };
 
 type YtPlayerEvent = { data: number };
@@ -39,7 +40,13 @@ declare global {
           };
         }
       ) => YtPlayer;
-      PlayerState: { ENDED: number; PLAYING: number };
+      PlayerState: {
+        ENDED: number;
+        PLAYING: number;
+        PAUSED: number;
+        CUED: number;
+        BUFFERING: number;
+      };
     };
     onYouTubeIframeAPIReady?: () => void;
   }
@@ -87,6 +94,14 @@ function loadYoutubeIframeApi(): Promise<void> {
   return youtubeApiPromise;
 }
 
+function tryPlay(player: YtPlayer | null | undefined) {
+  try {
+    player?.playVideo?.();
+  } catch {
+    // ignore — unlock overlay handles blocked autoplay
+  }
+}
+
 export function YoutubePlayerModal({
   playlist,
   startIndex = 0,
@@ -95,6 +110,8 @@ export function YoutubePlayerModal({
   onQueueExhausted,
   onRegenerate,
   regenerating = false,
+  /** Drive-time: nudge unlock + auto-regenerate when the run ends. */
+  handsFree = false,
 }: {
   playlist: YoutubePlayerTarget[];
   startIndex?: number;
@@ -103,6 +120,7 @@ export function YoutubePlayerModal({
   onQueueExhausted?: () => void;
   onRegenerate?: () => void;
   regenerating?: boolean;
+  handsFree?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YtPlayer | null>(null);
@@ -110,17 +128,43 @@ export function YoutubePlayerModal({
   const playlistRef = useRef(playlist);
   const watchedIdsRef = useRef(new Set<string>());
   const advancingRef = useRef(false);
+  const unlockedRef = useRef(false);
+  const autoRegenRequestedRef = useRef(false);
+  const playProbeTimerRef = useRef<number | null>(null);
 
   const [index, setIndex] = useState(() =>
     Math.min(Math.max(0, startIndex), Math.max(0, playlist.length - 1))
   );
   const [exhausted, setExhausted] = useState(playlist.length === 0);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [needsUnlock, setNeedsUnlock] = useState(false);
 
-  playlistRef.current = playlist;
+  useEffect(() => {
+    playlistRef.current = playlist;
+  }, [playlist]);
 
   const current = playlist[index] ?? null;
   const remainingAfter = Math.max(0, playlist.length - index - 1);
+
+  function clearPlayProbe() {
+    if (playProbeTimerRef.current != null) {
+      window.clearTimeout(playProbeTimerRef.current);
+      playProbeTimerRef.current = null;
+    }
+  }
+
+  function schedulePlayProbe() {
+    clearPlayProbe();
+    if (unlockedRef.current) return;
+    playProbeTimerRef.current = window.setTimeout(() => {
+      const state = playerRef.current?.getPlayerState?.();
+      const playing = state === window.YT?.PlayerState.PLAYING;
+      const buffering = state === window.YT?.PlayerState.BUFFERING;
+      if (!playing && !buffering) {
+        setNeedsUnlock(true);
+      }
+    }, 1400);
+  }
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -131,9 +175,29 @@ export function YoutubePlayerModal({
     };
     window.addEventListener("keydown", onKeyDown);
 
+    let wakeLock: WakeLockSentinel | null = null;
+    const requestWakeLock = async () => {
+      try {
+        if (typeof navigator !== "undefined" && "wakeLock" in navigator) {
+          wakeLock = await navigator.wakeLock.request("screen");
+        }
+      } catch {
+        // Battery / permission — ignore
+      }
+    };
+    void requestWakeLock();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void requestWakeLock();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearPlayProbe();
+      void wakeLock?.release().catch(() => undefined);
     };
   }, [onClose]);
 
@@ -162,10 +226,28 @@ export function YoutubePlayerModal({
       setIndex(nextIndex);
       const next = list[nextIndex];
       playerRef.current?.loadVideoById(next.videoId);
+      // Mobile browsers often need an explicit play after loadVideoById.
+      window.setTimeout(() => tryPlay(playerRef.current), 50);
+      window.setTimeout(() => tryPlay(playerRef.current), 400);
+      if (!unlockedRef.current) schedulePlayProbe();
     } finally {
       advancingRef.current = false;
     }
   }
+
+  function unlockAndPlay() {
+    unlockedRef.current = true;
+    setNeedsUnlock(false);
+    clearPlayProbe();
+    tryPlay(playerRef.current);
+  }
+
+  useEffect(() => {
+    if (!handsFree || !exhausted || !onRegenerate || regenerating) return;
+    if (autoRegenRequestedRef.current) return;
+    autoRegenRequestedRef.current = true;
+    onRegenerate();
+  }, [handsFree, exhausted, onRegenerate, regenerating]);
 
   useEffect(() => {
     if (!current || exhausted) return;
@@ -198,9 +280,15 @@ export function YoutubePlayerModal({
           events: {
             onReady: (event) => {
               playerRef.current = event.target;
-              event.target.playVideo?.();
+              tryPlay(event.target);
+              schedulePlayProbe();
             },
             onStateChange: (event) => {
+              if (event.data === window.YT?.PlayerState.PLAYING) {
+                unlockedRef.current = true;
+                setNeedsUnlock(false);
+                clearPlayProbe();
+              }
               if (event.data === window.YT?.PlayerState.ENDED) {
                 void advanceFrom(indexRef.current);
               }
@@ -219,6 +307,7 @@ export function YoutubePlayerModal({
 
     return () => {
       cancelled = true;
+      clearPlayProbe();
       try {
         player?.destroy();
       } catch {
@@ -248,7 +337,9 @@ export function YoutubePlayerModal({
               <>
                 <p className="font-semibold text-[var(--ink)] leading-snug">Queue finished</p>
                 <p className="text-xs text-[var(--muted)]">
-                  Watched videos are saved so regenerate won’t repeat them.
+                  {handsFree
+                    ? "Pulling a fresh drive-time list so you can keep going…"
+                    : "Watched videos are saved so regenerate won’t repeat them."}
                 </p>
               </>
             ) : current ? (
@@ -279,8 +370,9 @@ export function YoutubePlayerModal({
         {exhausted ? (
           <div className="px-4 py-10 sm:px-5 space-y-4 text-center">
             <p className="text-sm text-[var(--ink-soft)] max-w-md mx-auto leading-relaxed">
-              You’ve cleared this run. Pull a fresh drive-time list — watched video ids stay
-              blocked so you don’t get the same ones again.
+              {handsFree
+                ? "You’ve cleared this run. Fresh picks are loading so the drive queue can continue without another hunt for Play."
+                : "You’ve cleared this run. Pull a fresh drive-time list — watched video ids stay blocked so you don’t get the same ones again."}
             </p>
             {onRegenerate ? (
               <button
@@ -294,7 +386,7 @@ export function YoutubePlayerModal({
                 ) : (
                   <RefreshCw size={15} />
                 )}
-                Regenerate new picks
+                {regenerating ? "Refreshing…" : "Regenerate new picks"}
               </button>
             ) : null}
           </div>
@@ -306,13 +398,32 @@ export function YoutubePlayerModal({
                 {apiError}
               </div>
             ) : null}
+            {needsUnlock && !apiError ? (
+              <button
+                type="button"
+                onClick={unlockAndPlay}
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 px-6 text-center text-white"
+              >
+                <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg">
+                  <Play size={28} fill="currentColor" />
+                </span>
+                <span className="text-base font-semibold tracking-tight">
+                  Tap once to start drive play
+                </span>
+                <span className="max-w-xs text-sm text-white/80 leading-relaxed">
+                  Phones block sound until one tap. After that, the next videos keep going on their
+                  own — no Next needed.
+                </span>
+              </button>
+            ) : null}
           </div>
         )}
 
         {!exhausted && current ? (
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
             <p className="text-xs text-[var(--muted)] max-w-[18rem]">
-              Continuous play stays in Learning — next queue item starts when this one ends.
+              Hands-free in Learning — next queue item starts when this one ends. Keep the screen
+              awake.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {remainingAfter > 0 ? (
