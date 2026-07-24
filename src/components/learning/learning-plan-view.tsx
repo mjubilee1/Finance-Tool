@@ -148,18 +148,32 @@ export function LearningPlanView({
   const [formError, setFormError] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [activePlayer, setActivePlayer] = useState<YoutubePlayerTarget | null>(null);
+  const [playerSession, setPlayerSession] = useState<{
+    playlist: YoutubePlayerTarget[];
+    startIndex: number;
+  } | null>(null);
 
-  function openYoutubePlayer(target: YoutubePlayerTarget) {
-    setActivePlayer(target);
+  function openYoutubePlaylist(playlist: YoutubePlayerTarget[], startIndex = 0) {
+    if (playlist.length === 0) return;
+    setPlayerSession({
+      playlist,
+      startIndex: Math.min(Math.max(0, startIndex), playlist.length - 1),
+    });
   }
 
-  function markYoutubePickPlayed(pickId: string) {
-    void fetch("/api/learning-plan/youtube/queue", {
-      method: "PATCH",
+  async function recordVideoWatched(video: YoutubePlayerTarget) {
+    await fetch("/api/learning-plan/youtube/watched", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: pickId, status: "played" }),
-    }).then(() => queryClient.invalidateQueries({ queryKey: ["learning-youtube"] }));
+      body: JSON.stringify({
+        videoId: video.videoId,
+        title: video.title,
+        queueItemId: video.queueItemId ?? undefined,
+        pickId: video.pickId ?? undefined,
+      }),
+    });
+    void queryClient.invalidateQueries({ queryKey: ["learning-plan"] });
+    void queryClient.invalidateQueries({ queryKey: ["learning-youtube"] });
   }
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
@@ -183,7 +197,7 @@ export function LearningPlanView({
       }
       return res.json();
     },
-    enabled: subView === "youtube" || subView === "plan",
+    enabled: subView === "youtube" || subView === "plan" || subView === "queue",
     staleTime: 5 * 60 * 1000,
   });
 
@@ -338,6 +352,42 @@ export function LearningPlanView({
       return true;
     });
   }, [data?.items, filterCategory, filterStatus]);
+
+  const unfinishedYoutubeQueue = useMemo(() => {
+    const items = data?.items ?? [];
+    const playlist: YoutubePlayerTarget[] = [];
+    for (const item of items) {
+      if (item.status === "completed" || item.status === "skipped") continue;
+      const videoId = item.externalId || youtubeVideoIdFromUrl(item.url);
+      if (!videoId) continue;
+      playlist.push({
+        videoId,
+        title: item.title,
+        queueItemId: item.id,
+      });
+    }
+    return playlist;
+  }, [data?.items]);
+
+  const unplayedYoutubePicks = useMemo(() => {
+    const picks = youtubeData?.digest?.picks ?? [];
+    return picks
+      .filter((pick) => pick.status !== "played" && pick.status !== "skipped")
+      .map(
+        (pick) =>
+          ({
+            videoId: pick.videoId,
+            title: pick.title,
+            channelLabel: pick.channelLabel,
+            pickId: pick.id,
+            queueItemId: pick.queuedItemId,
+          }) satisfies YoutubePlayerTarget
+      );
+  }, [youtubeData?.digest?.picks]);
+
+  const youtubeQueueExhausted =
+    (data?.items ?? []).some((item) => youtubeVideoIdFromUrl(item.url) || item.externalId) &&
+    unfinishedYoutubeQueue.length === 0;
 
   const progress = data?.progress;
 
@@ -666,18 +716,43 @@ export function LearningPlanView({
                   Auto-queue daily picks
                 </span>
                 <span className="block text-xs text-[var(--muted)] mt-0.5">
-                  When on, today’s YouTube picks are added to your Learning queue automatically.
+                  Adds today’s picks to your Learning queue. Continuous play (next video starts
+                  when one ends) happens when you hit Play queue / Play here.
                 </span>
               </span>
             </label>
 
             {(youtubeData?.digest?.picks.length ?? 0) > 0 ? (
               <div className="flex flex-wrap gap-2">
+                {unplayedYoutubePicks.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => openYoutubePlaylist(unplayedYoutubePicks, 0)}
+                    className="app-btn-primary inline-flex items-center gap-2"
+                  >
+                    <Play size={16} />
+                    Play queue
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={youtubeRefreshMutation.isPending}
+                    onClick={() => youtubeRefreshMutation.mutate()}
+                    className="app-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {youtubeRefreshMutation.isPending ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <RefreshCw size={16} />
+                    )}
+                    Regenerate new picks
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={youtubeQueueMutation.isPending}
                   onClick={() => youtubeQueueMutation.mutate(undefined)}
-                  className="app-btn-primary disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
                 >
                   {youtubeQueueMutation.isPending ? (
                     <Loader2 size={16} className="animate-spin" />
@@ -740,7 +815,11 @@ export function LearningPlanView({
                     <p className="text-xs text-[var(--muted)]">
                       {pick.channelLabel} · {categoryLabel(pick.category)} ·{" "}
                       {pick.durationMinutes} min
-                      {pick.status === "queued" ? " · Queued" : ""}
+                      {pick.status === "played"
+                        ? " · Watched"
+                        : pick.status === "queued"
+                          ? " · Queued"
+                          : ""}
                     </p>
                     {pick.summary ? (
                       <p className="text-sm text-[var(--ink-soft)] leading-relaxed">
@@ -749,22 +828,57 @@ export function LearningPlanView({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-[var(--accent)] hover:opacity-90"
-                      onClick={() => {
-                        openYoutubePlayer({
-                          videoId: pick.videoId,
-                          title: pick.title,
-                          channelLabel: pick.channelLabel,
-                        });
-                        markYoutubePickPlayed(pick.id);
-                      }}
-                    >
-                      <Play size={13} />
-                      Play here
-                    </button>
-                    {pick.status !== "queued" ? (
+                    {pick.status === "played" ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)]"
+                        onClick={() =>
+                          openYoutubePlaylist(
+                            [
+                              {
+                                videoId: pick.videoId,
+                                title: pick.title,
+                                channelLabel: pick.channelLabel,
+                                pickId: pick.id,
+                                queueItemId: pick.queuedItemId,
+                              },
+                            ],
+                            0
+                          )
+                        }
+                      >
+                        <Play size={13} />
+                        Replay
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-white bg-[var(--accent)] hover:opacity-90"
+                        onClick={() => {
+                          const startIndex = unplayedYoutubePicks.findIndex(
+                            (row) => row.pickId === pick.id
+                          );
+                          openYoutubePlaylist(
+                            unplayedYoutubePicks.length > 0
+                              ? unplayedYoutubePicks
+                              : [
+                                  {
+                                    videoId: pick.videoId,
+                                    title: pick.title,
+                                    channelLabel: pick.channelLabel,
+                                    pickId: pick.id,
+                                    queueItemId: pick.queuedItemId,
+                                  },
+                                ],
+                            startIndex >= 0 ? startIndex : 0
+                          );
+                        }}
+                      >
+                        <Play size={13} />
+                        Play here
+                      </button>
+                    )}
+                    {pick.status === "played" ? null : pick.status !== "queued" ? (
                       <button
                         type="button"
                         disabled={youtubeQueueMutation.isPending}
@@ -794,6 +908,58 @@ export function LearningPlanView({
 
       {subView === "queue" && (
         <div className="space-y-6">
+          {unfinishedYoutubeQueue.length > 0 ? (
+            <section className="app-card p-5 sm:p-6 space-y-3">
+              <div>
+                <p className="app-label mb-1">Continuous play</p>
+                <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">
+                  Play the queue straight through
+                </h2>
+                <p className="mt-1 text-xs text-[var(--muted)] max-w-xl">
+                  {unfinishedYoutubeQueue.length} unfinished YouTube item
+                  {unfinishedYoutubeQueue.length === 1 ? "" : "s"} — each one marks watched and
+                  auto-advances to the next.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openYoutubePlaylist(unfinishedYoutubeQueue, 0)}
+                className="app-btn-primary inline-flex items-center gap-2"
+              >
+                <Play size={16} />
+                Play queue
+              </button>
+            </section>
+          ) : youtubeQueueExhausted ? (
+            <section className="app-card p-5 sm:p-6 space-y-3">
+              <div>
+                <p className="app-label mb-1">Queue cleared</p>
+                <h2 className="text-lg font-semibold text-[var(--ink)] tracking-tight">
+                  Ready for a fresh list
+                </h2>
+                <p className="mt-1 text-xs text-[var(--muted)] max-w-xl">
+                  Watched video ids are stored so regenerate won’t serve the same ones again.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={youtubeRefreshMutation.isPending}
+                onClick={() => {
+                  setSubView("youtube");
+                  youtubeRefreshMutation.mutate();
+                }}
+                className="app-btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {youtubeRefreshMutation.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+                Regenerate new picks
+              </button>
+            </section>
+          ) : null}
+
           <section className="app-card p-5 sm:p-6 space-y-4">
             <div>
               <p className="app-label mb-1">Content queue</p>
@@ -1006,21 +1172,38 @@ export function LearningPlanView({
                         </p>
                       </div>
                       {(() => {
-                        const videoId = youtubeVideoIdFromUrl(item.url);
+                        const videoId = item.externalId || youtubeVideoIdFromUrl(item.url);
                         if (videoId) {
+                          const unfinished = item.status !== "completed" && item.status !== "skipped";
                           return (
                             <button
                               type="button"
-                              onClick={() =>
-                                openYoutubePlayer({
-                                  videoId,
-                                  title: item.title,
-                                })
-                              }
+                              onClick={() => {
+                                if (unfinished && unfinishedYoutubeQueue.length > 0) {
+                                  const startIndex = unfinishedYoutubeQueue.findIndex(
+                                    (row) => row.queueItemId === item.id
+                                  );
+                                  openYoutubePlaylist(
+                                    unfinishedYoutubeQueue,
+                                    startIndex >= 0 ? startIndex : 0
+                                  );
+                                  return;
+                                }
+                                openYoutubePlaylist(
+                                  [
+                                    {
+                                      videoId,
+                                      title: item.title,
+                                      queueItemId: item.id,
+                                    },
+                                  ],
+                                  0
+                                );
+                              }}
                               className="shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-strong)] hover:bg-[var(--accent-soft)]"
                             >
                               <Play size={12} />
-                              Play here
+                              {item.status === "completed" ? "Replay" : "Play here"}
                             </button>
                           );
                         }
@@ -1114,8 +1297,19 @@ export function LearningPlanView({
         </TrendsErrorBoundary>
       )}
 
-      {activePlayer ? (
-        <YoutubePlayerModal video={activePlayer} onClose={() => setActivePlayer(null)} />
+      {playerSession ? (
+        <YoutubePlayerModal
+          playlist={playerSession.playlist}
+          startIndex={playerSession.startIndex}
+          onClose={() => setPlayerSession(null)}
+          onVideoWatched={recordVideoWatched}
+          onRegenerate={() => {
+            setPlayerSession(null);
+            setSubView("youtube");
+            youtubeRefreshMutation.mutate();
+          }}
+          regenerating={youtubeRefreshMutation.isPending}
+        />
       ) : null}
     </div>
   );

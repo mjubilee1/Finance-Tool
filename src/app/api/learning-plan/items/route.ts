@@ -9,6 +9,7 @@ import {
   youtubeAutoplayUrl,
   youtubeVideoIdFromUrl,
 } from "@/lib/learning-plan";
+import { recordLearningVideoWatched } from "@/lib/learning-youtube";
 import { prisma } from "@/lib/prisma";
 
 function isValidUrl(value: string): boolean {
@@ -192,6 +193,17 @@ export async function PATCH(request: Request) {
       where: { id: existing.id },
       data,
     });
+
+    if (item.status === "completed") {
+      const videoId = item.externalId || youtubeVideoIdFromUrl(item.url);
+      if (videoId) {
+        await recordLearningVideoWatched(session.user.id, {
+          videoId,
+          title: item.title,
+          queueItemId: item.id,
+        });
+      }
+    }
 
     return NextResponse.json({ item: serializeContentItem(item) });
   } catch (error) {

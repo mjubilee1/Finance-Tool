@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { queueYoutubePicks } from "@/lib/learning-youtube";
+import { queueYoutubePicks, recordLearningVideoWatched } from "@/lib/learning-youtube";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
@@ -51,6 +51,17 @@ export async function PATCH(request: Request) {
     const status = typeof body.status === "string" ? body.status : "";
     if (!["suggested", "queued", "skipped", "played"].includes(status)) {
       return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+    }
+
+    if (status === "played") {
+      await recordLearningVideoWatched(session.user.id, {
+        videoId: pick.videoId,
+        title: pick.title,
+        queueItemId: pick.queuedItemId,
+        pickId: pick.id,
+      });
+      const updated = await prisma.learningYoutubePick.findUnique({ where: { id: pick.id } });
+      return NextResponse.json({ pick: updated });
     }
 
     const updated = await prisma.learningYoutubePick.update({

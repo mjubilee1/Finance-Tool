@@ -325,6 +325,114 @@ export async function getYoutubeDigestForDate(userId: string, date: string) {
   });
 }
 
+/** Video ids already watched or already in the learning system — never re-pick these. */
+export async function getExcludedYoutubeVideoIds(userId: string): Promise<Set<string>> {
+  const [watched, content, picks] = await Promise.all([
+    prisma.learningWatchedVideo.findMany({
+      where: { userId },
+      select: { videoId: true },
+    }),
+    prisma.learningContentItem.findMany({
+      where: { userId, externalId: { not: null } },
+      select: { externalId: true },
+    }),
+    prisma.learningYoutubePick.findMany({
+      where: { digest: { userId } },
+      select: { videoId: true },
+    }),
+  ]);
+
+  const exclude = new Set<string>();
+  for (const row of watched) {
+    if (row.videoId) exclude.add(row.videoId);
+  }
+  for (const row of content) {
+    if (row.externalId) exclude.add(row.externalId);
+  }
+  for (const row of picks) {
+    if (row.videoId) exclude.add(row.videoId);
+  }
+  return exclude;
+}
+
+/**
+ * Record a finished watch: permanent video-id history, mark queue item completed,
+ * and mark today's pick as played when linked.
+ */
+export async function recordLearningVideoWatched(
+  userId: string,
+  input: {
+    videoId: string;
+    title?: string | null;
+    queueItemId?: string | null;
+    pickId?: string | null;
+  }
+) {
+  const videoId = input.videoId.trim();
+  if (!videoId || videoId.length < 8) {
+    throw new Error("Invalid video id");
+  }
+
+  const title = input.title?.trim().slice(0, 200) || null;
+
+  await prisma.learningWatchedVideo.upsert({
+    where: { userId_videoId: { userId, videoId } },
+    create: { userId, videoId, title },
+    update: {
+      title: title ?? undefined,
+      watchedAt: new Date(),
+    },
+  });
+
+  let queueItemId = input.queueItemId?.trim() || null;
+  if (!queueItemId) {
+    const byExternal = await prisma.learningContentItem.findFirst({
+      where: { userId, externalId: videoId },
+      select: { id: true },
+    });
+    queueItemId = byExternal?.id ?? null;
+  }
+
+  if (queueItemId) {
+    const existing = await prisma.learningContentItem.findFirst({
+      where: { id: queueItemId, userId },
+    });
+    if (existing) {
+      await prisma.learningContentItem.update({
+        where: { id: existing.id },
+        data: {
+          status: "completed",
+          completedAt: existing.completedAt ?? new Date(),
+        },
+      });
+    }
+  }
+
+  let pickId = input.pickId?.trim() || null;
+  if (pickId) {
+    const pick = await prisma.learningYoutubePick.findFirst({
+      where: { id: pickId, digest: { userId } },
+    });
+    if (pick) {
+      await prisma.learningYoutubePick.update({
+        where: { id: pick.id },
+        data: { status: "played" },
+      });
+    }
+  } else {
+    await prisma.learningYoutubePick.updateMany({
+      where: {
+        videoId,
+        digest: { userId },
+        status: { not: "played" },
+      },
+      data: { status: "played" },
+    });
+  }
+
+  return { videoId, queueItemId };
+}
+
 async function queuePickToLearning(
   userId: string,
   pick: {
@@ -431,18 +539,8 @@ export async function generateDailyYoutubeDigest(
   );
   const pool = feeds.flat();
 
-  const recentlyQueued = await prisma.learningContentItem.findMany({
-    where: {
-      userId,
-      source: "youtube_daily",
-      externalId: { not: null },
-      createdAt: { gte: DateTime.now().minus({ days: 14 }).toJSDate() },
-    },
-    select: { externalId: true },
-  });
-  const exclude = new Set(
-    recentlyQueued.map((row) => row.externalId).filter((id): id is string => Boolean(id))
-  );
+  // Permanent exclusion: watched history + anything already queued/shown.
+  const exclude = await getExcludedYoutubeVideoIds(userId);
 
   const slots = allocateDailyPickSlots(percentages, slotCount);
   const selected = pickVideosForSlots(slots, pool, exclude);
