@@ -38,6 +38,8 @@ export type LearningPlanSettingsLike = {
   weeklyHours: number;
   categoryPercentages: CategoryPercentages;
   autoQueueYoutube: boolean;
+  /** Auto-open continuous play for drive-time (hands-free after one unlock if needed). */
+  autoStartYoutube: boolean;
 };
 
 export type LearningContentItemLike = {
@@ -234,12 +236,14 @@ export function serializeSettings(row: {
   weeklyHours: number;
   categoryPercentages: unknown;
   autoQueueYoutube?: boolean;
+  autoStartYoutube?: boolean;
 }): LearningPlanSettingsLike {
   return {
     id: row.id,
     weeklyHours: row.weeklyHours,
     categoryPercentages: normalizeCategoryPercentages(row.categoryPercentages),
     autoQueueYoutube: row.autoQueueYoutube !== false,
+    autoStartYoutube: row.autoStartYoutube !== false,
   };
 }
 

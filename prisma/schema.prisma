@@ -632,6 +632,8 @@ model LearningPlanSettings {
   categoryPercentages  Json
   /// When true, daily YouTube picks are auto-added to the content queue.
   autoQueueYoutube     Boolean  @default(true)
+  /// When true, Learning auto-starts the drive queue and keeps going without Next taps.
+  autoStartYoutube     Boolean  @default(true)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

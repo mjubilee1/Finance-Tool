@@ -15,7 +15,7 @@ import {
   Video,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_CATEGORY_PERCENTAGES,
   DEFAULT_WEEKLY_HOURS,
@@ -151,14 +151,33 @@ export function LearningPlanView({
   const [playerSession, setPlayerSession] = useState<{
     playlist: YoutubePlayerTarget[];
     startIndex: number;
+    sessionKey: number;
   } | null>(null);
+  const autoStartedRef = useRef(false);
+  const continueAfterRegenRef = useRef(false);
 
   function openYoutubePlaylist(playlist: YoutubePlayerTarget[], startIndex = 0) {
     if (playlist.length === 0) return;
     setPlayerSession({
       playlist,
       startIndex: Math.min(Math.max(0, startIndex), playlist.length - 1),
+      sessionKey: Date.now(),
     });
+  }
+
+  function picksToPlaylist(picks: YoutubePick[]): YoutubePlayerTarget[] {
+    return picks
+      .filter((pick) => pick.status !== "played" && pick.status !== "skipped")
+      .map(
+        (pick) =>
+          ({
+            videoId: pick.videoId,
+            title: pick.title,
+            channelLabel: pick.channelLabel,
+            pickId: pick.id,
+            queueItemId: pick.queuedItemId,
+          }) satisfies YoutubePlayerTarget
+      );
   }
 
   async function recordVideoWatched(video: YoutubePlayerTarget) {
@@ -206,6 +225,7 @@ export function LearningPlanView({
       weeklyHours?: number;
       categoryPercentages?: Partial<CategoryPercentages>;
       autoQueueYoutube?: boolean;
+      autoStartYoutube?: boolean;
     }) => {
       const res = await fetch("/api/learning-plan", {
         method: "PATCH",
@@ -237,6 +257,18 @@ export function LearningPlanView({
     onSuccess: (body) => {
       queryClient.setQueryData(["learning-youtube"], body);
       void queryClient.invalidateQueries({ queryKey: ["learning-plan"] });
+      if (continueAfterRegenRef.current) {
+        continueAfterRegenRef.current = false;
+        const nextPlaylist = picksToPlaylist(body.digest?.picks ?? []);
+        if (nextPlaylist.length > 0) {
+          openYoutubePlaylist(nextPlaylist, 0);
+        } else {
+          setPlayerSession(null);
+        }
+      }
+    },
+    onError: () => {
+      continueAfterRegenRef.current = false;
     },
   });
 
@@ -370,24 +402,40 @@ export function LearningPlanView({
   }, [data?.items]);
 
   const unplayedYoutubePicks = useMemo(() => {
-    const picks = youtubeData?.digest?.picks ?? [];
-    return picks
-      .filter((pick) => pick.status !== "played" && pick.status !== "skipped")
-      .map(
-        (pick) =>
-          ({
-            videoId: pick.videoId,
-            title: pick.title,
-            channelLabel: pick.channelLabel,
-            pickId: pick.id,
-            queueItemId: pick.queuedItemId,
-          }) satisfies YoutubePlayerTarget
-      );
+    return picksToPlaylist(youtubeData?.digest?.picks ?? []);
   }, [youtubeData?.digest?.picks]);
 
   const youtubeQueueExhausted =
     (data?.items ?? []).some((item) => youtubeVideoIdFromUrl(item.url) || item.externalId) &&
     unfinishedYoutubeQueue.length === 0;
+
+  const handsFreeDrive = data?.settings.autoStartYoutube !== false;
+
+  // Hands-free: open continuous play once when Learning has something ready.
+  useEffect(() => {
+    if (!handsFreeDrive) return;
+    if (autoStartedRef.current || playerSession) return;
+    if (isLoading || youtubeLoading) return;
+    if (subView !== "youtube" && subView !== "queue" && subView !== "plan") return;
+
+    const playlist =
+      unfinishedYoutubeQueue.length > 0 ? unfinishedYoutubeQueue : unplayedYoutubePicks;
+    if (playlist.length === 0) return;
+
+    autoStartedRef.current = true;
+    const timer = window.setTimeout(() => {
+      openYoutubePlaylist(playlist, 0);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    handsFreeDrive,
+    playerSession,
+    isLoading,
+    youtubeLoading,
+    subView,
+    unfinishedYoutubeQueue,
+    unplayedYoutubePicks,
+  ]);
 
   const progress = data?.progress;
 
@@ -716,8 +764,30 @@ export function LearningPlanView({
                   Auto-queue daily picks
                 </span>
                 <span className="block text-xs text-[var(--muted)] mt-0.5">
-                  Adds today’s picks to your Learning queue. Continuous play (next video starts
-                  when one ends) happens when you hit Play queue / Play here.
+                  Adds today’s picks to your Learning queue so drive play has something lined up.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3 py-3 ring-1 ring-[var(--card-border)]">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={data?.settings.autoStartYoutube !== false}
+                disabled={settingsMutation.isPending}
+                onChange={(e) => {
+                  autoStartedRef.current = false;
+                  settingsMutation.mutate({ autoStartYoutube: e.target.checked });
+                }}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-[var(--ink)]">
+                  Hands-free drive play
+                </span>
+                <span className="block text-xs text-[var(--muted)] mt-0.5">
+                  Opens the queue when you hit Learning and auto-advances — no Next taps while
+                  driving. Phones may need one tap to unlock sound; after that it keeps going.
+                  When a run ends, fresh picks load so you can stay on the road.
                 </span>
               </span>
             </label>
@@ -918,7 +988,8 @@ export function LearningPlanView({
                 <p className="mt-1 text-xs text-[var(--muted)] max-w-xl">
                   {unfinishedYoutubeQueue.length} unfinished YouTube item
                   {unfinishedYoutubeQueue.length === 1 ? "" : "s"} — each one marks watched and
-                  auto-advances to the next.
+                  auto-advances to the next. With hands-free on, this starts when you open
+                  Learning.
                 </p>
               </div>
               <button
@@ -1299,13 +1370,16 @@ export function LearningPlanView({
 
       {playerSession ? (
         <YoutubePlayerModal
+          key={playerSession.sessionKey}
           playlist={playerSession.playlist}
           startIndex={playerSession.startIndex}
+          handsFree={handsFreeDrive}
           onClose={() => setPlayerSession(null)}
           onVideoWatched={recordVideoWatched}
           onRegenerate={() => {
-            setPlayerSession(null);
+            continueAfterRegenRef.current = handsFreeDrive;
             setSubView("youtube");
+            if (!handsFreeDrive) setPlayerSession(null);
             youtubeRefreshMutation.mutate();
           }}
           regenerating={youtubeRefreshMutation.isPending}
