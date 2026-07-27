@@ -4,6 +4,7 @@ import {
   BookOpen,
   BrainCircuit,
   Car,
+  ChartLine,
   Flame,
   LayoutDashboard,
   MoreHorizontal,
@@ -25,6 +26,7 @@ export type TabType =
   | "transactions"
   | "recurring"
   | "projections"
+  | "financial-trends"
   | "goals"
   | "growth"
   | "learning"
@@ -74,6 +76,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { tab: "transactions", label: "Transactions", Icon: Receipt },
       { tab: "recurring", label: "Recurring", Icon: Repeat },
       { tab: "projections", label: "Projections", Icon: TrendingUp },
+      { tab: "financial-trends", label: "Trends", Icon: ChartLine },
       { tab: "car", label: "Car", Icon: Car },
     ],
   },
