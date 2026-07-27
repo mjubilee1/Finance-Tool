@@ -48,6 +48,14 @@ export type MonthlyCashFlowPoint = {
   isPartial: boolean;
 };
 
+/** Month-over-month cash with a running "ladder" height (cumulative net). */
+export type CashLadderPoint = MonthlyCashFlowPoint & {
+  /** Cumulative net from the start of the window through this month. */
+  cumulativeNet: number;
+  /** Ladder height before this month's net. */
+  priorCumulativeNet: number;
+};
+
 export type WeeklyCashFlow = {
   days: WeekDaySummary[];
   weekSpent: number;
@@ -238,6 +246,29 @@ export function buildMonthlyCashFlowSeries(
       net: roundCurrency(income - spent),
       isCurrentMonth,
       isPartial: isCurrentMonth,
+    };
+  });
+}
+
+/**
+ * Same window as monthly cash flow, plus a running cumulative net ("ladder").
+ * Answers: am I climbing month over month, or slipping?
+ */
+export function buildCashLadderSeries(
+  transactions: CashFlowTransaction[],
+  months = 6,
+  referenceDate?: string,
+): CashLadderPoint[] {
+  const monthly = buildMonthlyCashFlowSeries(transactions, months, referenceDate);
+  let cumulative = 0;
+
+  return monthly.map((point) => {
+    const priorCumulativeNet = cumulative;
+    cumulative = roundCurrency(cumulative + point.net);
+    return {
+      ...point,
+      priorCumulativeNet,
+      cumulativeNet: cumulative,
     };
   });
 }

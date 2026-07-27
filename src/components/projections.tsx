@@ -15,6 +15,8 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { DateTime } from "luxon";
 import { DEFAULT_DISCRETIONARY_DAILY } from "@/lib/daily-brief";
+import type { CashLadderPoint } from "@/lib/cash-flow";
+import { CashLadderChart } from "@/components/projections/cash-ladder-chart";
 
 function fetchProjections(excludeDebt: boolean) {
   return fetch(`/api/projections?excludeDebt=${excludeDebt}`).then((res) => res.json());
@@ -48,6 +50,7 @@ export function Projections() {
 
   const safeSpendScenario = data?.safeSpendScenario as SafeSpendScenario | undefined;
   const foodFunTarget = safeSpendScenario?.safeDailySpend ?? DEFAULT_DISCRETIONARY_DAILY;
+  const cashLadderSeries = (data?.cashLadderSeries as CashLadderPoint[] | undefined) ?? [];
 
   // Slider = TOTAL daily spend (bills + gas + food + everything), not the $40 food/fun target.
   const currentTotalSpend = metrics?.dailyAverageSpend ?? 0;
@@ -125,9 +128,9 @@ export function Projections() {
             What happens to your cash if nothing big changes?
           </h2>
           <p className="text-sm text-[var(--ink-soft)] mt-2 leading-relaxed">
-            This is a rough sketch from the last {Math.round(metrics.daysAnalyzed)} days — not a
-            promise. It helps you see: keep today&apos;s pace, or spend a little less overall, and
-            where your bank balance might land.
+            First, check the cash ladder — are you climbing month over month? Then use the sketch
+            below from the last {Math.round(metrics.daysAnalyzed)} days to see where today&apos;s
+            pace (or a tighter one) might land. Compass, not a promise.
           </p>
         </div>
 
@@ -253,6 +256,8 @@ export function Projections() {
           </p>
         </div>
       ) : null}
+
+      {cashLadderSeries.length > 0 ? <CashLadderChart months={cashLadderSeries} /> : null}
 
       <div className="app-hero-gradient app-card-elevated p-6 space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
