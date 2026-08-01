@@ -11,8 +11,14 @@ import {
   youtubeAutoplayUrl,
   youtubeWatchUrl,
 } from "@/lib/learning-plan";
+import {
+  buildDailyYoutubeScript,
+} from "@/lib/learning-youtube-script";
 import { prisma } from "@/lib/prisma";
 import { USER_TIME_ZONE } from "@/lib/user-timezone";
+
+export { buildDailyYoutubeScript } from "@/lib/learning-youtube-script";
+export type { DailyYoutubeScriptBundle } from "@/lib/learning-youtube-script";
 
 export const YOUTUBE_CHANNEL_ALLOWLIST = [
   {
@@ -118,6 +124,8 @@ export type LearningYoutubeDigestLike = {
   id: string;
   date: string;
   autoQueued: boolean;
+  dailyScript: string | null;
+  customFeedPrompt: string | null;
   picks: LearningYoutubePickLike[];
   createdAt: string;
   updatedAt: string;
@@ -304,6 +312,8 @@ export function serializeYoutubeDigest(digest: {
   id: string;
   date: string;
   autoQueued: boolean;
+  dailyScript?: string | null;
+  customFeedPrompt?: string | null;
   createdAt: Date;
   updatedAt: Date;
   picks: Parameters<typeof serializeYoutubePick>[0][];
@@ -312,6 +322,8 @@ export function serializeYoutubeDigest(digest: {
     id: digest.id,
     date: digest.date,
     autoQueued: digest.autoQueued,
+    dailyScript: digest.dailyScript ?? null,
+    customFeedPrompt: digest.customFeedPrompt ?? null,
     picks: digest.picks.map(serializeYoutubePick),
     createdAt: digest.createdAt.toISOString(),
     updatedAt: digest.updatedAt.toISOString(),
@@ -321,6 +333,41 @@ export function serializeYoutubeDigest(digest: {
 export async function getYoutubeDigestForDate(userId: string, date: string) {
   return prisma.learningYoutubeDigest.findUnique({
     where: { userId_date: { userId, date } },
+    include: { picks: { orderBy: { relevanceScore: "desc" } } },
+  });
+}
+
+/** Attach daily script + custom-feed prompt when a digest exists but fields are empty. */
+export async function ensureYoutubeDigestScript(
+  userId: string,
+  digest: NonNullable<Awaited<ReturnType<typeof getYoutubeDigestForDate>>>
+) {
+  if (digest.dailyScript?.trim() && digest.customFeedPrompt?.trim()) {
+    return digest;
+  }
+
+  const settings = await prisma.learningPlanSettings.findUnique({
+    where: { userId },
+  });
+  const percentages = normalizeCategoryPercentages(
+    settings?.categoryPercentages ?? DEFAULT_CATEGORY_PERCENTAGES
+  );
+  const weeklyHours = settings?.weeklyHours ?? DEFAULT_WEEKLY_HOURS;
+  const day = DateTime.fromISO(digest.date, { zone: USER_TIME_ZONE });
+  const weekday = day.isValid ? day.weekday : DateTime.now().setZone(USER_TIME_ZONE).weekday;
+  const script = buildDailyYoutubeScript({
+    percentages,
+    weeklyHours,
+    weekday,
+    pickTitles: digest.picks.map((pick) => pick.title),
+  });
+
+  return prisma.learningYoutubeDigest.update({
+    where: { id: digest.id },
+    data: {
+      dailyScript: script.dailyScript,
+      customFeedPrompt: script.customFeedPrompt,
+    },
     include: { picks: { orderBy: { relevanceScore: "desc" } } },
   });
 }
@@ -516,8 +563,9 @@ export async function generateDailyYoutubeDigest(
   const existing = await getYoutubeDigestForDate(userId, today);
 
   if (existing && !options?.force) {
+    const withScript = await ensureYoutubeDigestScript(userId, existing);
     return {
-      digest: serializeYoutubeDigest(existing),
+      digest: serializeYoutubeDigest(withScript),
       refreshed: false,
       alreadyFresh: true,
     };
@@ -545,6 +593,16 @@ export async function generateDailyYoutubeDigest(
   const slots = allocateDailyPickSlots(percentages, slotCount);
   const selected = pickVideosForSlots(slots, pool, exclude);
 
+  const now = DateTime.now().setZone(USER_TIME_ZONE);
+  const script = buildDailyYoutubeScript({
+    percentages,
+    weeklyHours,
+    weekday: now.weekday,
+    pickTitles: selected.map((video) => video.title),
+    // Force refresh switches the focus so the script / custom-feed prompt can rotate mid-day.
+    rotationSeed: options?.force ? Math.floor(Date.now() / 1000) % 8 : 0,
+  });
+
   if (existing) {
     await prisma.learningYoutubePick.deleteMany({ where: { digestId: existing.id } });
     await prisma.learningYoutubeDigest.delete({ where: { id: existing.id } });
@@ -555,6 +613,8 @@ export async function generateDailyYoutubeDigest(
       userId,
       date: today,
       autoQueued: false,
+      dailyScript: script.dailyScript,
+      customFeedPrompt: script.customFeedPrompt,
       picks: {
         create: selected.map((video, index) => ({
           videoId: video.videoId,

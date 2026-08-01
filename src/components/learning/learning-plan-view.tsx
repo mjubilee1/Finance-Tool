@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Check,
+  Copy,
   Cpu,
   ExternalLink,
   Loader2,
@@ -85,6 +86,8 @@ type YoutubeDigestResponse = {
     id: string;
     date: string;
     autoQueued: boolean;
+    dailyScript: string | null;
+    customFeedPrompt: string | null;
     picks: YoutubePick[];
   } | null;
   refreshed?: boolean;
@@ -153,6 +156,7 @@ export function LearningPlanView({
     startIndex: number;
     sessionKey: number;
   } | null>(null);
+  const [feedPromptCopied, setFeedPromptCopied] = useState(false);
   const autoStartedRef = useRef(false);
   const continueAfterRegenRef = useRef(false);
 
@@ -731,7 +735,9 @@ export function LearningPlanView({
                 </h2>
                 <p className="mt-1 text-xs text-[var(--muted)] max-w-xl">
                   Real videos from founder / AI / sales / finance channels, weighted by your
-                  topic mix — not random recommendations.
+                  topic mix — not random recommendations. Today’s script says what you’re
+                  trying to learn; copy the custom-feed prompt into YouTube Premium if you
+                  want a parallel feed there too.
                 </p>
               </div>
               <button
@@ -748,6 +754,51 @@ export function LearningPlanView({
                 Refresh
               </button>
             </div>
+
+            {youtubeData?.digest?.dailyScript || youtubeData?.digest?.customFeedPrompt ? (
+              <div className="rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] px-3 py-3 sm:px-4 sm:py-4 ring-1 ring-[var(--card-border)] space-y-3">
+                {youtubeData.digest.dailyScript ? (
+                  <div className="space-y-1">
+                    <p className="app-label">Today’s learning script</p>
+                    <p className="text-sm text-[var(--ink)] leading-relaxed">
+                      {youtubeData.digest.dailyScript}
+                    </p>
+                  </div>
+                ) : null}
+                {youtubeData.digest.customFeedPrompt ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="app-label">YouTube custom feed prompt</p>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)]"
+                        onClick={async () => {
+                          const text = youtubeData.digest?.customFeedPrompt;
+                          if (!text) return;
+                          try {
+                            await navigator.clipboard.writeText(text);
+                            setFeedPromptCopied(true);
+                            window.setTimeout(() => setFeedPromptCopied(false), 2000);
+                          } catch {
+                            setFeedPromptCopied(false);
+                          }
+                        }}
+                      >
+                        {feedPromptCopied ? <Check size={13} /> : <Copy size={13} />}
+                        {feedPromptCopied ? "Copied" : "Copy for YouTube"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-[var(--ink-soft)] leading-relaxed whitespace-pre-wrap">
+                      {youtubeData.digest.customFeedPrompt}
+                    </p>
+                    <p className="text-[11px] text-[var(--muted)]">
+                      Paste into YouTube → Home → Your custom feed. Hit Refresh here to switch
+                      the focus mid-day.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <label className="flex items-start gap-3 rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] px-3 py-3 ring-1 ring-[var(--card-border)]">
               <input
