@@ -23,6 +23,11 @@ import {
   formatCoachContactNoteSummary,
   parseCoachContactNotes,
 } from "@/lib/coach-contact-notes";
+import {
+  getLocalEventDigestForDate,
+  serializeLocalEventDigest,
+  serializeLocalEventsForAgent,
+} from "@/lib/local-events";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
@@ -768,17 +773,23 @@ export async function POST(req: Request) {
     })();
 
     const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const [todayBrief, weekCalendarEvents, userPlanActivities, networkPack] = await Promise.all([
-      buildTodayBriefContext(session.user.id),
-      loadCoachWeekCalendarEvents(session.user.id),
-      loadCoachWeekUserPlanActivities(session.user.id),
-      loadCoachNetworkPack(session.user.id),
-    ]);
+    const todayIso = userNow().toISODate()!;
+    const [todayBrief, weekCalendarEvents, userPlanActivities, networkPack, localEventDigest] =
+      await Promise.all([
+        buildTodayBriefContext(session.user.id),
+        loadCoachWeekCalendarEvents(session.user.id),
+        loadCoachWeekUserPlanActivities(session.user.id),
+        loadCoachNetworkPack(session.user.id),
+        getLocalEventDigestForDate(session.user.id, todayIso),
+      ]);
     const weeklyPlan = buildWeeklyOperatingPlan({
       start: userNow(),
       calendarEvents: weekCalendarEvents,
       userPlanActivities,
     });
+    const localEventsPack = serializeLocalEventsForAgent(
+      localEventDigest ? serializeLocalEventDigest(localEventDigest) : null
+    );
 
     const systemPrompt = buildCoachSystemPrompt({
       intent: coachIntent,
@@ -786,6 +797,7 @@ export async function POST(req: Request) {
       todayBrief,
       weeklyPlan,
       networkPack,
+      localEventsPack,
       calendarContext: {
         nowIso: userNow().toISO() ?? new Date().toISOString(),
         timeZone: USER_TIME_ZONE,

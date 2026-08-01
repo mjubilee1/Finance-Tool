@@ -85,6 +85,7 @@ model User {
   learningContentItems    LearningContentItem[]
   learningYoutubeDigests  LearningYoutubeDigest[]
   learningWatchedVideos   LearningWatchedVideo[]
+  localEventDigests       LocalEventDigest[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
   financialEvents         FinancialEvent[]
@@ -756,6 +757,62 @@ model LearningWatchedVideo {
 
   @@unique([userId, videoId])
   @@index([userId, watchedAt])
+}
+
+/// Daily curated local events within driving distance of Oxon Hill (DMV + Balt + Richmond + VB).
+model LocalEventDigest {
+  id             String   @id @default(cuid())
+  userId         String
+  date           String // YYYY-MM-DD
+  radarTitle     String
+  radarWhy       String   @db.Text
+  radarAction    String
+  focusGuardrail String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items LocalEventItem[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model LocalEventItem {
+  id               String   @id @default(cuid())
+  digestId         String
+  title            String
+  summary          String   @db.Text
+  whyItMatters     String   @db.Text
+  /// networking | festival | learning_skill | founder_startup | fitness_body | culture_social | real_estate_housing | music_arts
+  theme            String
+  /// dmv | baltimore | richmond | virginia_beach
+  region           String
+  /// nearby | regional | stretch
+  distanceTier    String
+  city             String?
+  venue            String?
+  /// YYYY-MM-DD when known
+  startsOn         String?
+  endsOn           String?
+  /// evening | wfh_flex | weekend | weekend_trip
+  dayFit           String
+  driveMinutes     Int?
+  sourceLabel      String
+  sourceUrl        String?
+  relevanceScore   Float    @default(5)
+  /// confirmed | directional
+  confidence       String   @default("confirmed")
+  /// new | interested | planned | dismissed | attended
+  status           String   @default("new")
+  loggedActivityId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  digest LocalEventDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+
+  @@index([digestId, status])
+  @@index([digestId, startsOn])
 }
 
 model CoachSession {
