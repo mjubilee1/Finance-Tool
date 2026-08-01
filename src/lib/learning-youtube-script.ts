@@ -1,5 +1,6 @@
 import {
   categoryLabel,
+  founderPriorityIndex,
   isLearningCategoryId,
   type CategoryPercentages,
   type LearningCategoryId,
@@ -19,43 +20,48 @@ const CUSTOM_FEED_CUES: Record<
   { vibe: string; examples: string; avoid: string }
 > = {
   startup_product: {
-    vibe: "startup building, product sense, YC-style operator lessons",
-    examples: "shipping MVPs, distribution, founder product decisions",
-    avoid: "generic hustle porn, get-rich-quick, or career-ladder corporate promo advice",
+    vibe: "founder product sense, shipping, and early-stage company building",
+    examples:
+      "MVP shipping, YC-style product decisions, founder operating cadence, distribution experiments",
+    avoid: "generic hustle porn, get-rich-quick, or corporate ladder promo advice",
   },
   ai: {
-    vibe: "practical AI agents, models, and builder workflows",
-    examples: "LLM tools, agent demos under 20 mins, applied AI for builders",
-    avoid: "sci-fi speculation, hype thumbnails, or pure academic lectures",
+    vibe: "forefront AI — frontier models, multi-agent systems, and large-scale model progress",
+    examples:
+      "GPT/Claude/Gemini-class models, multi-agent workflows, tool-using agents, evals, applied AI for founders",
+    avoid: "sci-fi hype thumbnails, fearmongering AGI doom loops, or pure academic lectures with no builder takeaway",
   },
   sales_marketing: {
-    vibe: "founder sales, distribution, and sharp marketing leverage",
-    examples: "outbound, positioning, storytelling that sells, growth loops",
-    avoid: "MLM energy, empty motivation, or brand fluff with no tactics",
+    vibe: "B2B / enterprise founder sales and go-to-market leverage",
+    examples:
+      "enterprise outbound, SaaS sales motions, ICP positioning, founder-led sales, pipeline systems",
+    avoid: "MLM energy, consumer hustle gurus, or brand fluff with no B2B tactics",
   },
   finance_investing: {
-    vibe: "personal finance systems, debt velocity, and investing literacy",
-    examples: "cash buffer, high-APR payoff, credit, long-term capital allocation",
+    vibe: "founder-relevant capital allocation and personal financial floor",
+    examples: "runway thinking, debt velocity, capital efficiency — light personal CFO literacy",
     avoid: "day-trading hype, crypto pumps, or fear-based money content",
   },
   leadership: {
-    vibe: "operator leadership, decision-making, and high-agency habits",
-    examples: "hard conversations, focus, compounding discipline, founder mindset",
+    vibe: "founder leadership, high-agency decisions, and operator discipline",
+    examples: "hard calls, focus systems, compounding habits, building with small teams",
     avoid: "corporate HR soft-skills fluff or empty motivational speeches",
   },
   real_estate: {
-    vibe: "practical real estate and housing path for a DMV builder",
-    examples: "mortgage literacy, rental math, first property readiness",
-    avoid: "guru seminar funnels, wholesale spam, or get-rich-with-no-money schemes",
+    vibe: "light real-estate awareness only (background wealth path)",
+    examples: "occasional housing/market literacy — keep this a small side lane",
+    avoid: "guru seminar funnels, wholesale spam, or real-estate-as-primary-career content",
   },
   emerging_tech: {
-    vibe: "fast emerging tech briefings a builder can actually use",
-    examples: "new tools, infra shifts, short Fireship-style explainers",
-    avoid: "gadget unboxings, clickbait 'Top 10' lists, or unrelated gaming",
+    vibe: "emergent tech on the frontier — AI infra, space, deep tech a founder should track",
+    examples:
+      "new model releases, AI infra shifts, multi-agent platforms, space/aerospace programs, deep-tech briefings",
+    avoid: "gadget unboxings, clickbait Top-10 lists, gaming, or consumer gadget fluff",
   },
   founder_stories: {
-    vibe: "real founder stories and company-building lessons",
-    examples: "startup origin stories, hard lessons, acquisition / scale narratives",
+    vibe: "real founder and company-building stories at the tech frontier",
+    examples:
+      "startup origin stories, hard lessons, scale / enterprise GTM narratives, builder interviews",
     avoid: "celebrity gossip, fake overnight-success myths, or pure entertainment",
   },
 };
@@ -65,7 +71,12 @@ function rankedLearningCategories(percentages: CategoryPercentages): LearningCat
     .filter((entry): entry is [LearningCategoryId, number] => isLearningCategoryId(entry[0]))
     .map(([id, percent]) => ({ id, percent: Math.max(0, percent) }))
     .filter((row) => row.percent > 0)
-    .sort((a, b) => b.percent - a.percent || a.id.localeCompare(b.id))
+    .sort(
+      (a, b) =>
+        b.percent - a.percent ||
+        founderPriorityIndex(a.id) - founderPriorityIndex(b.id) ||
+        a.id.localeCompare(b.id)
+    )
     .map((row) => row.id);
 }
 
@@ -122,21 +133,22 @@ export function buildDailyYoutubeScript(input: {
     `Today's drive-time script: lean into ${focusLabel}`,
     supportLabels.length > 0 ? `with light ${supportLabels.join(" + ")} on the side` : null,
     `(~${dailyMinutes} min across ${driveWindow}).`,
-    `Goal: absorb one concrete lesson you can use this week on the startup/build path — not random scrolling.${pickHint}`,
+    `Goal: one concrete founder takeaway — frontier tech, multi-agent AI, or B2B GTM you can use this week.${pickHint}`,
   ]
     .filter(Boolean)
     .join(" ");
 
   const customFeedPrompt = [
-    `Build me a focused learning feed for a software developer + aspiring founder in the DMV.`,
+    `Build me a focused founder learning feed for a software engineer + aspiring entrepreneur.`,
+    `I want emergent technology and the tech frontier: multi-agent systems, forefront AI models, large-scale models, AI infra, space/aerospace programs, deep tech, and B2B / enterprise sales for founders.`,
     `Primary vibe today: ${cue.vibe}.`,
-    `I want videos about ${cue.examples}.`,
+    `Lean into videos about ${cue.examples}.`,
     supportCategories.length > 0
       ? `Secondary spice only: ${supportCue}.`
       : null,
     `Keep most videos under ${Math.min(45, Math.max(12, Math.round(dailyMinutes / 2)))} minutes when possible so they fit ${driveWindow}.`,
-    `Prefer actionable builder/operator content. Skip ${cue.avoid}.`,
-    `No music mixes, sports highlights, political ragebait, or random entertainment.`,
+    `Prefer actionable founder/operator content. Skip ${cue.avoid}.`,
+    `Skip real-estate guru content, music mixes, sports, politics, and random entertainment.`,
   ]
     .filter(Boolean)
     .join(" ");

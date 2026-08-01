@@ -7,6 +7,7 @@ import {
   DEFAULT_CATEGORY_PERCENTAGES,
   DEFAULT_WEEKLY_HOURS,
   isLearningCategoryId,
+  isLegacyEvenLearningMix,
   LEARNING_CATEGORIES,
   normalizeCategoryPercentages,
   percentagesAreValid,
@@ -29,6 +30,12 @@ async function loadBundle(userId: string) {
         weeklyHours: DEFAULT_WEEKLY_HOURS,
         categoryPercentages: DEFAULT_CATEGORY_PERCENTAGES,
       },
+    });
+  } else if (isLegacyEvenLearningMix(settings.categoryPercentages)) {
+    // Upgrade old even 12.5% split → founder/AI/emerging-tech weighted mix.
+    settings = await prisma.learningPlanSettings.update({
+      where: { userId },
+      data: { categoryPercentages: DEFAULT_CATEGORY_PERCENTAGES },
     });
   }
 
