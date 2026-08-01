@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import {
+  ensureYoutubeDigestScript,
   generateDailyYoutubeDigest,
   getYoutubeDigestForDate,
   serializeYoutubeDigest,
@@ -17,7 +18,7 @@ export async function GET() {
     }
 
     const today = DateTime.now().setZone(USER_TIME_ZONE).toISODate()!;
-    const digestRow = await getYoutubeDigestForDate(session.user.id, today);
+    let digestRow = await getYoutubeDigestForDate(session.user.id, today);
 
     if (!digestRow) {
       const result = await generateDailyYoutubeDigest(session.user.id);
@@ -28,6 +29,8 @@ export async function GET() {
         autoQueued: result.autoQueued ?? false,
       });
     }
+
+    digestRow = await ensureYoutubeDigestScript(session.user.id, digestRow);
 
     return NextResponse.json({
       digest: serializeYoutubeDigest(digestRow),
