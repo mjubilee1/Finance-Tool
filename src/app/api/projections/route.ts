@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { DateTime } from "luxon";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts, hasPrimarySelection } from "@/lib/account-focus";
+import { buildCashLadderSeries } from "@/lib/cash-flow";
 
 type CfoSummary = {
   cfoBrief?: {
@@ -167,6 +168,9 @@ export async function GET(request: Request) {
 
     const projectSafeSpendBalance = (days: number) => projectedBalance + (safeSpendNetDailyAverage * days);
 
+    // Actual month-over-month cash ladder (history) — complements the forward projection sketch.
+    const cashLadderSeries = buildCashLadderSeries(transactions, 6, todayKey);
+
     return NextResponse.json({
       metrics: {
         totalSpend,
@@ -202,6 +206,7 @@ export async function GET(request: Request) {
         ],
       },
       projectionData,
+      cashLadderSeries,
     });
   } catch (error) {
     console.error("Failed to fetch projections:", error);
