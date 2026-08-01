@@ -21,17 +21,59 @@ export type CategoryPercentages = Record<LearningCategoryId, number>;
 
 export const DEFAULT_WEEKLY_HOURS = 10;
 
-/** Even split across eight topics (12.5% each). */
+/**
+ * Founder / entrepreneur learning mix — heavy on AI, emerging tech, startup,
+ * B2B sales; light real estate (property path stays in Goals/Events, not drive YouTube).
+ */
 export const DEFAULT_CATEGORY_PERCENTAGES: CategoryPercentages = {
-  startup_product: 12.5,
-  ai: 12.5,
-  sales_marketing: 12.5,
-  finance_investing: 12.5,
-  leadership: 12.5,
-  real_estate: 12.5,
-  emerging_tech: 12.5,
-  founder_stories: 12.5,
+  ai: 22,
+  emerging_tech: 18,
+  startup_product: 18,
+  sales_marketing: 14,
+  founder_stories: 12,
+  leadership: 8,
+  finance_investing: 5,
+  real_estate: 3,
 };
+
+/** Tie-break order when ranking categories for daily YouTube focus rotation. */
+export const FOUNDER_LEARNING_PRIORITY: LearningCategoryId[] = [
+  "ai",
+  "emerging_tech",
+  "startup_product",
+  "sales_marketing",
+  "founder_stories",
+  "leadership",
+  "finance_investing",
+  "real_estate",
+];
+
+export function founderPriorityIndex(id: LearningCategoryId): number {
+  const idx = FOUNDER_LEARNING_PRIORITY.indexOf(id);
+  return idx >= 0 ? idx : FOUNDER_LEARNING_PRIORITY.length;
+}
+
+/** True when the saved mix is the old even 12.5% split (or empty). */
+export function isLegacyEvenLearningMix(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return true;
+  const record = raw as Record<string, unknown>;
+  const values = LEARNING_CATEGORIES.map((cat) => {
+    const num = typeof record[cat.id] === "number" ? (record[cat.id] as number) : Number(record[cat.id]);
+    return Number.isFinite(num) ? num : null;
+  });
+  if (values.some((v) => v == null)) return false;
+  return values.every((v) => Math.abs((v as number) - 12.5) < 0.35);
+}
+
+/**
+ * Normalize percentages; auto-upgrade legacy even splits to the founder default mix.
+ */
+export function resolveLearningPercentages(raw: unknown): CategoryPercentages {
+  if (isLegacyEvenLearningMix(raw)) {
+    return { ...DEFAULT_CATEGORY_PERCENTAGES };
+  }
+  return normalizeCategoryPercentages(raw);
+}
 
 export type LearningPlanSettingsLike = {
   id: string;
@@ -241,7 +283,7 @@ export function serializeSettings(row: {
   return {
     id: row.id,
     weeklyHours: row.weeklyHours,
-    categoryPercentages: normalizeCategoryPercentages(row.categoryPercentages),
+    categoryPercentages: resolveLearningPercentages(row.categoryPercentages),
     autoQueueYoutube: row.autoQueueYoutube !== false,
     autoStartYoutube: row.autoStartYoutube !== false,
   };

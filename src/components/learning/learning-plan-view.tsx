@@ -490,8 +490,8 @@ export function LearningPlanView({
               Learning Plan
             </h1>
             <p className="mt-1 text-sm text-[var(--muted)] leading-relaxed max-w-xl">
-              Shape drive-time learning instead of random recommendations — mix topics,
-              queue content, and keep Tech/DMV news in one place.
+              Founder drive-time learning — frontier AI, emerging tech, B2B sales, and startup
+              operators. Queue content and keep Tech/DMV news in one place.
             </p>
           </div>
           {isFetching && !isLoading ? (
@@ -734,10 +734,9 @@ export function LearningPlanView({
                   Drive-time picks for today
                 </h2>
                 <p className="mt-1 text-xs text-[var(--muted)] max-w-xl">
-                  Real videos from founder / AI / sales / finance channels, weighted by your
-                  topic mix — not random recommendations. Today’s script says what you’re
-                  trying to learn; copy the custom-feed prompt into YouTube Premium if you
-                  want a parallel feed there too.
+                  Founder-weighted picks — frontier AI, multi-agent systems, emerging tech,
+                  B2B/enterprise sales, and startup operators. Real estate stays a tiny side
+                  lane. Copy the custom-feed prompt into YouTube Premium for a parallel feed.
                 </p>
               </div>
               <button
