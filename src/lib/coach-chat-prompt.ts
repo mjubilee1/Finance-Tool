@@ -130,6 +130,7 @@ export function buildCoachSystemPrompt(params: {
   calendarContext: CalendarContext;
   weeklyPlan: WeeklyOperatingPlan;
   networkPack?: NetworkPack | null;
+  localEventsPack?: unknown;
 }) {
   const {
     intent,
@@ -139,6 +140,7 @@ export function buildCoachSystemPrompt(params: {
     calendarContext,
     weeklyPlan,
     networkPack,
+    localEventsPack,
   } = params;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
@@ -224,6 +226,22 @@ Primary leverage path = build/startup/founder network. W2 promotion is secondary
     sections.push(`
 GROWTH_CONTACTS (source of truth for who to reach out to — ${networkPack.withNotesCount} have notes):
 ${JSON.stringify(networkPack.contacts)}
+`);
+  }
+
+  if (localEventsPack) {
+    sections.push(`
+LOCAL_EVENTS_RADAR (DMV nearby + Baltimore regional + Richmond/Virginia Beach stretch drives):
+${JSON.stringify(localEventsPack)}
+
+Local events rules:
+- Prefer nearby (Oxon Hill / National Harbor / PG / DC) for office evenings.
+- Baltimore = regional — Thu evening or weekend preferred.
+- Richmond / Virginia Beach = weekend trip only.
+- Suggest events that compound network, skills, festivals with energy, fitness, intentional social/dating, or real-estate market awareness — not low-ROI random nightlife.
+- At most one concrete event suggestion unless the user asks for a weekend plan.
+- If confidence is directional, tell them to verify the listing before committing.
+- When they want to go, offer to add a Google Calendar block with travel buffer and optional @Contact linking.
 `);
   }
 

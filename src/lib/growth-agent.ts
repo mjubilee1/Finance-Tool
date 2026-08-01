@@ -16,6 +16,11 @@ import {
   syncCalendarEventsToGrowth,
 } from "@/lib/growth-calendar-sync";
 import {
+  getLocalEventDigestForDate,
+  serializeLocalEventDigest,
+  serializeLocalEventsForAgent,
+} from "@/lib/local-events";
+import {
   IMPROVING_BASELINE,
   WEAK_DOMAIN_THRESHOLD,
   combineCompoundingScore,
@@ -140,6 +145,7 @@ Active-context rules:
 - @Name in calendar titles or activity logs links that contact — treat as relationship touchpoints.
 - Goal discipline: do not invent a pile of goals. If freed cash appears (canceled sub, surplus after buffer), prefer pointing it at highest-APR debt or an existing near-term money goal. Mention "create a tracked goal in Goals" only when one clear outcome is worth tracking — never flood the list.
 - Trends digest (trendsContext) is background signal only. Never turn a headline into a new side project. Prefer finishing open leverage / promotion work; reading may inform, not derail.
+- Local events (localEventsContext) is background signal for network / skill / intentional joy outings within driving distance (DMV nearby, Baltimore regional, Richmond/VB weekend stretch). Suggest at most one when it compounds goals and fits day shape — never spam the week with random drives.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block tonight")
@@ -621,7 +627,7 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
   const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
   const today = DateTime.local().toISODate()!;
-  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, calendarContext] =
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, todayEvents, calendarContext] =
     await Promise.all([
       prisma.financialMemory.findMany({
         where: { userId },
@@ -664,6 +670,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: true,
         },
       }),
+      getLocalEventDigestForDate(userId, today),
       getRecentCalendarContextForGrowth(userId),
     ]);
 
@@ -719,6 +726,9 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: todayTrends.focusGuardrail,
         }
       : null,
+    localEventsContext: serializeLocalEventsForAgent(
+      todayEvents ? serializeLocalEventDigest(todayEvents) : null
+    ),
     calendarContext,
     metrics,
   };
@@ -806,6 +816,7 @@ Rules for this response:
 - Respect avoidedMoves (skipped/done recently) — do not recycle them.
 - If memories say the user already has a boss promotion checklist / existing promo plan, do not invent a "draft promo one-pager" — either point at executing one concrete next step from their existing path, or pick a different domain.
 - If trendsContext is present, treat it as BACKGROUND SIGNAL only. Do not make "read AI news" or "start a project inspired by a trend" the daily move unless the user already logged a trend note as today's work.
+- If localEventsContext is present, you may suggest ONE high-fit event when social/network/joy is the bottleneck and day shape allows — prefer nearby/evening on office days; stretch (Richmond/VB) only weekend. Do not replace a leverage/build move with an outing unless network/social is clearly the highest leverage today.
 ${avoidNote}
 
 Return JSON exactly (keep every string SHORT — scannable mobile UI):

@@ -39,6 +39,10 @@ const LearningPlanView = dynamic(
   () => import("./learning/learning-plan-view").then((m) => m.LearningPlanView),
   { loading: () => <DashboardSkeleton /> },
 );
+const LocalEventsView = dynamic(
+  () => import("./events/local-events-view").then((m) => m.LocalEventsView),
+  { loading: () => <DashboardSkeleton /> },
+);
 const CarView = dynamic(
   () => import("./car/car-view").then((m) => m.CarView),
   { loading: () => <DashboardSkeleton /> },
@@ -784,6 +788,8 @@ export function Dashboard() {
             {activeTab === "learning" && (
               <LearningPlanView onOpenGrowth={() => selectTab("growth")} />
             )}
+
+            {activeTab === "events" && <LocalEventsView />}
 
             {activeTab === "car" && <CarView />}
             {activeTab === "calories" && <CaloriesView />}

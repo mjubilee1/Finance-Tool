@@ -3,6 +3,7 @@
 import {
   BookOpen,
   BrainCircuit,
+  CalendarDays,
   Car,
   ChartLine,
   Flame,
@@ -30,6 +31,7 @@ export type TabType =
   | "goals"
   | "growth"
   | "learning"
+  | "events"
   | "car"
   | "calories";
 
@@ -66,6 +68,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { tab: "calories", label: "Calories", Icon: Utensils },
       { tab: "learning", label: "Learning", Icon: BookOpen },
+      { tab: "events", label: "Events", Icon: CalendarDays },
     ],
   },
   {
