@@ -264,12 +264,22 @@ type CheckingAccountRef = {
 /**
  * Combined monthly cash flow plus Chase / Capital One checking splits
  * so Overview can show a real per-bank breakdown.
+ *
+ * "All" is defined as the union of the Chase and Capital One checking-like
+ * transactions — the exact same transactions used to build the `chase` and
+ * `capitalOne` series — so `all.income/spent/net` always reconciles to
+ * `chase + capitalOne` for every month. Previously "all" could be built from
+ * a differently-filtered transaction set (e.g. accounts flagged primary),
+ * which let it silently diverge from the two bank splits shown right next to
+ * it. `fallbackAllTransactions` is only used when neither bank is detected,
+ * so "All" still has something sensible to show.
  */
 export function buildMonthlyCashFlowByChecking(
   transactions: CashFlowTransaction[],
   accounts: CheckingAccountRef[],
   months = 6,
   referenceDate?: string,
+  fallbackAllTransactions?: CashFlowTransaction[],
 ): MonthlyCashFlowByChecking {
   const chaseIds = new Set<string>();
   const capitalOneIds = new Set<string>();
@@ -290,8 +300,14 @@ export function buildMonthlyCashFlowByChecking(
   if (chaseIds.size > 0) availableScopes.push("chase");
   if (capitalOneIds.size > 0) availableScopes.push("capital_one");
 
+  const combinedIds = new Set<string>([...chaseIds, ...capitalOneIds]);
+  const combinedTxns =
+    combinedIds.size > 0
+      ? transactions.filter((txn) => txn.accountId && combinedIds.has(txn.accountId))
+      : (fallbackAllTransactions ?? transactions);
+
   return {
-    all: buildMonthlyCashFlowSeries(transactions, months, referenceDate),
+    all: buildMonthlyCashFlowSeries(combinedTxns, months, referenceDate),
     chase: buildMonthlyCashFlowSeries(chaseTxns, months, referenceDate),
     capitalOne: buildMonthlyCashFlowSeries(capitalOneTxns, months, referenceDate),
     availableScopes,

@@ -9,7 +9,6 @@ import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import {
   buildDailySpendSeries,
   buildMonthlyCashFlowByChecking,
-  buildMonthlyCashFlowSeries,
   calculateTodayCashFlow,
   calculateWeeklyCashFlow,
   calculateNetDailyAverage,
@@ -145,18 +144,15 @@ export async function GET() {
     });
 
     const dailySpendSeries = buildDailySpendSeries(chartSpendTransactions, 30, todayKey);
-    // "All" keeps the primary/focus rollup; Chase / Cap One use full checking history
-    // so each bank stays visible even when only one is starred primary.
+    // "All" is the union of the Chase + Cap One checking transactions below, so it
+    // always reconciles to chase + capitalOne. The focus (primary-flagged) rollup is
+    // only used as a fallback when neither bank is detected on the linked accounts.
     const monthlyCashFlowByChecking = buildMonthlyCashFlowByChecking(
       monthlyTransactions,
       accounts,
       6,
       todayKey,
-    );
-    monthlyCashFlowByChecking.all = buildMonthlyCashFlowSeries(
       focusMonthlyTransactions,
-      6,
-      todayKey,
     );
     const monthlyCashFlowSeries = monthlyCashFlowByChecking.all;
     const goalsWithMonth = await attachGoalMonthPaid(userId, goals);
