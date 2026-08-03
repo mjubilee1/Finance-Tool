@@ -48,6 +48,10 @@ function MonthlyTooltip({
   const point = payload[0]?.payload;
   if (!point) return null;
 
+  const pendingIncome = point.pendingIncome ?? 0;
+  const pendingSpent = point.pendingSpent ?? 0;
+  const hasPending = pendingIncome > 0.005 || pendingSpent > 0.005;
+
   return (
     <div
       className="rounded-xl px-3 py-2.5 text-sm shadow-lg"
@@ -70,6 +74,16 @@ function MonthlyTooltip({
           <span className="text-[var(--ink-soft)]">Spent</span>
           <span className="tabular-nums">{formatCurrency(point.spent)}</span>
         </div>
+        {hasPending ? (
+          <div className="flex justify-between gap-4 text-[var(--ink-soft)]">
+            <span>Pending in totals</span>
+            <span className="tabular-nums">
+              {pendingSpent > 0.005 ? `${formatCurrency(pendingSpent)} out` : null}
+              {pendingSpent > 0.005 && pendingIncome > 0.005 ? " · " : null}
+              {pendingIncome > 0.005 ? `${formatCurrency(pendingIncome)} in` : null}
+            </span>
+          </div>
+        ) : null}
         <div className="flex justify-between gap-4 border-t border-[var(--card-border)] pt-1 mt-1">
           <span className="font-medium">Net</span>
           <span
@@ -167,8 +181,8 @@ export function MonthlyCashFlowChart({ months, byChecking = null }: Props) {
             Month over month
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)] leading-relaxed">
-            What really posted — income minus spending each month. This is your history, not a
-            projection.
+            What really hit the bank — income minus spending by post date. A bill that clears Aug
+            1 counts in August, even if it feels like a July bill.
           </p>
         </div>
         <div
@@ -238,6 +252,9 @@ export function MonthlyCashFlowChart({ months, byChecking = null }: Props) {
             spent: currentMonth.spent,
             net: currentMonth.net,
             partial: currentMonth.isPartial,
+            pendingIncome: currentMonth.pendingIncome ?? 0,
+            pendingSpent: currentMonth.pendingSpent ?? 0,
+            asOfDate: currentMonth.asOfDate,
           },
           ...(lastCompleteMonth
             ? [
@@ -247,17 +264,22 @@ export function MonthlyCashFlowChart({ months, byChecking = null }: Props) {
                   spent: lastCompleteMonth.spent,
                   net: lastCompleteMonth.net,
                   partial: false,
+                  pendingIncome: 0,
+                  pendingSpent: 0,
+                  asOfDate: undefined as string | undefined,
                 },
               ]
             : []),
-        ].map((row) => (
+        ].map((row) => {
+          const hasPending = row.pendingIncome > 0.005 || row.pendingSpent > 0.005;
+          return (
           <div
             key={row.label}
             className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)] sm:col-span-1 col-span-2 first:col-span-2 sm:first:col-span-1"
           >
             <p className="app-label mb-2">
               {row.label}
-              {row.partial ? " · partial" : ""}
+              {row.partial ? " · up to date" : ""}
             </p>
             <div className="space-y-1 text-xs">
               <div className="flex justify-between gap-2">
@@ -280,9 +302,21 @@ export function MonthlyCashFlowChart({ months, byChecking = null }: Props) {
                   {formatSignedCurrency(row.net)}
                 </span>
               </div>
+              {row.partial ? (
+                <p className="text-[10px] text-[var(--muted)] pt-1 leading-snug">
+                  {hasPending
+                    ? `Includes ${formatCurrency(row.pendingSpent)} pending out` +
+                      (row.pendingIncome > 0.005
+                        ? ` · ${formatCurrency(row.pendingIncome)} pending in`
+                        : "") +
+                      ". Live through today — Sync if a fresh bill is missing."
+                    : "Live through today, including pending once the bank shows them. Sync if a fresh bill is missing."}
+                </p>
+              ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {showBankSnapshot && chaseClosed && capOneClosed ? (
@@ -370,7 +404,8 @@ export function MonthlyCashFlowChart({ months, byChecking = null }: Props) {
       </div>
       <p className="text-[11px] text-[var(--muted)] leading-relaxed">
         Green bars = you kept more than you spent that month. Red = you ran behind. The lighter bar is
-        this month still in progress — compare it to closed months once the calendar turns.
+        this month live through today (pending included). Bills land in the month they clear — so a
+        late July obligation that posts Aug 1 makes July look stronger and August heavier.
         {showScopeTabs
           ? " Use Chase / Cap One to see each checking account on its own."
           : ""}
