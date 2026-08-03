@@ -48,6 +48,12 @@ export type MonthlyCashFlowPoint = {
   net: number;
   isCurrentMonth: boolean;
   isPartial: boolean;
+  /** Pending income included in `income` (current month only). */
+  pendingIncome?: number;
+  /** Pending spend included in `spent` (current month only). */
+  pendingSpent?: number;
+  /** ISO date the partial month was computed through (current month only). */
+  asOfDate?: string;
 };
 
 export type MonthlyCashFlowScope = "all" | "chase" | "capital_one";
@@ -211,12 +217,17 @@ export function buildMonthlyCashFlowSeries(
   const currentMonthKey = today.toFormat("yyyy-MM");
   const startMonth = today.startOf("month").minus({ months: months - 1 });
 
-  const byMonth = new Map<string, { income: number; spent: number }>();
+  const byMonth = new Map<
+    string,
+    { income: number; spent: number; pendingIncome: number; pendingSpent: number }
+  >();
   for (let i = 0; i < months; i++) {
     const month = startMonth.plus({ months: i });
     const key = month.toFormat("yyyy-MM");
-    byMonth.set(key, { income: 0, spent: 0 });
+    byMonth.set(key, { income: 0, spent: 0, pendingIncome: 0, pendingSpent: 0 });
   }
+
+  const todayKey = today.toISODate() ?? undefined;
 
   for (const transaction of transactions) {
     if (isTransfer(transaction)) continue;
@@ -231,8 +242,11 @@ export function buildMonthlyCashFlowSeries(
 
     if (transaction.amount > 0) {
       bucket.spent += transaction.amount;
+      if (transaction.pending) bucket.pendingSpent += transaction.amount;
     } else if (transaction.amount < 0) {
-      bucket.income += Math.abs(transaction.amount);
+      const income = Math.abs(transaction.amount);
+      bucket.income += income;
+      if (transaction.pending) bucket.pendingIncome += income;
     }
   }
 
@@ -250,6 +264,13 @@ export function buildMonthlyCashFlowSeries(
       net: roundCurrency(income - spent),
       isCurrentMonth,
       isPartial: isCurrentMonth,
+      ...(isCurrentMonth
+        ? {
+            pendingIncome: roundCurrency(totals.pendingIncome),
+            pendingSpent: roundCurrency(totals.pendingSpent),
+            asOfDate: todayKey,
+          }
+        : {}),
     };
   });
 }
