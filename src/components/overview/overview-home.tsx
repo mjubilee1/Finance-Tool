@@ -7,7 +7,7 @@ import { formatCurrency } from "@/lib/format";
 import { calendarDateTime } from "@/lib/user-timezone";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
-import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint } from "@/lib/cash-flow";
+import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint, MonthlyCashFlowByChecking } from "@/lib/cash-flow";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
@@ -1005,6 +1005,7 @@ type Props = {
   refreshHours?: number;
   dailySpendSeries: DailySpendPoint[];
   monthlyCashFlowSeries?: MonthlyCashFlowPoint[];
+  monthlyCashFlowByChecking?: MonthlyCashFlowByChecking | null;
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
@@ -1027,6 +1028,7 @@ export function OverviewHome({
   refreshHours,
   dailySpendSeries,
   monthlyCashFlowSeries = [],
+  monthlyCashFlowByChecking = null,
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
@@ -1258,7 +1260,10 @@ export function OverviewHome({
       </div>
 
       {monthlyCashFlowSeries.length > 0 ? (
-        <MonthlyCashFlowChart months={monthlyCashFlowSeries} />
+        <MonthlyCashFlowChart
+          months={monthlyCashFlowSeries}
+          byChecking={monthlyCashFlowByChecking}
+        />
       ) : null}
 
       {/* Today's schedule — main stage */}

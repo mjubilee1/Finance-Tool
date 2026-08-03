@@ -8,6 +8,7 @@ import { getBriefRefreshStatus } from "@/lib/daily-snapshot";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import {
   buildDailySpendSeries,
+  buildMonthlyCashFlowByChecking,
   buildMonthlyCashFlowSeries,
   calculateTodayCashFlow,
   calculateWeeklyCashFlow,
@@ -144,7 +145,20 @@ export async function GET() {
     });
 
     const dailySpendSeries = buildDailySpendSeries(chartSpendTransactions, 30, todayKey);
-    const monthlyCashFlowSeries = buildMonthlyCashFlowSeries(focusMonthlyTransactions, 6, todayKey);
+    // "All" keeps the primary/focus rollup; Chase / Cap One use full checking history
+    // so each bank stays visible even when only one is starred primary.
+    const monthlyCashFlowByChecking = buildMonthlyCashFlowByChecking(
+      monthlyTransactions,
+      accounts,
+      6,
+      todayKey,
+    );
+    monthlyCashFlowByChecking.all = buildMonthlyCashFlowSeries(
+      focusMonthlyTransactions,
+      6,
+      todayKey,
+    );
+    const monthlyCashFlowSeries = monthlyCashFlowByChecking.all;
     const goalsWithMonth = await attachGoalMonthPaid(userId, goals);
 
     return NextResponse.json({
@@ -155,6 +169,7 @@ export async function GET() {
       snapshots: snapshots.reverse(),
       dailySpendSeries,
       monthlyCashFlowSeries,
+      monthlyCashFlowByChecking,
       aiInsight,
       accounts,
       goals: goalsWithMonth,

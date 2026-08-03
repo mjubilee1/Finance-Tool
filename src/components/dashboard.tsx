@@ -1,6 +1,6 @@
 "use client";
 
-import { calculateGoalPace, type DailySpendPoint, type MonthlyCashFlowPoint } from "@/lib/cash-flow";
+import { calculateGoalPace, type DailySpendPoint, type MonthlyCashFlowByChecking, type MonthlyCashFlowPoint } from "@/lib/cash-flow";
 import { isLifeGoalType } from "@/lib/goal-types";
 import { formatCurrency } from "@/lib/format";
 import {
@@ -214,6 +214,7 @@ type DashboardData = {
   snapshots: Array<Record<string, unknown>>;
   dailySpendSeries?: DailySpendPoint[];
   monthlyCashFlowSeries?: MonthlyCashFlowPoint[];
+  monthlyCashFlowByChecking?: MonthlyCashFlowByChecking | null;
   aiInsight: DashboardInsight | null;
   accounts: DashboardAccount[];
   goals: DashboardGoal[];
@@ -396,6 +397,7 @@ export function Dashboard() {
     transactions = [],
     dailySpendSeries = [],
     monthlyCashFlowSeries = [],
+    monthlyCashFlowByChecking = null,
     aiInsight = null,
     accounts = [],
     goals = [],
@@ -763,6 +765,7 @@ export function Dashboard() {
                   refreshHours={briefRefreshInfo?.refreshHours}
                   dailySpendSeries={dailySpendSeries}
                   monthlyCashFlowSeries={monthlyCashFlowSeries}
+                  monthlyCashFlowByChecking={monthlyCashFlowByChecking}
                   onOpenChat={() => selectTab('chat')}
                   onOpenRecurring={() => selectTab('recurring')}
                   onOpenGrowth={() => selectTab('growth')}

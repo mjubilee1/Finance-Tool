@@ -1,7 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
-import type { MonthlyCashFlowPoint } from "@/lib/cash-flow";
+import type {
+  MonthlyCashFlowByChecking,
+  MonthlyCashFlowPoint,
+  MonthlyCashFlowScope,
+} from "@/lib/cash-flow";
 import {
   Bar,
   BarChart,
@@ -16,6 +21,13 @@ import {
 
 type Props = {
   months: MonthlyCashFlowPoint[];
+  byChecking?: MonthlyCashFlowByChecking | null;
+};
+
+const SCOPE_LABELS: Record<MonthlyCashFlowScope, string> = {
+  all: "All",
+  chase: "Chase",
+  capital_one: "Cap One",
 };
 
 function formatSignedCurrency(amount: number) {
@@ -73,22 +85,39 @@ function MonthlyTooltip({
   );
 }
 
-export function MonthlyCashFlowChart({ months }: Props) {
-  if (!months.length) return null;
+function seriesForScope(
+  scope: MonthlyCashFlowScope,
+  months: MonthlyCashFlowPoint[],
+  byChecking?: MonthlyCashFlowByChecking | null,
+): MonthlyCashFlowPoint[] {
+  if (!byChecking) return months;
+  if (scope === "chase") return byChecking.chase;
+  if (scope === "capital_one") return byChecking.capitalOne;
+  return byChecking.all.length > 0 ? byChecking.all : months;
+}
 
-  const currentMonth = months.find((month) => month.isCurrentMonth) ?? months[months.length - 1];
-  const lastCompleteMonth = [...months].reverse().find((month) => !month.isPartial) ?? null;
+export function MonthlyCashFlowChart({ months, byChecking = null }: Props) {
+  const availableScopes = byChecking?.availableScopes ?? (["all"] as MonthlyCashFlowScope[]);
+  const showScopeTabs = availableScopes.length > 1;
+  const [scope, setScope] = useState<MonthlyCashFlowScope>("all");
+  const activeScope = availableScopes.includes(scope) ? scope : "all";
+  const chartMonths = seriesForScope(activeScope, months, byChecking);
+
+  if (!chartMonths.length) return null;
+
+  const currentMonth =
+    chartMonths.find((month) => month.isCurrentMonth) ?? chartMonths[chartMonths.length - 1];
+  const lastCompleteMonth = [...chartMonths].reverse().find((month) => !month.isPartial) ?? null;
   const priorMonth =
     lastCompleteMonth != null
-      ? months[months.indexOf(lastCompleteMonth) - 1] ?? null
-      : months.length > 1
-        ? months[months.length - 2]
+      ? chartMonths[chartMonths.indexOf(lastCompleteMonth) - 1] ?? null
+      : chartMonths.length > 1
+        ? chartMonths[chartMonths.length - 2]
         : null;
 
   const monthOverMonthDelta =
     lastCompleteMonth && priorMonth ? lastCompleteMonth.net - priorMonth.net : null;
 
-  // Headline: this month's pace when partial; otherwise last closed month.
   const headline = currentMonth.isPartial
     ? {
         label: `${currentMonth.label} so far`,
@@ -106,6 +135,28 @@ export function MonthlyCashFlowChart({ months }: Props) {
             ? `${monthOverMonthDelta >= 0 ? "Up" : "Down"} ${formatCurrency(Math.abs(monthOverMonthDelta))} vs prior month`
             : null,
       };
+
+  const scopeHint =
+    activeScope === "chase"
+      ? "Chase checking only — paycheck account."
+      : activeScope === "capital_one"
+        ? "Capital One checking only — car + goals bucket."
+        : showScopeTabs
+          ? "Combined across primary accounts. Switch banks for a real split."
+          : null;
+
+  // Side-by-side snapshot for current + last closed when viewing All with both banks.
+  const showBankSnapshot =
+    activeScope === "all" &&
+    Boolean(byChecking) &&
+    availableScopes.includes("chase") &&
+    availableScopes.includes("capital_one") &&
+    lastCompleteMonth != null;
+
+  const chaseClosed = byChecking?.chase.find((m) => m.month === lastCompleteMonth?.month);
+  const capOneClosed = byChecking?.capitalOne.find((m) => m.month === lastCompleteMonth?.month);
+  const chaseCurrent = byChecking?.chase.find((m) => m.isCurrentMonth);
+  const capOneCurrent = byChecking?.capitalOne.find((m) => m.isCurrentMonth);
 
   return (
     <div className="app-card p-6 space-y-5">
@@ -146,6 +197,38 @@ export function MonthlyCashFlowChart({ months }: Props) {
           ) : null}
         </div>
       </div>
+
+      {showScopeTabs ? (
+        <div
+          className="flex gap-1 rounded-lg p-1 ring-1 ring-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]"
+          role="tablist"
+          aria-label="Cash flow by checking account"
+        >
+          {availableScopes.map((key) => {
+            const selected = activeScope === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setScope(key)}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  selected
+                    ? "bg-[var(--card-solid)] text-[var(--ink)] shadow-sm ring-1 ring-[var(--card-border)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]"
+                }`}
+              >
+                {SCOPE_LABELS[key]}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {scopeHint ? (
+        <p className="text-[11px] text-[var(--muted)] -mt-2">{scopeHint}</p>
+      ) : null}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[
@@ -202,9 +285,57 @@ export function MonthlyCashFlowChart({ months }: Props) {
         ))}
       </div>
 
+      {showBankSnapshot && chaseClosed && capOneClosed ? (
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            {
+              bank: "Chase",
+              closed: chaseClosed,
+              current: chaseCurrent,
+            },
+            {
+              bank: "Capital One",
+              closed: capOneClosed,
+              current: capOneCurrent,
+            },
+          ].map((row) => (
+            <div
+              key={row.bank}
+              className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)]"
+            >
+              <p className="app-label mb-2">{row.bank}</p>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--muted)]">{row.closed.label} net</span>
+                  <span
+                    className={`tabular-nums font-medium ${
+                      row.closed.net >= 0 ? "text-[var(--accent-strong)]" : "text-rose-500"
+                    }`}
+                  >
+                    {formatSignedCurrency(row.closed.net)}
+                  </span>
+                </div>
+                {row.current ? (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--muted)]">{row.current.label} so far</span>
+                    <span
+                      className={`tabular-nums ${
+                        row.current.net >= 0 ? "text-[var(--accent-strong)]" : "text-rose-500"
+                      }`}
+                    >
+                      {formatSignedCurrency(row.current.net)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={months} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <BarChart data={chartMonths} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148,163,184,0.25)" />
             <XAxis
               dataKey="label"
@@ -221,7 +352,7 @@ export function MonthlyCashFlowChart({ months }: Props) {
             <Tooltip content={<MonthlyTooltip />} />
             <ReferenceLine y={0} stroke="var(--card-border)" />
             <Bar dataKey="net" radius={[6, 6, 0, 0]} maxBarSize={48}>
-              {months.map((month) => (
+              {chartMonths.map((month) => (
                 <Cell
                   key={month.month}
                   fill={
@@ -240,6 +371,9 @@ export function MonthlyCashFlowChart({ months }: Props) {
       <p className="text-[11px] text-[var(--muted)] leading-relaxed">
         Green bars = you kept more than you spent that month. Red = you ran behind. The lighter bar is
         this month still in progress — compare it to closed months once the calendar turns.
+        {showScopeTabs
+          ? " Use Chase / Cap One to see each checking account on its own."
+          : ""}
       </p>
     </div>
   );
