@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { CAR_FUNDED_BY, carMonthlyTotal, type CarProfileLike } from "@/lib/car";
+export { isCapitalOneInstitution } from "@/lib/institutions";
 
 export type CapOneAccountRow = {
   plaidAccountId: string;
@@ -28,10 +29,6 @@ export type CapOneProjectionPoint = {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
-}
-
-export function isCapitalOneInstitution(name: string | null | undefined) {
-  return Boolean(name && /capital\s*one/i.test(name));
 }
 
 function isLyftInflow(txn: CapOneTxnRow) {

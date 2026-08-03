@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import type { DailyBriefMetrics } from "./daily-brief";
 import { getTransactionActivityDate, isTransactionOnDate } from "./daily-brief";
+import { classifyInstitution, isCheckingLikeAccount } from "./institutions";
 
 type CashFlowTransaction = {
   date: string;
@@ -10,6 +11,7 @@ type CashFlowTransaction = {
   categoryPrimary?: string | null;
   name?: string | null;
   merchantName?: string | null;
+  accountId?: string;
 };
 
 const DEFAULT_WEEKLY_BASE_INCOME = 1555.27;
@@ -46,6 +48,16 @@ export type MonthlyCashFlowPoint = {
   net: number;
   isCurrentMonth: boolean;
   isPartial: boolean;
+};
+
+export type MonthlyCashFlowScope = "all" | "chase" | "capital_one";
+
+export type MonthlyCashFlowByChecking = {
+  all: MonthlyCashFlowPoint[];
+  chase: MonthlyCashFlowPoint[];
+  capitalOne: MonthlyCashFlowPoint[];
+  /** Which bank scopes have at least one linked checking-like account. */
+  availableScopes: MonthlyCashFlowScope[];
 };
 
 export type WeeklyCashFlow = {
@@ -240,6 +252,50 @@ export function buildMonthlyCashFlowSeries(
       isPartial: isCurrentMonth,
     };
   });
+}
+
+type CheckingAccountRef = {
+  plaidAccountId: string;
+  type: string;
+  subtype?: string | null;
+  institutionName?: string | null;
+};
+
+/**
+ * Combined monthly cash flow plus Chase / Capital One checking splits
+ * so Overview can show a real per-bank breakdown.
+ */
+export function buildMonthlyCashFlowByChecking(
+  transactions: CashFlowTransaction[],
+  accounts: CheckingAccountRef[],
+  months = 6,
+  referenceDate?: string,
+): MonthlyCashFlowByChecking {
+  const chaseIds = new Set<string>();
+  const capitalOneIds = new Set<string>();
+
+  for (const account of accounts) {
+    if (!isCheckingLikeAccount(account)) continue;
+    const key = classifyInstitution(account.institutionName);
+    if (key === "chase") chaseIds.add(account.plaidAccountId);
+    if (key === "capital_one") capitalOneIds.add(account.plaidAccountId);
+  }
+
+  const chaseTxns = transactions.filter((txn) => txn.accountId && chaseIds.has(txn.accountId));
+  const capitalOneTxns = transactions.filter(
+    (txn) => txn.accountId && capitalOneIds.has(txn.accountId),
+  );
+
+  const availableScopes: MonthlyCashFlowScope[] = ["all"];
+  if (chaseIds.size > 0) availableScopes.push("chase");
+  if (capitalOneIds.size > 0) availableScopes.push("capital_one");
+
+  return {
+    all: buildMonthlyCashFlowSeries(transactions, months, referenceDate),
+    chase: buildMonthlyCashFlowSeries(chaseTxns, months, referenceDate),
+    capitalOne: buildMonthlyCashFlowSeries(capitalOneTxns, months, referenceDate),
+    availableScopes,
+  };
 }
 
 /** Last N days of spending from transactions (not snapshot rows). */
