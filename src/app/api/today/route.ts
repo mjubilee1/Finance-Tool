@@ -11,6 +11,7 @@ import {
 import { cleanupPromotionalProjectBlocks } from "@/lib/cleanup-promotion-blocks";
 import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 import { getPlannerDayLayouts, loadUserPlanActivitiesBetween } from "@/lib/planner";
+import { ensureEntrepreneurshipRoutineForToday } from "@/lib/entrepreneurship-routine";
 import { loadLyftPaceForUser } from "@/lib/lyft-pace";
 import { DateTime } from "luxon";
 import { calendarDateTime, userNow } from "@/lib/user-timezone";
@@ -57,6 +58,13 @@ export async function GET() {
     await cleanupPromotionalProjectBlocks(session.user.id).catch((error) => {
       console.error("Promotion-block cleanup failed:", error);
     });
+    // Seed today's entrepreneurship checklist once (idempotent by notes marker).
+    const entrepreneurship = await ensureEntrepreneurshipRoutineForToday(session.user.id).catch(
+      (error) => {
+        console.error("Entrepreneurship routine seed failed:", error);
+        return null;
+      },
+    );
     const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate] =
       await Promise.all([
       buildTodayBriefContext(session.user.id),
@@ -118,6 +126,15 @@ export async function GET() {
         : null,
       calendar,
       weekPlan,
+      entrepreneurship: entrepreneurship
+        ? {
+            sectionLabel: entrepreneurship.sectionLabel,
+            weeklyTargets: entrepreneurship.weeklyTargets,
+            weekDoneCount: entrepreneurship.weekDoneCount,
+            stage: entrepreneurship.stage,
+            upcomingInterviewTitle: entrepreneurship.upcomingInterviewTitle,
+          }
+        : null,
     });
   } catch (error) {
     console.error("Failed to load today overview:", error);

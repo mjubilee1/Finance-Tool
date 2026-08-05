@@ -124,7 +124,7 @@ Explain opportunity cost explicitly.
 Be direct, practical, and numbers-aware. No fluff. No generic motivation.
 
 Active-context rules:
-- Do not invent projects the user is not working on. If core context says a product is inactive (e.g. real-estate agent SaaS), never recommend that work.
+- Do not invent projects the user is not working on. Prefer the active litigation-timeline AI GTM over abandoned ideas (e.g. real-estate agent SaaS) unless core context says that product is active again.
 - Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
 - Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person.
 - Name when an action fits (desk lunch message, Thu deep block, evening/weekend meet).
@@ -563,20 +563,20 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 
   if (metrics.domains.startup < WEAK_DOMAIN_THRESHOLD) {
     return {
-      action: "Ship one concrete software/career leverage block (feature, learning, or positioning)",
+      action: "Run one GTM block: LinkedIn outreach or qualify 5 DMV litigation prospects",
       whyItMatters:
-        "Career/build momentum compounds only when you ship or learn on work you are actually doing — not abandoned ideas.",
+        "Your active startup is litigation-timeline AI GTM — discovery and outreach compound faster than generic feature busywork.",
       longTermBenefit:
-        "Each real shipped increment improves skills and income upside beyond busywork hours.",
-      timeRequiredMinutes: 90,
+        "A thicker prospect backlog and real discovery conversations unlock pilots, clearer positioning, and better partner priorities.",
+      timeRequiredMinutes: 45,
       opportunityCost:
-        "One focused shipping block can pay for years of low-ROI busywork.",
+        "Skipping outreach keeps the pipeline empty while competitor workflows stay the default.",
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [],
       nextActions: [
-        "Pick one active project (not an abandoned idea)",
-        "Timebox 90 minutes with no distractions",
-        "Write one sentence of what you shipped or learned",
+        "Send 5–10 targeted LinkedIn requests to DMV litigation roles",
+        "Log 5 qualified prospects (name, firm, role, next action)",
+        "Book or prep one discovery conversation — never invent an interview",
       ],
       leverageType: "long_term_leverage",
       domain: "startup",

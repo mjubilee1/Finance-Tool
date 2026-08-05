@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Camera, ImagePlus, Mic, MicOff, Plus, X } from "lucide-react";
 import { readImageAsDataUrl } from "@/lib/chat-images";
-import { ensureMicrophoneAccess, MEDIA_IMAGE_ACCEPT } from "@/lib/media-permissions";
+import {
+  ensureMicrophoneAccess,
+  MEDIA_IMAGE_ACCEPT,
+  pauseMicrophoneAccess,
+} from "@/lib/media-permissions";
 import { ContactMentionMenu } from "@/components/contact-mention-menu";
 import { useContactMention } from "@/hooks/use-contact-mention";
 
@@ -50,9 +54,16 @@ export function ChatComposer({
   useEffect(() => {
     return () => {
       mediaRecorderRef.current?.stop();
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      // Pause only — stopping tracks forces Safari/iOS to re-ask for mic permission.
+      pauseMicrophoneAccess();
+      mediaStreamRef.current = null;
     };
   }, []);
+
+  const softReleaseMic = () => {
+    pauseMicrophoneAccess();
+    mediaStreamRef.current = null;
+  };
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -117,11 +128,6 @@ export function ChatComposer({
     void addImages(imageFiles);
   };
 
-  const stopRecordingTracks = () => {
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
-  };
-
   const transcribeRecording = async (blob: Blob) => {
     setIsTranscribing(true);
     setComposerError(null);
@@ -176,7 +182,7 @@ export function ChatComposer({
 
       recorder.onstop = async () => {
         setIsRecording(false);
-        stopRecordingTracks();
+        softReleaseMic();
 
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         chunksRef.current = [];
@@ -193,7 +199,7 @@ export function ChatComposer({
       setComposerError(
         error instanceof Error ? error.message : "Microphone access is required for voice input.",
       );
-      stopRecordingTracks();
+      softReleaseMic();
     }
   };
 

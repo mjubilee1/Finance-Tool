@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import {
   buildGoogleCalendarAuthUrl,
   createGoogleCalendarOAuthState,
@@ -22,6 +23,13 @@ export async function GET(request: Request) {
   }
 
   try {
+    const existing = await prisma.googleCalendarConnection.findUnique({
+      where: { userId: session.user.id },
+    });
+    const hasUsableRefresh =
+      Boolean(existing?.encryptedRefreshToken) &&
+      existing?.status !== "needs_reconnect";
+
     const calendarStatus = await getGoogleCalendarStatus(session.user.id);
     if (calendarStatus.status === "needs_reconnect") {
       // Wipe stale tokens so Google issues a fresh refresh token on re-approval.
@@ -30,7 +38,12 @@ export async function GET(request: Request) {
 
     const state = createGoogleCalendarOAuthState();
     const redirectUri = getGoogleCalendarRedirectUri(request);
-    const authUrl = buildGoogleCalendarAuthUrl(state, redirectUri);
+    // Force consent only when we don't already have a durable refresh token.
+    const forceConsent =
+      calendarStatus.status === "needs_reconnect" ||
+      calendarStatus.status === "not_connected" ||
+      !hasUsableRefresh;
+    const authUrl = buildGoogleCalendarAuthUrl(state, redirectUri, { forceConsent });
     const response = NextResponse.redirect(authUrl);
 
     response.cookies.set(GOOGLE_CALENDAR_OAUTH_STATE_COOKIE, state, {
