@@ -1,48 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { buildTodayBriefContext } from "@/lib/today-brief";
 import { getTrendDigestForDate, isTechTrendTheme, serializeTrendDigest } from "@/lib/trends";
-import {
-  fetchUpcomingGoogleCalendarEvents,
-  getGoogleCalendarStatus,
-  type GoogleCalendarEvent,
-} from "@/lib/google-calendar";
 import { cleanupPromotionalProjectBlocks } from "@/lib/cleanup-promotion-blocks";
-import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
-import { getPlannerDayLayouts, loadUserPlanActivitiesBetween } from "@/lib/planner";
-import { ensureEntrepreneurshipRoutineForToday } from "@/lib/entrepreneurship-routine";
-import { loadLyftPaceForUser } from "@/lib/lyft-pace";
-import { DateTime } from "luxon";
-import { calendarDateTime, userNow } from "@/lib/user-timezone";
-
-async function loadWeekUserPlanActivities(userId: string, start: DateTime) {
-  const startDate = start.toISODate()!;
-  const endDate = start.plus({ days: 6 }).toISODate()!;
-  return loadUserPlanActivitiesBetween(userId, startDate, endDate);
-}
-
-async function loadWeekCalendar(userId: string, now: DateTime) {
-  try {
-    return await fetchUpcomingGoogleCalendarEvents(userId, {
-      timeMin: now.toJSDate(),
-      timeMax: now.plus({ days: 6 }).endOf("day").toJSDate(),
-      maxResults: 40,
-    });
-  } catch (error) {
-    const status = await getGoogleCalendarStatus(userId);
-    return {
-      ...status,
-      events: [] as GoogleCalendarEvent[],
-      error: error instanceof Error ? error.message : "Could not load Google Calendar.",
-    };
-  }
-}
-
-function isTodayEvent(event: GoogleCalendarEvent, now: DateTime) {
-  const start = calendarDateTime(event.start);
-  return start.isValid && start.hasSame(now, "day");
-}
+import { buildLifePulse } from "@/lib/life-pulse";
+import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
@@ -53,50 +15,30 @@ export async function GET() {
 
     const now = userNow();
     const today = now.toISODate()!;
-    const weekEnd = now.plus({ days: 6 }).toISODate()!;
     // Strip leftover auto-injected promotion rails from the DB before building Today.
     await cleanupPromotionalProjectBlocks(session.user.id).catch((error) => {
       console.error("Promotion-block cleanup failed:", error);
     });
-    // Seed today's entrepreneurship checklist once (idempotent by notes marker).
-    const entrepreneurship = await ensureEntrepreneurshipRoutineForToday(session.user.id).catch(
-      (error) => {
-        console.error("Entrepreneurship routine seed failed:", error);
-        return null;
-      },
-    );
-    const [brief, digest, weekCalendar, userPlanActivities, layoutsByDate] =
-      await Promise.all([
-      buildTodayBriefContext(session.user.id),
+    const [pulse, digest] = await Promise.all([
+      buildLifePulse(session.user.id, {
+        query: "today overview money growth entrepreneurship schedule",
+        includeNetwork: false,
+        ensureEntrepreneurship: true,
+        calendarDaysAhead: 7,
+        memoryLimit: 6,
+      }),
       getTrendDigestForDate(session.user.id, today).catch((error) => {
         console.error("Trend digest failed while loading today overview:", error);
         return null;
       }),
-      loadWeekCalendar(session.user.id, now),
-      loadWeekUserPlanActivities(session.user.id, now).catch((error) => {
-        console.error("Week user plan activities failed:", error);
-        return [];
-      }),
-      getPlannerDayLayouts(session.user.id, today, weekEnd),
     ]);
 
+    const brief = pulse.todayBrief;
     const serialized = digest ? serializeTrendDigest(digest) : null;
-    const weekCalendarData =
-      weekCalendar ??
-      ({
-        ...(await getGoogleCalendarStatus(session.user.id)),
-        events: [] as GoogleCalendarEvent[],
-      } as const);
     const calendar = {
-      ...weekCalendarData,
-      events: weekCalendarData.events.filter((event) => isTodayEvent(event, now)),
+      ...pulse.calendar,
+      events: pulse.todayCalendarEvents,
     };
-    const weekPlan = buildWeeklyOperatingPlan({
-      start: now,
-      calendarEvents: weekCalendarData.events,
-      userPlanActivities,
-      layoutsByDate,
-    });
 
     return NextResponse.json({
       brief: {
@@ -125,14 +67,15 @@ export async function GET() {
           }
         : null,
       calendar,
-      weekPlan,
-      entrepreneurship: entrepreneurship
+      weekPlan: pulse.weeklyPlan,
+      entrepreneurship: pulse.entrepreneurship
         ? {
-            sectionLabel: entrepreneurship.sectionLabel,
-            weeklyTargets: entrepreneurship.weeklyTargets,
-            weekDoneCount: entrepreneurship.weekDoneCount,
-            stage: entrepreneurship.stage,
-            upcomingInterviewTitle: entrepreneurship.upcomingInterviewTitle,
+            sectionLabel: pulse.entrepreneurship.sectionLabel,
+            weeklyTargets: pulse.entrepreneurship.weeklyTargets,
+            weekDoneCount: pulse.entrepreneurship.weekDoneCount,
+            stage: pulse.entrepreneurship.stage,
+            upcomingInterviewTitle:
+              pulse.entrepreneurship.upcomingInterviewTitle,
           }
         : null,
     });

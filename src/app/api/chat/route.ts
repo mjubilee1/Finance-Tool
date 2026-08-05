@@ -11,13 +11,11 @@ import { attachGoalMonthPaid } from "@/lib/goal-month";
 import {
   createOrUpdateGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
-  fetchUpcomingGoogleCalendarEvents,
   updateGoogleCalendarEvent,
   type CreateGoogleCalendarEventInput,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
-import { loadCoachNetworkPack } from "@/lib/coach-network";
 import {
   applyCoachContactNotes,
   formatCoachContactNoteSummary,
@@ -28,15 +26,13 @@ import {
   serializeLocalEventDigest,
   serializeLocalEventsForAgent,
 } from "@/lib/local-events";
+import { buildLifePulse } from "@/lib/life-pulse";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
   applyTodayUpdates,
-  buildTodayBriefContext,
   type TodayUpdatesPayload,
 } from "@/lib/today-brief";
-import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
-import { loadUserPlanActivitiesBetween } from "@/lib/planner";
 import { calendarDateTime, USER_TIME_ZONE, userNow } from "@/lib/user-timezone";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
@@ -269,30 +265,6 @@ function describeCalendarEvent(event: GoogleCalendarEvent) {
     : calendarDateTime(event.start).toLocaleString(DateTime.DATETIME_MED);
   const label = start ? `${event.title} (${start})` : event.title;
   return event.htmlLink ? `${label}: ${event.htmlLink}` : label;
-}
-
-async function loadCoachWeekCalendarEvents(userId: string) {
-  const now = userNow();
-
-  try {
-    // Wider window so schedule updates can match/dedupe events beyond "this week".
-    const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
-      timeMin: now.minus({ days: 2 }).startOf("day").toJSDate(),
-      timeMax: now.plus({ days: 21 }).endOf("day").toJSDate(),
-      maxResults: 80,
-    });
-
-    return calendar.events;
-  } catch {
-    return [] as GoogleCalendarEvent[];
-  }
-}
-
-async function loadCoachWeekUserPlanActivities(userId: string) {
-  const now = userNow();
-  const startDate = now.toISODate()!;
-  const endDate = now.plus({ days: 6 }).toISODate()!;
-  return loadUserPlanActivitiesBetween(userId, startDate, endDate);
 }
 
 function stringifyStoredJson(value: unknown) {
@@ -722,8 +694,24 @@ export async function POST(req: Request) {
       ).slice(-MAX_CONTEXT_MESSAGES),
     );
 
+    const coachIntent = classifyCoachIntent(latestUserMessage.content);
+    const todayIso = userNow().toISODate()!;
+    const memoryQuery = recentMessages
+      .filter((message) => message.role === "user")
+      .slice(-3)
+      .map((message) => message.content)
+      .join("\n");
     const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
-    const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns, carProfile] = await Promise.all([
+    const [
+      accounts,
+      goals,
+      recentTransactions,
+      projectionTransactions,
+      recurringPatterns,
+      carProfile,
+      lifePulse,
+      localEventDigest,
+    ] = await Promise.all([
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
@@ -740,21 +728,21 @@ export async function POST(req: Request) {
         },
         orderBy: { date: "asc" },
       }),
-      prisma.financialMemory.findMany({
-        where: { userId: session.user.id },
-        orderBy: { importanceScore: "desc" },
-        take: 8,
-      }),
       prisma.recurringPattern.findMany({
         where: { userId: session.user.id },
         take: 25,
       }),
       getOrCreateCarProfile(session.user.id),
+      buildLifePulse(session.user.id, {
+        query: memoryQuery,
+        includeNetwork: true,
+        ensureEntrepreneurship: true,
+        calendarDaysBack: 2,
+        calendarDaysAhead: 21,
+        memoryLimit: 8,
+      }),
+      getLocalEventDigestForDate(session.user.id, todayIso),
     ]);
-
-    const memories = memoryRecords
-      .map((memory) => memory.content)
-      .join("\n");
 
     const projectionContext = {
       debtExcluded: buildProjectionSummary(accounts, projectionTransactions, true),
@@ -772,21 +760,8 @@ export async function POST(req: Request) {
       return payroll ? Math.abs(payroll.amount) : null;
     })();
 
-    const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const todayIso = userNow().toISODate()!;
-    const [todayBrief, weekCalendarEvents, userPlanActivities, networkPack, localEventDigest] =
-      await Promise.all([
-        buildTodayBriefContext(session.user.id),
-        loadCoachWeekCalendarEvents(session.user.id),
-        loadCoachWeekUserPlanActivities(session.user.id),
-        loadCoachNetworkPack(session.user.id),
-        getLocalEventDigestForDate(session.user.id, todayIso),
-      ]);
-    const weeklyPlan = buildWeeklyOperatingPlan({
-      start: userNow(),
-      calendarEvents: weekCalendarEvents,
-      userPlanActivities,
-    });
+    const todayBrief = lifePulse.todayBrief;
+    const weekCalendarEvents = lifePulse.calendar.events;
     const localEventsPack = serializeLocalEventsForAgent(
       localEventDigest ? serializeLocalEventDigest(localEventDigest) : null
     );
@@ -794,9 +769,7 @@ export async function POST(req: Request) {
     const systemPrompt = buildCoachSystemPrompt({
       intent: coachIntent,
       userName: session.user.name ?? null,
-      todayBrief,
-      weeklyPlan,
-      networkPack,
+      lifePulse,
       localEventsPack,
       calendarContext: {
         nowIso: userNow().toISO() ?? new Date().toISOString(),
@@ -863,7 +836,6 @@ export async function POST(req: Request) {
           confidence: pattern.confidenceScore,
         })),
         projectionContext,
-        memories,
         cashSchedule: buildKnownCashScheduleContext(DateTime.local(), {
           typicalPaycheck,
           carProfile,

@@ -28,6 +28,13 @@ import {
   domainHoursSummary,
   isCompletedGrowthActivity,
 } from "@/lib/growth-scoring";
+import {
+  ENTREPRENEURSHIP_MARKER_PREFIX,
+  ENTREPRENEURSHIP_WEEKLY_TARGETS,
+  getEntrepreneurshipWeekProgress,
+  parseEntrepreneurshipSlot,
+} from "@/lib/entrepreneurship-routine";
+import { loadRelevantMemories } from "@/lib/relevant-memories";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -627,13 +634,13 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
   const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
   const today = DateTime.local().toISODate()!;
-  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, todayEvents, calendarContext] =
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, todayEvents, calendarContext, entrepreneurshipProgress] =
     await Promise.all([
-      prisma.financialMemory.findMany({
-        where: { userId },
-        orderBy: { importanceScore: "desc" },
-        take: 12,
-      }),
+      loadRelevantMemories(
+        userId,
+        "highest leverage today startup litigation GTM money career body network relationships",
+        { limit: 12 },
+      ),
       prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
       prisma.growthContact.findMany({
         where: { userId },
@@ -672,6 +679,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       }),
       getLocalEventDigestForDate(userId, today),
       getRecentCalendarContextForGrowth(userId),
+      getEntrepreneurshipWeekProgress(userId),
     ]);
 
   const skippedOrDoneMoves = recentMoves
@@ -710,6 +718,10 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       leverage: a.leverage,
       impact: a.impactScore,
       minutes: a.minutesSpent,
+      status: a.status,
+      entrepreneurshipSlot: a.notes?.includes(ENTREPRENEURSHIP_MARKER_PREFIX)
+        ? parseEntrepreneurshipSlot(a.notes)
+        : null,
     })),
     scoreHistory: snapshots.map((s) => ({
       date: s.date,
@@ -730,6 +742,23 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       todayEvents ? serializeLocalEventDigest(todayEvents) : null
     ),
     calendarContext,
+    entrepreneurshipContext: {
+      weeklyTargets: ENTREPRENEURSHIP_WEEKLY_TARGETS,
+      weekProgress: entrepreneurshipProgress,
+      todayItems: recentActivities
+        .filter(
+          (activity) =>
+            activity.date === today &&
+            activity.notes?.includes(ENTREPRENEURSHIP_MARKER_PREFIX),
+        )
+        .map((activity) => ({
+          title: activity.title,
+          status: activity.status,
+          slot: parseEntrepreneurshipSlot(activity.notes),
+        })),
+      rule:
+        "These are real planner items. Prefer unfinished high-impact GTM work; never invent a discovery interview.",
+    },
     metrics,
   };
 }

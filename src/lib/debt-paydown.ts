@@ -28,7 +28,7 @@ function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-export function currentGoalMonthKey(now = DateTime.local()) {
+export function currentGoalMonthKey(now: DateTime = DateTime.local()) {
   return now.toFormat("yyyy-MM");
 }
 

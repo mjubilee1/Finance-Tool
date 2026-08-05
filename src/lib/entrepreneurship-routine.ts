@@ -87,6 +87,7 @@ function isSeriousInterestEvent(event: GoogleCalendarEvent) {
 export async function detectEntrepreneurshipPipelineStage(
   userId: string,
   todayIso = userNow().toISODate()!,
+  suppliedEvents?: GoogleCalendarEvent[],
 ): Promise<{
   stage: EntrepreneurshipPipelineStage;
   upcomingInterviewTitle: string | null;
@@ -95,16 +96,18 @@ export async function detectEntrepreneurshipPipelineStage(
   const horizon = today.plus({ days: 7 }).endOf("day");
   const yesterday = today.minus({ days: 1 }).toISODate()!;
 
-  let events: GoogleCalendarEvent[] = [];
-  try {
-    const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
-      timeMin: today.minus({ days: 1 }).toJSDate(),
-      timeMax: horizon.toJSDate(),
-      maxResults: 50,
-    });
-    events = calendar.events;
-  } catch {
-    events = [];
+  let events = suppliedEvents ?? [];
+  if (!suppliedEvents) {
+    try {
+      const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
+        timeMin: today.minus({ days: 1 }).toJSDate(),
+        timeMax: horizon.toJSDate(),
+        maxResults: 50,
+      });
+      events = calendar.events;
+    } catch {
+      events = [];
+    }
   }
 
   const upcomingInterview = events.find((event) => {
@@ -324,11 +327,15 @@ export function buildEntrepreneurshipTasksForStage(params: {
  * Idempotently seed today's entrepreneurship planner items.
  * Uses notes marker entrepreneurship:<slot> so reloads never duplicate.
  */
-export async function ensureEntrepreneurshipRoutineForToday(userId: string) {
+export async function ensureEntrepreneurshipRoutineForToday(
+  userId: string,
+  options?: { calendarEvents?: GoogleCalendarEvent[] },
+) {
   const today = userNow().toISODate()!;
   const { stage, upcomingInterviewTitle } = await detectEntrepreneurshipPipelineStage(
     userId,
     today,
+    options?.calendarEvents,
   );
   const templates = buildEntrepreneurshipTasksForStage({ stage, upcomingInterviewTitle });
 
