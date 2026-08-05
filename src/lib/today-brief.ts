@@ -1,5 +1,5 @@
-import { DateTime } from "luxon";
 import { prisma } from "@/lib/prisma";
+import { userNow } from "@/lib/user-timezone";
 import {
   calculateGrowthMetrics,
   generateHighLeverageRecommendation,
@@ -163,7 +163,7 @@ function isSkippedActivity(notes: string | null, title: string) {
 }
 
 export async function buildTodayBriefContext(userId: string): Promise<TodayBriefContext> {
-  const now = DateTime.local();
+  const now = userNow();
   const today = now.toISODate()!;
   const shape = dayShapeFor(now.weekday);
 

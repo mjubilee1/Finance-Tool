@@ -13,7 +13,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
-import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 import { DEFAULT_DISCRETIONARY_DAILY } from "@/lib/daily-brief";
 
 function fetchProjections(excludeDebt: boolean) {
@@ -76,7 +76,7 @@ export function Projections() {
     const balance = metrics.currentTotalBalance;
     const project = (days: number, net: number) => balance + net * days;
     const chartData = [];
-    const today = DateTime.now();
+    const today = userNow();
 
     for (let i = 0; i <= 180; i += 15) {
       const projDate = today.plus({ days: i });

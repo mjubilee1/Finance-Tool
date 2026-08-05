@@ -1,9 +1,8 @@
 import { prisma } from "./prisma";
+import { userNow } from "./user-timezone";
 
 function getStartOfToday() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
+  return userNow().startOf("day").toJSDate();
 }
 
 export async function getCurrentPlaidUsage() {

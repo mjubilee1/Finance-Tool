@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import type { DailyBriefMetrics } from "./daily-brief";
 import { getTransactionActivityDate, isTransactionOnDate } from "./daily-brief";
 import { classifyInstitution, isCheckingLikeAccount } from "./institutions";
+import { userNow } from "./user-timezone";
 
 type CashFlowTransaction = {
   date: string;
@@ -213,7 +214,7 @@ export function buildMonthlyCashFlowSeries(
 ): MonthlyCashFlowPoint[] {
   const today = referenceDate
     ? DateTime.fromISO(referenceDate).startOf("day")
-    : DateTime.local().startOf("day");
+    : userNow().startOf("day");
   const currentMonthKey = today.toFormat("yyyy-MM");
   const startMonth = today.startOf("month").minus({ months: months - 1 });
 
@@ -343,7 +344,7 @@ export function buildDailySpendSeries(
 ): DailySpendPoint[] {
   const today = referenceDate
     ? DateTime.fromISO(referenceDate).startOf("day")
-    : DateTime.local().startOf("day");
+    : userNow().startOf("day");
   const start = today.minus({ days: days - 1 });
   const startKey = start.toISODate() ?? "";
   const todayKey = today.toISODate() ?? "";
@@ -386,7 +387,7 @@ export function calculateNetDailyAverage(
   transactions: CashFlowTransaction[],
   days = 14,
 ): number {
-  const cutoff = DateTime.local().minus({ days }).toISODate() ?? "";
+  const cutoff = userNow().minus({ days }).toISODate() ?? "";
   const settled = transactions.filter(
     (t) => !t.pending && !isTransfer(t) && t.date >= cutoff,
   );
@@ -439,7 +440,7 @@ export function calculateWeeklyCashFlow(params: {
   const { transactions, dailyAllowance } = params;
   const today = params.referenceDate
     ? DateTime.fromISO(params.referenceDate)
-    : DateTime.local();
+    : userNow();
   const weekStart = today.startOf("week");
 
   const settled = transactions.filter((t) => !t.pending && !isTransfer(t));
@@ -603,7 +604,7 @@ export function calculateGoalPace(params: {
   }
 
   const daysToComplete = Math.ceil(remaining / dailyContribution);
-  const projected = DateTime.local().plus({ days: daysToComplete });
+  const projected = userNow().plus({ days: daysToComplete });
   const projectedDate = projected.toISODate();
   const monthsToComplete = roundCurrency(daysToComplete / 30);
 
@@ -654,7 +655,7 @@ export type CalendarDay = {
 };
 
 export function buildBillCalendar(days = 14): CalendarDay[] {
-  const today = DateTime.local();
+  const today = userNow();
   const result: CalendarDay[] = [];
 
   for (let i = 0; i < days; i++) {

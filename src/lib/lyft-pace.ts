@@ -4,6 +4,7 @@ import {
   getLyftMonthRange,
   getLyftWeekRange,
 } from "@/lib/lyft";
+import { userToday } from "@/lib/user-timezone";
 
 type LyftPaceGoals = {
   weeklyProfitTarget?: number | null;
@@ -71,7 +72,7 @@ async function loadLyftActivities(userId: string, rangeStart: string, rangeEnd: 
 
 /** Always returns a board snapshot so Overview/Lyft tabs never go blank. */
 export async function loadLyftPaceForUser(userId: string, dateIso?: string) {
-  const today = dateIso ?? new Date().toISOString().slice(0, 10);
+  const today = dateIso ?? userToday();
   const week = getLyftWeekRange(today);
   const month = getLyftMonthRange(today);
   const rangeStart = week.startIso < month.startIso ? week.startIso : month.startIso;

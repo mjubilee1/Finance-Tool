@@ -8,6 +8,7 @@ import {
   parseAtMentions,
   resolveContactMentions,
 } from "@/lib/growth-contact-mentions";
+import { userToday } from "@/lib/user-timezone";
 
 export const COACH_CONTACT_TYPES = [
   "unlabeled",
@@ -154,7 +155,7 @@ async function appendNoteAndSync(
     notes: formatContactNotesForAgent(allEntries, null),
   };
 
-  const today = DateTime.local().toISODate();
+  const today = userToday();
   const lastContact = update.lastContactDate ?? (options?.isNew ? today : null);
   if (lastContact) {
     contactData.lastContactDate = lastContact;
@@ -228,7 +229,7 @@ export async function applyCoachContactNotes(
           relationshipType: update.relationshipType ?? "peer",
           trustLevel: 3,
           collaborationPotential: 3,
-          lastContactDate: update.lastContactDate ?? DateTime.local().toISODate(),
+          lastContactDate: update.lastContactDate ?? userToday(),
           suggestedNextAction: update.suggestedNextAction ?? null,
           mutualValue: update.mutualValue ?? null,
           notes: null,

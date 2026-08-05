@@ -6,7 +6,7 @@ import {
   getTrendDigestForDate,
   serializeTrendDigest,
 } from "@/lib/trends";
-import { DateTime } from "luxon";
+import { userToday } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
@@ -15,7 +15,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const today = DateTime.local().toISODate()!;
+    const today = userToday();
     let digest = await getTrendDigestForDate(session.user.id, today);
     let alreadyFresh = Boolean(digest);
     let refreshed = false;

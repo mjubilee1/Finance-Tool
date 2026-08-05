@@ -20,7 +20,7 @@ import {
   sumDepositoryCash,
 } from "@/lib/account-focus";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
-import { DateTime } from "luxon";
+import { userNow, userToday } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
@@ -30,9 +30,9 @@ export async function GET() {
     }
 
     const userId = session.user.id;
-    const twoWeeksAgo = DateTime.local().minus({ days: 14 }).toISODate();
-    const thirtyDaysAgo = DateTime.local().minus({ days: 29 }).toISODate();
-    const sixMonthsAgo = DateTime.local().minus({ months: 6 }).startOf("month").toISODate();
+    const twoWeeksAgo = userNow().minus({ days: 14 }).toISODate();
+    const thirtyDaysAgo = userNow().minus({ days: 29 }).toISODate();
+    const sixMonthsAgo = userNow().minus({ months: 6 }).startOf("month").toISODate();
     const { dailyBalanceCallLimit } = getPlaidConfig();
 
     const [
@@ -122,7 +122,7 @@ export async function GET() {
     const spendingTransactions = filterTransactionsForDailySpend(recentTransactions, accounts);
     const chartSpendTransactions = filterTransactionsForDailySpend(chartTransactions, accounts);
 
-    const todayKey = DateTime.local().toISODate() ?? "";
+    const todayKey = userToday();
     const briefMetrics = calculateDailyBriefMetrics({
       date: todayKey,
       transactions: spendingTransactions,
