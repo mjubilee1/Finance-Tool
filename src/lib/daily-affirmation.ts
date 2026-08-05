@@ -1,4 +1,4 @@
-import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 
 const QUOTES_OF_THE_DAY = [
   {
@@ -134,7 +134,7 @@ export type DailyAffirmation = {
 };
 
 /** Quote of the day — stable per calendar day. */
-export function getDailyAffirmation(date = DateTime.local()): DailyAffirmation {
+export function getDailyAffirmation(date = userNow()): DailyAffirmation {
   const dayOfYear = date.ordinal;
   const entry = QUOTES_OF_THE_DAY[dayOfYear % QUOTES_OF_THE_DAY.length];
   return {
@@ -144,7 +144,7 @@ export function getDailyAffirmation(date = DateTime.local()): DailyAffirmation {
   };
 }
 
-export function getPersonalizedGreeting(userName?: string | null, date = DateTime.local()) {
+export function getPersonalizedGreeting(userName?: string | null, date = userNow()) {
   const hour = date.hour;
   const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const firstName = userName?.trim().split(/\s+/)[0];

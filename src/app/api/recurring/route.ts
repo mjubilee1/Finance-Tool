@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { DateTime } from "luxon";
 import { authOptions } from "@/lib/auth";
+import { userNow } from "@/lib/user-timezone";
 import { prisma } from "@/lib/prisma";
 import { filterTransactionsByFocus } from "@/lib/account-focus";
 import { getDismissedMerchantKeys, normalizeMerchantKey } from "@/lib/charge-review";
@@ -26,7 +26,7 @@ export async function GET() {
     }
 
     const userId = session.user.id;
-    const ninetyDaysAgo = DateTime.local().minus({ days: 90 }).toISODate();
+    const ninetyDaysAgo = userNow().minus({ days: 90 }).toISODate();
 
     await detectRecurringPatterns(userId);
 

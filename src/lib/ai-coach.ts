@@ -14,6 +14,7 @@ import { calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts } from "./account-focus";
 import { storeFinancialMemories } from "./financial-memory";
 import { attachGoalMonthPaid } from "./goal-month";
+import { userNow } from "./user-timezone";
 import { DateTime } from "luxon";
 
 type NewMemory = {
@@ -217,10 +218,10 @@ export async function generateDailyInsight(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
-  const today = new Date();
-  const past30Days = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const todayDate = today.toISOString().slice(0, 10);
-  const past30DaysDate = past30Days.toISOString().slice(0, 10);
+  const today = userNow();
+  const past30Days = today.minus({ days: 30 });
+  const todayDate = today.toISODate()!;
+  const past30DaysDate = past30Days.toISODate()!;
 
   const recentTransactions = await prisma.transaction.findMany({
     where: {
@@ -274,7 +275,7 @@ Analyze the user's data and provide JSON. This is the daily brief, so lead with 
 Assess impact on the bigger financial system — not just savings tips. Explain how today's move hardens stability or accelerates growth (debt, credit, reserves, rental readiness).
 Crucially, look at Current Accounts, Financial Goals, recent income, recurring obligations, debt accounts, and spending patterns. Look for opportunities to optimize daily transaction costs while protecting mortgage, minimum payments, upcoming bills, and cash buffer first.
 
-${buildKnownCashScheduleContext(DateTime.local(), { carProfile })}
+${buildKnownCashScheduleContext(userNow(), { carProfile })}
 
 OWNED CAR OBLIGATIONS (Capital One — include in upcomingBills when due):
 ${carBillLines.length > 0 ? carBillLines.map((line) => `- ${line}`).join("\n") : "- None due in the next 45 days; still track payment and insurance next-due dates from the Car profile."}

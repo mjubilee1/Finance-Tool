@@ -1,4 +1,3 @@
-import { DateTime } from "luxon";
 import { getOpenAI } from "./openai";
 import {
   dayShapeFor,
@@ -6,6 +5,7 @@ import {
   type JoyIdea,
   type JoyIdeasResult,
 } from "./joy-ideas-shared";
+import { userNow } from "./user-timezone";
 
 export type { DayShape, JoyIdea, JoyIdeasResult } from "./joy-ideas-shared";
 export { dayShapeFor } from "./joy-ideas-shared";
@@ -105,7 +105,7 @@ export async function generateJoyIdeasForToday(params?: {
   notes?: string | null;
   cashTight?: boolean;
 }): Promise<JoyIdeasResult> {
-  const now = DateTime.local().setZone("America/New_York");
+  const now = userNow();
   const dayShape = dayShapeFor(now.weekday);
   const timeBudget = timeBudgetFor(dayShape);
   const weatherSummary = await fetchOxonHillWeather();

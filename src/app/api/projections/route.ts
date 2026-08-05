@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { DateTime } from "luxon";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts, hasPrimarySelection } from "@/lib/account-focus";
+import { userNow, userToday } from "@/lib/user-timezone";
 
 type CfoSummary = {
   cfoBrief?: {
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     // Fetch transactions for non-debt accounts only. Loan/mortgage activity can
     // appear as negative amounts in Plaid, but it is debt movement, not income.
     // We want up to 2 years of history
-    const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
+    const twoYearsAgo = userNow().minus({ years: 2 }).toISODate();
 
     const [transactions, allTransactions, latestSnapshot] = await Promise.all([
       prisma.transaction.findMany({
@@ -76,8 +77,8 @@ export async function GET(request: Request) {
     // Calculate metrics
     let totalSpend = 0;
     let totalIncome = 0;
-    let earliestMs = getMillis(DateTime.now());
-    let latestMs = getMillis(DateTime.now().minus({ years: 10 }));
+    let earliestMs = getMillis(userNow());
+    let latestMs = getMillis(userNow().minus({ years: 10 }));
 
     transactions.forEach((t) => {
       // Ignore transfers for spend/income calculation to avoid double counting
@@ -134,7 +135,7 @@ export async function GET(request: Request) {
       latestInsight = null;
     }
 
-    const todayKey = DateTime.local().toISODate() ?? DateTime.now().toISODate() ?? "";
+    const todayKey = userToday();
     const dailyBriefMetrics = calculateDailyBriefMetrics({
       date: todayKey,
       transactions: filterTransactionsByFocus(allTransactions, accounts),
@@ -155,7 +156,7 @@ export async function GET(request: Request) {
     const projectedBalance = currentTotalBalance;
     
     // Start from today
-    const today = DateTime.now();
+    const today = userNow();
     for (let i = 0; i <= 180; i += 15) { // Every 15 days for a smoother chart
       const projDate = today.plus({ days: i });
       projectionData.push({

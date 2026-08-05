@@ -1,8 +1,8 @@
 import "server-only";
 
-import { DateTime } from "luxon";
 import { prisma } from "@/lib/prisma";
 import { openai } from "@/lib/openai";
+import { userToday } from "@/lib/user-timezone";
 import {
   MAX_DMV_TREND_ITEMS,
   MAX_TECH_TREND_ITEMS,
@@ -419,7 +419,7 @@ export async function generateTrendDigest(
   userId: string,
   options?: { force?: boolean },
 ) {
-  const today = DateTime.local().toISODate()!;
+  const today = userToday();
   const existing = await getTrendDigestForDate(userId, today);
 
   if (existing && !options?.force) {
