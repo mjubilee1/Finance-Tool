@@ -27,6 +27,7 @@ import {
   type CarProfileLike,
 } from "@/lib/car";
 import { formatCurrency } from "@/lib/format";
+import { userNow } from "@/lib/user-timezone";
 import { CapitalOneProjectionChart } from "@/components/car/capital-one-projection-chart";
 import { CarMaintenanceManageChart } from "@/components/car/car-maintenance-manage-chart";
 
@@ -154,7 +155,7 @@ function profileToForm(profile: CarProfileLike): ProfileForm {
 }
 
 function defaultMaintForm(profile?: CarProfileLike | null): MaintForm {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = userNow().toISODate()!;
   return {
     serviceType: "oil_change",
     serviceDate: today,

@@ -1,9 +1,9 @@
-import { DateTime } from "luxon";
 import { generateDailyInsight } from "./ai-coach";
 import { applyCalculatedSafeSpend, calculateDailyBriefMetrics } from "./daily-brief";
 import { filterTransactionsByFocus, filterTransactionsForDailySpend, getFocusAccounts } from "./account-focus";
 import { getCostControlConfig } from "./env";
 import { prisma } from "./prisma";
+import { userToday } from "./user-timezone";
 
 export type BriefRefreshResult = {
   status: "created" | "updated" | "fresh" | "no_transactions";
@@ -22,7 +22,7 @@ type EnsureFreshOptions = {
 
 export async function getBriefRefreshStatus(userId: string): Promise<BriefRefreshResult> {
   const { aiBriefRefreshHours } = getCostControlConfig();
-  const today = DateTime.local().toISODate();
+  const today = userToday();
 
   if (!today) {
     throw new Error("Failed to resolve today's date.");
@@ -85,7 +85,7 @@ export async function ensureFreshDailySnapshot(
   options?: EnsureFreshOptions,
 ): Promise<BriefRefreshResult> {
   const { aiBriefRefreshHours } = getCostControlConfig();
-  const today = DateTime.local().toISODate();
+  const today = userToday();
 
   if (!today) {
     throw new Error("Failed to resolve today's date.");

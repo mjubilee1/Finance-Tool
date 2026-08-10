@@ -7,7 +7,7 @@ import {
   buildCapitalOneProjection,
   isCapitalOneInstitution,
 } from "@/lib/capital-one-projection";
-import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
@@ -41,7 +41,7 @@ export async function GET() {
     }
 
     const accountIds = capitalOneAccounts.map((account) => account.plaidAccountId);
-    const lookback = DateTime.now().minus({ years: 1 }).toISODate() ?? undefined;
+    const lookback = userNow().minus({ years: 1 }).toISODate() ?? undefined;
 
     const transactions = await prisma.transaction.findMany({
       where: {

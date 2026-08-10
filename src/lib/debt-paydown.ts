@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
+import { userNow } from "@/lib/user-timezone";
 
 export type DebtMonthStatus =
   | "no_plan"
@@ -28,7 +29,7 @@ function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-export function currentGoalMonthKey(now: DateTime = DateTime.local()) {
+export function currentGoalMonthKey(now: DateTime = userNow()) {
   return now.toFormat("yyyy-MM");
 }
 
@@ -39,7 +40,7 @@ export function summarizeDebtMonth(params: {
   targetAmount?: number;
   now?: DateTime;
 }): DebtMonthSummary {
-  const now = params.now ?? DateTime.local();
+  const now = params.now ?? userNow();
   const monthKey = currentGoalMonthKey(now);
   const monthLabel = now.toFormat("LLLL yyyy");
   const monthPaid = roundCurrency(Math.max(0, params.monthPaid || 0));

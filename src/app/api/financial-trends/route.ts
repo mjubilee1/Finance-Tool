@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { DateTime } from "luxon";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,6 +9,7 @@ import {
   buildTrendsInsights,
   findLargeExpensesThisMonth,
 } from "@/lib/financial-trends";
+import { userNow, userToday } from "@/lib/user-timezone";
 
 export async function GET(request: Request) {
   try {
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       ? Math.min(24, Math.max(6, Math.round(monthsParam)))
       : 12;
 
-    const lookbackStart = DateTime.local()
+    const lookbackStart = userNow()
       .startOf("month")
       .minus({ months: months + 1 })
       .toISODate();
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     ]);
 
     const expectedMonthlyRent = settings?.expectedMonthlyRent ?? DEFAULT_EXPECTED_MONTHLY_RENT;
-    const todayKey = DateTime.local().toISODate() ?? "";
+    const todayKey = userToday();
 
     // Prefer last snapshot in each month as a net-worth calibration point when present.
     const snapshotNetWorthByMonth = new Map<string, number>();

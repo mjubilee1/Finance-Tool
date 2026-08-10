@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { USER_TIME_ZONE } from "@/lib/user-timezone";
 
 export const CAR_PAYMENT_MONTHLY = 513;
 export const CAR_INSURANCE_MONTHLY = 352;
@@ -142,8 +143,8 @@ export function carUpcomingBills(
   todayIso?: string,
 ): CarUpcomingBill[] {
   const today = todayIso
-    ? DateTime.fromISO(todayIso, { zone: "America/New_York" }).startOf("day")
-    : DateTime.now().setZone("America/New_York").startOf("day");
+    ? DateTime.fromISO(todayIso, { zone: USER_TIME_ZONE }).startOf("day")
+    : DateTime.now().setZone(USER_TIME_ZONE).startOf("day");
   if (!today.isValid) return [];
 
   const horizon = today.plus({ days: withinDays });
@@ -212,8 +213,8 @@ export function summarizeCarPayoff(
   todayIso?: string,
 ): CarPayoffSummary {
   const today = todayIso
-    ? DateTime.fromISO(todayIso, { zone: "America/New_York" }).startOf("day")
-    : DateTime.now().setZone("America/New_York").startOf("day");
+    ? DateTime.fromISO(todayIso, { zone: USER_TIME_ZONE }).startOf("day")
+    : DateTime.now().setZone(USER_TIME_ZONE).startOf("day");
   const start = parseIsoDate(profile.loanStartDate);
   const loanAmount = Math.max(0, profile.loanAmount);
   const loanBalance = Math.max(0, Math.min(profile.loanBalance, loanAmount || profile.loanBalance));
