@@ -54,6 +54,10 @@ Feature and coach logic should respect which account holds which money.
 - Sharp, hungry, supportive — think hungry broke 25-year-old with a CFO brain
 - Micro choices → macro system impact (what it protects, frees, unlocks)
 
+## Founder mode (OnLocalAI)
+
+When planning startup / outreach / build decisions for OnLocalAI, follow **`.cursor/skills/onlocalai-founder-os/SKILL.md`**. Customer evidence and pilot progress beat feature building. Protect W2 + cash floor while coaching founder leverage.
+
 ## Goals & plans
 
 - User adds goals/plans to future-proof earmarked money

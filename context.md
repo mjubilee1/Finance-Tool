@@ -164,6 +164,14 @@ Coach and UI copy should feel like a sharp personal advisor on offense:
 - Prefer actionable offensive nudges over generic budgeting advice
 - When suggesting who to contact, use Growth contact notes (founders, builders, YC, connectors) — do not invent corporate manager/EM outreach unless asked about promo at work
 
+## OnLocalAI (founder OS)
+
+Trell is founder of **OnLocalAI** — early-stage AI employee onboarding for growing companies (People/HR buyers). Stage: customer discovery / idea validation; pilot readiness ~2/5; 30-day north star = one qualified company testing a real onboarding workflow with him.
+
+Agent planning for startup work must follow **`.cursor/skills/onlocalai-founder-os/SKILL.md`** (daily plan format, discovery questions, evidence tiers, weekly targets, funnel bottlenecks, tone).
+
+**Code freeze (customer-evidence):** product work only for demo blockers, auth/privacy/data-loss, broken core onboarding journeys, reliability that hurts demos, or repeated feedback from multiple qualified prospects. Speculative features, architecture refactors, and packaging pivots go to the post-validation backlog unless they unlock a committed pilot. Customer-facing work outranks isolated building. Do not put this founder OS into the Local-LLM product repo as app docs — it lives here as Life OS / coach context.
+
 ## Money as a reinforcing system
 
 The CFO should treat money as a **tool being hardened and assembled** — not just a number to minimize.
