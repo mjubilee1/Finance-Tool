@@ -3,7 +3,7 @@ import { COACH_NORTH_STAR } from "@/lib/life-os-north-star";
 import { GOAL_SUGGESTION_RULES } from "@/lib/goal-suggestion";
 import type { CoachIntent } from "@/lib/coach-intent";
 import type { CoachNetworkContact } from "@/lib/coach-network";
-import type { TodayBriefContext } from "@/lib/today-brief";
+import type { LifePulse } from "@/lib/life-pulse";
 import type { WeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 
 const MORNING_BRIEF_FORMAT = `
@@ -100,7 +100,6 @@ type FinancePack = {
   recentTransactions: unknown;
   recurringPatterns: unknown;
   projectionContext: unknown;
-  memories: string;
   cashSchedule: string;
   typicalPaycheck: number | null;
 };
@@ -125,21 +124,22 @@ type NetworkPack = {
 export function buildCoachSystemPrompt(params: {
   intent: CoachIntent;
   userName: string | null;
-  todayBrief: TodayBriefContext;
+  lifePulse: LifePulse;
   financePack: FinancePack;
   calendarContext: CalendarContext;
-  weeklyPlan: WeeklyOperatingPlan;
-  networkPack?: NetworkPack | null;
+  localEventsPack?: unknown;
 }) {
   const {
     intent,
     userName,
-    todayBrief,
+    lifePulse,
     financePack,
     calendarContext,
-    weeklyPlan,
-    networkPack,
+    localEventsPack,
   } = params;
+  const todayBrief = lifePulse.todayBrief;
+  const weeklyPlan: WeeklyOperatingPlan = lifePulse.weeklyPlan;
+  const networkPack: NetworkPack | null = lifePulse.network;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
   const includeTodayBrief =
@@ -151,7 +151,23 @@ export function buildCoachSystemPrompt(params: {
     Boolean(networkPack?.contacts.length) &&
     (intent === "growth" || intent === "general" || intent === "day_update");
 
-  const sections = [BASE_LIFE_OS_RULES];
+  const sections = [
+    BASE_LIFE_OS_RULES,
+    `
+APP_WIDE_LIFE_PULSE (shared source of truth across Overview, Growth, and Coach):
+${JSON.stringify({
+  generatedAt: lifePulse.generatedAt,
+  date: lifePulse.date,
+  entrepreneurship: lifePulse.entrepreneurship,
+  relevantMemories: lifePulse.relevantMemories,
+})}
+
+Pulse rules:
+- Treat this as current app state, not a generic prompt template.
+- Entrepreneurship tasks are real planner items. Respect done/skipped status and never invent an interview.
+- Use relevantMemories before generic assumptions. If a memory conflicts with current app data, current app data wins.
+`,
+  ];
 
   if (intent === "morning_brief") {
     sections.push(MORNING_BRIEF_FORMAT);
@@ -178,9 +194,6 @@ ${JSON.stringify(todayBrief)}
   if (includeFullFinance) {
     sections.push(financePack.cashSchedule);
     sections.push(`
-MEMORIES:
-${financePack.memories}
-
 CURRENT ACCOUNTS:
 ${JSON.stringify(financePack.accounts)}
 
@@ -207,9 +220,6 @@ ${financePack.cashSchedule}
 LIGHT FINANCE CONTEXT (expand only if the question needs it):
 ${JSON.stringify(todayBrief.moneyHeadline)}
 ${financePack.cashSchedule}
-
-MEMORIES (recent):
-${financePack.memories}
 `);
   }
 
@@ -224,6 +234,22 @@ Primary leverage path = build/startup/founder network. W2 promotion is secondary
     sections.push(`
 GROWTH_CONTACTS (source of truth for who to reach out to — ${networkPack.withNotesCount} have notes):
 ${JSON.stringify(networkPack.contacts)}
+`);
+  }
+
+  if (localEventsPack) {
+    sections.push(`
+LOCAL_EVENTS_RADAR (DMV nearby + Baltimore regional + Richmond/Virginia Beach stretch drives):
+${JSON.stringify(localEventsPack)}
+
+Local events rules:
+- Prefer nearby (Oxon Hill / National Harbor / PG / DC) for office evenings.
+- Baltimore = regional — Thu evening or weekend preferred.
+- Richmond / Virginia Beach = weekend trip only.
+- Suggest events that compound network, skills, festivals with energy, fitness, intentional social/dating, or real-estate market awareness — not low-ROI random nightlife.
+- At most one concrete event suggestion unless the user asks for a weekend plan.
+- If confidence is directional, tell them to verify the listing before committing.
+- When they want to go, offer to add a Google Calendar block with travel buffer and optional @Contact linking.
 `);
   }
 

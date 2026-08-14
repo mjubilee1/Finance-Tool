@@ -27,6 +27,7 @@ The app should:
 4. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
 5. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
 6. **Learning Plan** — drive-time topic mix + content queue; Tech/DMV news digests live here too. Note into Growth if useful; never spawn a new unfinished project from a headline
+7. **Events** — local outings within driving distance (DMV nearby, Baltimore regional, Richmond / Virginia Beach weekend stretch). Curated for network, skills, festivals, body, intentional social — fed to Coach/Growth as background signal; pick at most one high-fit outing that compounds
 
 The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real leverage tradeoffs. Skipped moves are remembered so the same promo-one-pager advice doesn't keep coming back when he already has boss guidance.
 
@@ -101,8 +102,9 @@ Home is **Oxon Hill, Prince George's County, Maryland** — DMV area (DC / Maryl
 When suggesting breaks, intentional joy, dating/social spots, errands, or recovery after logging hard blocks:
 - Prefer **local / nearby** options first (Oxon Hill, National Harbor, PG County, easy DC hops).
 - Longer outings (Downtown DC, Baltimore day trip) are weekend-sized unless the day shape clearly allows it.
+- **Stretch drives** (Richmond, Virginia Beach) are weekend day-trip / overnight only — never midweek office evenings.
 - After gym, leverage, or a solid work stretch, it is valid to **take a break and enjoy leisure** nearby — rest is part of compounding, not a leak, when it is chosen and capped.
-- Do not invent far-away or random city plans; stay grounded in the DMV life the user actually lives.
+- Do not invent far-away or random city plans; stay grounded in the DMV life the user actually lives. Use the Events radar when suggesting concrete outings.
 
 ## Authentication
 
@@ -161,6 +163,14 @@ Coach and UI copy should feel like a sharp personal advisor on offense:
 - Connect daily moves to long-term goals — default to **startup / build / founder network** leverage; W2 promotion help only when asked
 - Prefer actionable offensive nudges over generic budgeting advice
 - When suggesting who to contact, use Growth contact notes (founders, builders, YC, connectors) — do not invent corporate manager/EM outreach unless asked about promo at work
+
+## OnLocalAI (founder OS)
+
+Trell is founder of **OnLocalAI** — early-stage AI employee onboarding for growing companies (People/HR buyers). Stage: customer discovery / idea validation; pilot readiness ~2/5; 30-day north star = one qualified company testing a real onboarding workflow with him.
+
+Agent planning for startup work must follow **`.cursor/skills/onlocalai-founder-os/SKILL.md`** (daily plan format, discovery questions, evidence tiers, weekly targets, funnel bottlenecks, tone).
+
+**Code freeze (customer-evidence):** product work only for demo blockers, auth/privacy/data-loss, broken core onboarding journeys, reliability that hurts demos, or repeated feedback from multiple qualified prospects. Speculative features, architecture refactors, and packaging pivots go to the post-validation backlog unless they unlock a committed pilot. Customer-facing work outranks isolated building. Do not put this founder OS into the Local-LLM product repo as app docs — it lives here as Life OS / coach context.
 
 ## Money as a reinforcing system
 

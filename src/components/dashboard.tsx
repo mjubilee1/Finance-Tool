@@ -1,6 +1,6 @@
 "use client";
 
-import { calculateGoalPace, type DailySpendPoint, type MonthlyCashFlowPoint } from "@/lib/cash-flow";
+import { calculateGoalPace, type DailySpendPoint, type MonthlyCashFlowByChecking, type MonthlyCashFlowPoint } from "@/lib/cash-flow";
 import { isLifeGoalType } from "@/lib/goal-types";
 import { formatCurrency } from "@/lib/format";
 import {
@@ -39,6 +39,10 @@ const LearningPlanView = dynamic(
   () => import("./learning/learning-plan-view").then((m) => m.LearningPlanView),
   { loading: () => <DashboardSkeleton /> },
 );
+const LocalEventsView = dynamic(
+  () => import("./events/local-events-view").then((m) => m.LocalEventsView),
+  { loading: () => <DashboardSkeleton /> },
+);
 const CarView = dynamic(
   () => import("./car/car-view").then((m) => m.CarView),
   { loading: () => <DashboardSkeleton /> },
@@ -57,6 +61,11 @@ const RecurringView = dynamic(
 );
 const Projections = dynamic(
   () => import("./projections").then((m) => m.Projections),
+  { loading: () => <DashboardSkeleton /> },
+);
+const FinancialTrendsView = dynamic(
+  () =>
+    import("./financial-trends/financial-trends-view").then((m) => m.FinancialTrendsView),
   { loading: () => <DashboardSkeleton /> },
 );
 const GoalsView = dynamic(
@@ -205,6 +214,7 @@ type DashboardData = {
   snapshots: Array<Record<string, unknown>>;
   dailySpendSeries?: DailySpendPoint[];
   monthlyCashFlowSeries?: MonthlyCashFlowPoint[];
+  monthlyCashFlowByChecking?: MonthlyCashFlowByChecking | null;
   aiInsight: DashboardInsight | null;
   accounts: DashboardAccount[];
   goals: DashboardGoal[];
@@ -387,6 +397,7 @@ export function Dashboard() {
     transactions = [],
     dailySpendSeries = [],
     monthlyCashFlowSeries = [],
+    monthlyCashFlowByChecking = null,
     aiInsight = null,
     accounts = [],
     goals = [],
@@ -754,6 +765,7 @@ export function Dashboard() {
                   refreshHours={briefRefreshInfo?.refreshHours}
                   dailySpendSeries={dailySpendSeries}
                   monthlyCashFlowSeries={monthlyCashFlowSeries}
+                  monthlyCashFlowByChecking={monthlyCashFlowByChecking}
                   onOpenChat={() => selectTab('chat')}
                   onOpenRecurring={() => selectTab('recurring')}
                   onOpenGrowth={() => selectTab('growth')}
@@ -779,6 +791,8 @@ export function Dashboard() {
             {activeTab === "learning" && (
               <LearningPlanView onOpenGrowth={() => selectTab("growth")} />
             )}
+
+            {activeTab === "events" && <LocalEventsView />}
 
             {activeTab === "car" && <CarView />}
             {activeTab === "calories" && <CaloriesView />}
@@ -946,6 +960,22 @@ export function Dashboard() {
                 <div className="app-card p-6">
                   {accounts.length > 0 ? <Projections /> : <p className="text-slate-500 text-center p-8">Link an account to see projections.</p>}
                 </div>
+              </div>
+            )}
+
+            {/* View: FINANCIAL TRENDS */}
+            {activeTab === "financial-trends" && (
+              <div className="space-y-6">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block mb-6">
+                  Financial Trends
+                </h1>
+                {accounts.length > 0 ? (
+                  <FinancialTrendsView />
+                ) : (
+                  <div className="app-card p-8 text-center text-slate-500">
+                    Link an account to see long-term financial trends.
+                  </div>
+                )}
               </div>
             )}
 

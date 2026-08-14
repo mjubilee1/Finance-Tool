@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { DateTime } from "luxon";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { filterTransactionsByFocus } from "@/lib/account-focus";
 import { getDismissedMerchantKeys } from "@/lib/charge-review";
 import { detectSpendingAlerts, estimateMonthlyLeak } from "@/lib/spending-alerts";
+import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
@@ -14,7 +14,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sixtyDaysAgo = DateTime.local().minus({ days: 60 }).toISODate();
+    const sixtyDaysAgo = userNow().minus({ days: 60 }).toISODate();
     const [transactions, accounts, reviewMemories] = await Promise.all([
       prisma.transaction.findMany({
         where: {

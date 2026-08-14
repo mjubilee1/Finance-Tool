@@ -3,16 +3,54 @@ export const MEDIA_IMAGE_ACCEPT =
   "image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif";
 
 /**
+ * Keep one live mic stream for the page lifetime.
+ * Stopping tracks after every recording makes Safari / iOS re-prompt.
+ */
+let sharedMicStream: MediaStream | null = null;
+
+function streamHasLiveAudio(stream: MediaStream | null) {
+  return Boolean(stream?.getAudioTracks().some((track) => track.readyState === "live"));
+}
+
+function enableMicTracks(stream: MediaStream, enabled: boolean) {
+  for (const track of stream.getAudioTracks()) {
+    track.enabled = enabled;
+  }
+}
+
+/**
  * Request microphone access for this single-user app.
- * Browsers remember Allow for the origin after the first grant.
+ * Reuses a cached stream so the browser does not keep asking after the first Allow.
  */
 export async function ensureMicrophoneAccess(): Promise<MediaStream> {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     throw new Error("This browser does not support microphone input.");
   }
 
+  if (streamHasLiveAudio(sharedMicStream)) {
+    enableMicTracks(sharedMicStream!, true);
+    return sharedMicStream!;
+  }
+
+  sharedMicStream = null;
+
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+    sharedMicStream = stream;
+
+    // If the user later revokes permission in browser settings, drop the cache.
+    for (const track of stream.getAudioTracks()) {
+      track.addEventListener("ended", () => {
+        if (sharedMicStream === stream) sharedMicStream = null;
+      });
+    }
+
+    return stream;
   } catch (error) {
     const name = error instanceof DOMException ? error.name : "";
 
@@ -32,6 +70,21 @@ export async function ensureMicrophoneAccess(): Promise<MediaStream> {
 
     throw new Error("Could not access the microphone.");
   }
+}
+
+/**
+ * Pause capture between recordings without releasing permission (no re-prompt).
+ */
+export function pauseMicrophoneAccess() {
+  if (sharedMicStream) enableMicTracks(sharedMicStream, false);
+}
+
+/**
+ * Hard-release only on full page teardown. Prefer pauseMicrophoneAccess between takes.
+ */
+export function releaseMicrophoneAccess() {
+  sharedMicStream?.getTracks().forEach((track) => track.stop());
+  sharedMicStream = null;
 }
 
 export async function getMicrophonePermissionState(): Promise<PermissionState | "unsupported"> {

@@ -5,34 +5,36 @@ import { buildCoachSystemPrompt } from "@/lib/coach-chat-prompt";
 import { classifyCoachIntent } from "@/lib/coach-intent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
+import { resolveChatModel } from "@/lib/chat-models";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
 import {
   createOrUpdateGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
-  fetchUpcomingGoogleCalendarEvents,
   updateGoogleCalendarEvent,
   type CreateGoogleCalendarEventInput,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
-import { loadCoachNetworkPack } from "@/lib/coach-network";
 import {
   applyCoachContactNotes,
   formatCoachContactNoteSummary,
   parseCoachContactNotes,
 } from "@/lib/coach-contact-notes";
+import {
+  getLocalEventDigestForDate,
+  serializeLocalEventDigest,
+  serializeLocalEventsForAgent,
+} from "@/lib/local-events";
+import { buildLifePulse } from "@/lib/life-pulse";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
   applyTodayUpdates,
-  buildTodayBriefContext,
   type TodayUpdatesPayload,
 } from "@/lib/today-brief";
-import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
-import { loadUserPlanActivitiesBetween } from "@/lib/planner";
-import { calendarDateTime, USER_TIME_ZONE, userNow } from "@/lib/user-timezone";
+import { calendarDateTime, USER_TIME_ZONE, userNow, userToday } from "@/lib/user-timezone";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -266,30 +268,6 @@ function describeCalendarEvent(event: GoogleCalendarEvent) {
   return event.htmlLink ? `${label}: ${event.htmlLink}` : label;
 }
 
-async function loadCoachWeekCalendarEvents(userId: string) {
-  const now = userNow();
-
-  try {
-    // Wider window so schedule updates can match/dedupe events beyond "this week".
-    const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
-      timeMin: now.minus({ days: 2 }).startOf("day").toJSDate(),
-      timeMax: now.plus({ days: 21 }).endOf("day").toJSDate(),
-      maxResults: 80,
-    });
-
-    return calendar.events;
-  } catch {
-    return [] as GoogleCalendarEvent[];
-  }
-}
-
-async function loadCoachWeekUserPlanActivities(userId: string) {
-  const now = userNow();
-  const startDate = now.toISODate()!;
-  const endDate = now.plus({ days: 6 }).toISODate()!;
-  return loadUserPlanActivitiesBetween(userId, startDate, endDate);
-}
-
 function stringifyStoredJson(value: unknown) {
   if (!value) return null;
 
@@ -456,8 +434,8 @@ function buildProjectionSummary(
 
   let totalSpend = 0;
   let totalIncome = 0;
-  let earliestMs = DateTime.now().toMillis();
-  let latestMs = DateTime.now().minus({ years: 10 }).toMillis();
+  let earliestMs = userNow().toMillis();
+  let latestMs = userNow().minus({ years: 10 }).toMillis();
 
   const incomeBySource = new Map<string, { total: number; count: number }>();
 
@@ -520,7 +498,7 @@ function buildProjectionSummary(
 const chatUsageByUser = new Map<string, { date: string; count: number }>();
 
 function getTodayKey() {
-  return new Date().toISOString().split("T")[0];
+  return userToday();
 }
 
 function incrementChatUsage(userId: string, dailyLimit: number) {
@@ -676,6 +654,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const requestMessages = sanitizeChatMessages(body.messages);
+    const chatModel = resolveChatModel(body.model);
     const latestUserMessage = [...requestMessages].reverse().find((message) => message.role === "user");
     if (!latestUserMessage) {
       return NextResponse.json({ error: "Send a message or upload a screenshot first." }, { status: 400 });
@@ -717,8 +696,24 @@ export async function POST(req: Request) {
       ).slice(-MAX_CONTEXT_MESSAGES),
     );
 
-    const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
-    const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns, carProfile] = await Promise.all([
+    const coachIntent = classifyCoachIntent(latestUserMessage.content);
+    const todayIso = userNow().toISODate()!;
+    const memoryQuery = recentMessages
+      .filter((message) => message.role === "user")
+      .slice(-3)
+      .map((message) => message.content)
+      .join("\n");
+    const twoYearsAgo = userNow().minus({ years: 2 }).toISODate();
+    const [
+      accounts,
+      goals,
+      recentTransactions,
+      projectionTransactions,
+      recurringPatterns,
+      carProfile,
+      lifePulse,
+      localEventDigest,
+    ] = await Promise.all([
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
@@ -735,21 +730,21 @@ export async function POST(req: Request) {
         },
         orderBy: { date: "asc" },
       }),
-      prisma.financialMemory.findMany({
-        where: { userId: session.user.id },
-        orderBy: { importanceScore: "desc" },
-        take: 8,
-      }),
       prisma.recurringPattern.findMany({
         where: { userId: session.user.id },
         take: 25,
       }),
       getOrCreateCarProfile(session.user.id),
+      buildLifePulse(session.user.id, {
+        query: memoryQuery,
+        includeNetwork: true,
+        ensureEntrepreneurship: true,
+        calendarDaysBack: 2,
+        calendarDaysAhead: 21,
+        memoryLimit: 8,
+      }),
+      getLocalEventDigestForDate(session.user.id, todayIso),
     ]);
-
-    const memories = memoryRecords
-      .map((memory) => memory.content)
-      .join("\n");
 
     const projectionContext = {
       debtExcluded: buildProjectionSummary(accounts, projectionTransactions, true),
@@ -767,27 +762,19 @@ export async function POST(req: Request) {
       return payroll ? Math.abs(payroll.amount) : null;
     })();
 
-    const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const [todayBrief, weekCalendarEvents, userPlanActivities, networkPack] = await Promise.all([
-      buildTodayBriefContext(session.user.id),
-      loadCoachWeekCalendarEvents(session.user.id),
-      loadCoachWeekUserPlanActivities(session.user.id),
-      loadCoachNetworkPack(session.user.id),
-    ]);
-    const weeklyPlan = buildWeeklyOperatingPlan({
-      start: userNow(),
-      calendarEvents: weekCalendarEvents,
-      userPlanActivities,
-    });
+    const todayBrief = lifePulse.todayBrief;
+    const weekCalendarEvents = lifePulse.calendar.events;
+    const localEventsPack = serializeLocalEventsForAgent(
+      localEventDigest ? serializeLocalEventDigest(localEventDigest) : null
+    );
 
     const systemPrompt = buildCoachSystemPrompt({
       intent: coachIntent,
       userName: session.user.name ?? null,
-      todayBrief,
-      weeklyPlan,
-      networkPack,
+      lifePulse,
+      localEventsPack,
       calendarContext: {
-        nowIso: userNow().toISO() ?? new Date().toISOString(),
+        nowIso: userNow().toISO()!,
         timeZone: USER_TIME_ZONE,
         upcomingEvents: weekCalendarEvents.map((event) => ({
           eventId: event.id,
@@ -851,8 +838,7 @@ export async function POST(req: Request) {
           confidence: pattern.confidenceScore,
         })),
         projectionContext,
-        memories,
-        cashSchedule: buildKnownCashScheduleContext(DateTime.local(), {
+        cashSchedule: buildKnownCashScheduleContext(userNow(), {
           typicalPaycheck,
           carProfile,
         }),
@@ -866,7 +852,7 @@ export async function POST(req: Request) {
     ];
 
     let response = (await openai.chat.completions.create({
-      model: "gpt-5",
+      model: chatModel,
       messages: openAiMessages,
       response_format: { type: "json_object" },
       max_completion_tokens: 3000,
@@ -881,7 +867,7 @@ export async function POST(req: Request) {
         `[CHAT] empty reply finish=${response.choices[0]?.finish_reason ?? "unknown"} — retrying with verbosity=medium`,
       );
       response = (await openai.chat.completions.create({
-        model: "gpt-5",
+        model: chatModel,
         messages: openAiMessages,
         response_format: { type: "json_object" },
         max_completion_tokens: 4000,
@@ -1088,6 +1074,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       sessionId: coachSession.id,
+      model: chatModel,
       message: chatResponse.message,
       intent: coachIntent,
       spotlight: chatResponse.spotlight ?? null,

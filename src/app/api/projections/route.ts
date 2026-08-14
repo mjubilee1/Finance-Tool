@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { DateTime } from "luxon";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts, hasPrimarySelection } from "@/lib/account-focus";
 import { buildCashLadderSeries } from "@/lib/cash-flow";
+import { buildCashFlowProjection } from "@/lib/projection-service";
+import { userNow, userToday } from "@/lib/user-timezone";
 
 type CfoSummary = {
   cfoBrief?: {
@@ -13,10 +14,6 @@ type CfoSummary = {
     safeSpendTodayReason?: string;
   };
 };
-
-function getMillis(date: DateTime<true> | DateTime<false>) {
-  return date.toMillis();
-}
 
 export async function GET(request: Request) {
   try {
@@ -53,9 +50,9 @@ export async function GET(request: Request) {
     // Fetch transactions for non-debt accounts only. Loan/mortgage activity can
     // appear as negative amounts in Plaid, but it is debt movement, not income.
     // We want up to 2 years of history
-    const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
+    const twoYearsAgo = userNow().minus({ years: 2 }).toISODate();
 
-    const [transactions, allTransactions, latestSnapshot] = await Promise.all([
+    const [transactions, allTransactions, recurringPatterns, latestSnapshot] = await Promise.all([
       prisma.transaction.findMany({
         where: {
           userId,
@@ -68,40 +65,15 @@ export async function GET(request: Request) {
         where: { userId },
         orderBy: { date: "desc" },
       }),
+      prisma.recurringPattern.findMany({
+        where: { userId },
+        orderBy: { confidenceScore: "desc" },
+      }),
       prisma.dailyFinancialSnapshot.findFirst({
         where: { userId },
         orderBy: { date: "desc" },
       }),
     ]);
-
-    // Calculate metrics
-    let totalSpend = 0;
-    let totalIncome = 0;
-    let earliestMs = getMillis(DateTime.now());
-    let latestMs = getMillis(DateTime.now().minus({ years: 10 }));
-
-    transactions.forEach((t) => {
-      // Ignore transfers for spend/income calculation to avoid double counting
-      // Plaid often categorizes transfers as "Transfer"
-      if (t.categoryPrimary?.toLowerCase().includes("transfer")) return;
-
-      const transactionMs = getMillis(DateTime.fromISO(t.date));
-      earliestMs = Math.min(earliestMs, transactionMs);
-      latestMs = Math.max(latestMs, transactionMs);
-
-      if (t.amount > 0) {
-        totalSpend += t.amount;
-      } else if (t.amount < 0) {
-        totalIncome += Math.abs(t.amount);
-      }
-    });
-
-    const daysDiff = (latestMs - earliestMs) / (24 * 60 * 60 * 1000);
-    const effectiveDays = Math.max(1, daysDiff); // Avoid division by zero
-
-    const dailyAverageSpend = totalSpend / effectiveDays;
-    const dailyAverageIncome = totalIncome / effectiveDays;
-    const netDailyAverage = dailyAverageIncome - dailyAverageSpend;
 
     // Cash you can actually use (available), not ledger "current" which can include holds.
     const currentTotalBalance = accounts
@@ -126,6 +98,27 @@ export async function GET(request: Request) {
         current: acc.currentBalance ?? 0,
       }));
 
+    const todayKey = userToday();
+    const projection = buildCashFlowProjection({
+      transactions,
+      recurringPatterns,
+      currentBalance: currentTotalBalance,
+      referenceDate: todayKey,
+    });
+    const settledCashFlow = transactions.filter(
+      (transaction) =>
+        !transaction.pending &&
+        !transaction.categoryPrimary?.toLowerCase().includes("transfer"),
+    );
+    const totalSpend = settledCashFlow.reduce(
+      (sum, transaction) => sum + (transaction.amount > 0 ? transaction.amount : 0),
+      0,
+    );
+    const totalIncome = settledCashFlow.reduce(
+      (sum, transaction) => sum + (transaction.amount < 0 ? Math.abs(transaction.amount) : 0),
+      0,
+    );
+
     let latestInsight: CfoSummary | null = null;
     try {
       latestInsight = latestSnapshot?.summary
@@ -135,7 +128,6 @@ export async function GET(request: Request) {
       latestInsight = null;
     }
 
-    const todayKey = DateTime.local().toISODate() ?? DateTime.now().toISODate() ?? "";
     const dailyBriefMetrics = calculateDailyBriefMetrics({
       date: todayKey,
       transactions: filterTransactionsByFocus(allTransactions, accounts),
@@ -149,24 +141,9 @@ export async function GET(request: Request) {
           )
         : dailyBriefMetrics.dailyAllowance;
     const safeSpendReason = latestInsight?.cfoBrief?.safeSpendTodayReason ?? dailyBriefMetrics.safeSpendTodayReason;
-    const safeSpendNetDailyAverage = dailyAverageIncome - safeDailySpend;
-
-    // Generate 6-month projection data
-    const projectionData = [];
-    const projectedBalance = currentTotalBalance;
-    
-    // Start from today
-    const today = DateTime.now();
-    for (let i = 0; i <= 180; i += 15) { // Every 15 days for a smoother chart
-      const projDate = today.plus({ days: i });
-      projectionData.push({
-        date: projDate.toISODate(),
-        projectedBalance: projectedBalance + (netDailyAverage * i),
-        safeSpendProjectedBalance: projectedBalance + (safeSpendNetDailyAverage * i),
-      });
-    }
-
-    const projectSafeSpendBalance = (days: number) => projectedBalance + (safeSpendNetDailyAverage * days);
+    const safeSpendNetDailyAverage = projection.averageDailyIncome - safeDailySpend;
+    const projectSafeSpendBalance = (days: number) =>
+      currentTotalBalance + safeSpendNetDailyAverage * days;
 
     // Actual month-over-month cash ladder (history) — complements the forward projection sketch.
     const cashLadderSeries = buildCashLadderSeries(transactions, 6, todayKey);
@@ -175,17 +152,17 @@ export async function GET(request: Request) {
       metrics: {
         totalSpend,
         totalIncome,
-        dailyAverageSpend,
-        dailyAverageIncome,
-        netDailyAverage,
-        daysAnalyzed: effectiveDays,
+        dailyAverageSpend: projection.averageDailySpend,
+        dailyAverageIncome: projection.averageDailyIncome,
+        netDailyAverage: projection.netDailyAverage,
+        daysAnalyzed: projection.daysAnalyzed,
         currentTotalBalance,
         cashBreakdown,
       },
       safeSpendScenario: {
         safeDailySpend,
         safeSpendReason,
-        dailyIncomeAssumption: dailyAverageIncome,
+        dailyIncomeAssumption: projection.averageDailyIncome,
         plannedNetDailyAverage: safeSpendNetDailyAverage,
         monthlySpendAtSafeRate: safeDailySpend * 30,
         sixMonthSpendAtSafeRate: safeDailySpend * 180,
@@ -205,7 +182,8 @@ export async function GET(request: Request) {
           "Large discretionary, travel, house-repair, interest, or credit-card spending hits.",
         ],
       },
-      projectionData,
+      projectionModel: projection,
+      projectionData: projection.points,
       cashLadderSeries,
     });
   } catch (error) {

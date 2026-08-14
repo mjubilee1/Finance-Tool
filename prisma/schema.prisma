@@ -85,8 +85,11 @@ model User {
   learningContentItems    LearningContentItem[]
   learningYoutubeDigests  LearningYoutubeDigest[]
   learningWatchedVideos   LearningWatchedVideo[]
+  localEventDigests       LocalEventDigest[]
   coachSessions           CoachSession[]
   coachMessages           CoachMessage[]
+  financialEvents         FinancialEvent[]
+  financialTrendsSettings FinancialTrendsSettings?
 }
 
 model PlaidItem {
@@ -241,6 +244,35 @@ model DailyFinancialSnapshot {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+}
+
+/// Long-term trajectory annotations (vehicle purchase, tax payment, tenant move-in, etc.).
+model FinancialEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // YYYY-MM-DD
+  title     String
+  category  String   // vehicle | refund | repair | vacation | tax | tenant | maintenance | other
+  amount    Float?
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+/// Settings for Financial Trends (expected rent, etc.).
+model FinancialTrendsSettings {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  /// Expected monthly rent when rooms are occupied (default ~$2,650 house-hack mix).
+  expectedMonthlyRent Float    @default(2650)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model FinancialGoal {
@@ -671,12 +703,16 @@ model LearningContentItem {
 
 /// Daily curated YouTube drive-time picks (real videos from channel RSS).
 model LearningYoutubeDigest {
-  id          String   @id @default(cuid())
-  userId      String
-  date        String // YYYY-MM-DD
-  autoQueued  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String
+  date             String // YYYY-MM-DD
+  autoQueued       Boolean  @default(false)
+  /// Short "what I'm trying to learn today" script for drive-time.
+  dailyScript      String?  @db.Text
+  /// Paste into YouTube Premium "Your custom feed" for a parallel feed.
+  customFeedPrompt String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   picks LearningYoutubePick[]
@@ -721,6 +757,62 @@ model LearningWatchedVideo {
 
   @@unique([userId, videoId])
   @@index([userId, watchedAt])
+}
+
+/// Daily curated local events within driving distance of Oxon Hill (DMV + Balt + Richmond + VB).
+model LocalEventDigest {
+  id             String   @id @default(cuid())
+  userId         String
+  date           String // YYYY-MM-DD
+  radarTitle     String
+  radarWhy       String   @db.Text
+  radarAction    String
+  focusGuardrail String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items LocalEventItem[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model LocalEventItem {
+  id               String   @id @default(cuid())
+  digestId         String
+  title            String
+  summary          String   @db.Text
+  whyItMatters     String   @db.Text
+  /// networking | festival | learning_skill | founder_startup | fitness_body | culture_social | real_estate_housing | music_arts
+  theme            String
+  /// dmv | baltimore | richmond | virginia_beach
+  region           String
+  /// nearby | regional | stretch
+  distanceTier    String
+  city             String?
+  venue            String?
+  /// YYYY-MM-DD when known
+  startsOn         String?
+  endsOn           String?
+  /// evening | wfh_flex | weekend | weekend_trip
+  dayFit           String
+  driveMinutes     Int?
+  sourceLabel      String
+  sourceUrl        String?
+  relevanceScore   Float    @default(5)
+  /// confirmed | directional
+  confidence       String   @default("confirmed")
+  /// new | interested | planned | dismissed | attended
+  status           String   @default("new")
+  loggedActivityId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  digest LocalEventDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+
+  @@index([digestId, status])
+  @@index([digestId, startsOn])
 }
 
 model CoachSession {

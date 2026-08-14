@@ -1,9 +1,10 @@
 import { prisma } from "../src/lib/prisma";
 import { generateDailyInsight } from "../src/lib/ai-coach";
+import { userToday } from "../src/lib/user-timezone";
 
 async function main() {
   const users = await prisma.user.findMany();
-  const today = new Date().toISOString().split('T')[0];
+  const today = userToday();
   
   for (const user of users) {
     console.log(`Generating insight for user ${user.id}...`);

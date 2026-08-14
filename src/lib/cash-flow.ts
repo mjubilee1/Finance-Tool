@@ -1,6 +1,8 @@
 import { DateTime } from "luxon";
 import type { DailyBriefMetrics } from "./daily-brief";
 import { getTransactionActivityDate, isTransactionOnDate } from "./daily-brief";
+import { classifyInstitution, isCheckingLikeAccount } from "./institutions";
+import { userNow } from "./user-timezone";
 
 type CashFlowTransaction = {
   date: string;
@@ -10,6 +12,7 @@ type CashFlowTransaction = {
   categoryPrimary?: string | null;
   name?: string | null;
   merchantName?: string | null;
+  accountId?: string;
 };
 
 const DEFAULT_WEEKLY_BASE_INCOME = 1555.27;
@@ -46,6 +49,22 @@ export type MonthlyCashFlowPoint = {
   net: number;
   isCurrentMonth: boolean;
   isPartial: boolean;
+  /** Pending income included in `income` (current month only). */
+  pendingIncome?: number;
+  /** Pending spend included in `spent` (current month only). */
+  pendingSpent?: number;
+  /** ISO date the partial month was computed through (current month only). */
+  asOfDate?: string;
+};
+
+export type MonthlyCashFlowScope = "all" | "chase" | "capital_one";
+
+export type MonthlyCashFlowByChecking = {
+  all: MonthlyCashFlowPoint[];
+  chase: MonthlyCashFlowPoint[];
+  capitalOne: MonthlyCashFlowPoint[];
+  /** Which bank scopes have at least one linked checking-like account. */
+  availableScopes: MonthlyCashFlowScope[];
 };
 
 /** Month-over-month cash with a running "ladder" height (cumulative net). */
@@ -203,16 +222,21 @@ export function buildMonthlyCashFlowSeries(
 ): MonthlyCashFlowPoint[] {
   const today = referenceDate
     ? DateTime.fromISO(referenceDate).startOf("day")
-    : DateTime.local().startOf("day");
+    : userNow().startOf("day");
   const currentMonthKey = today.toFormat("yyyy-MM");
   const startMonth = today.startOf("month").minus({ months: months - 1 });
 
-  const byMonth = new Map<string, { income: number; spent: number }>();
+  const byMonth = new Map<
+    string,
+    { income: number; spent: number; pendingIncome: number; pendingSpent: number }
+  >();
   for (let i = 0; i < months; i++) {
     const month = startMonth.plus({ months: i });
     const key = month.toFormat("yyyy-MM");
-    byMonth.set(key, { income: 0, spent: 0 });
+    byMonth.set(key, { income: 0, spent: 0, pendingIncome: 0, pendingSpent: 0 });
   }
+
+  const todayKey = today.toISODate() ?? undefined;
 
   for (const transaction of transactions) {
     if (isTransfer(transaction)) continue;
@@ -227,8 +251,11 @@ export function buildMonthlyCashFlowSeries(
 
     if (transaction.amount > 0) {
       bucket.spent += transaction.amount;
+      if (transaction.pending) bucket.pendingSpent += transaction.amount;
     } else if (transaction.amount < 0) {
-      bucket.income += Math.abs(transaction.amount);
+      const income = Math.abs(transaction.amount);
+      bucket.income += income;
+      if (transaction.pending) bucket.pendingIncome += income;
     }
   }
 
@@ -246,6 +273,13 @@ export function buildMonthlyCashFlowSeries(
       net: roundCurrency(income - spent),
       isCurrentMonth,
       isPartial: isCurrentMonth,
+      ...(isCurrentMonth
+        ? {
+            pendingIncome: roundCurrency(totals.pendingIncome),
+            pendingSpent: roundCurrency(totals.pendingSpent),
+            asOfDate: todayKey,
+          }
+        : {}),
     };
   });
 }
@@ -273,6 +307,66 @@ export function buildCashLadderSeries(
   });
 }
 
+type CheckingAccountRef = {
+  plaidAccountId: string;
+  type: string;
+  subtype?: string | null;
+  institutionName?: string | null;
+};
+
+/**
+ * Combined monthly cash flow plus Chase / Capital One checking splits
+ * so Overview can show a real per-bank breakdown.
+ *
+ * "All" is defined as the union of the Chase and Capital One checking-like
+ * transactions — the exact same transactions used to build the `chase` and
+ * `capitalOne` series — so `all.income/spent/net` always reconciles to
+ * `chase + capitalOne` for every month. Previously "all" could be built from
+ * a differently-filtered transaction set (e.g. accounts flagged primary),
+ * which let it silently diverge from the two bank splits shown right next to
+ * it. `fallbackAllTransactions` is only used when neither bank is detected,
+ * so "All" still has something sensible to show.
+ */
+export function buildMonthlyCashFlowByChecking(
+  transactions: CashFlowTransaction[],
+  accounts: CheckingAccountRef[],
+  months = 6,
+  referenceDate?: string,
+  fallbackAllTransactions?: CashFlowTransaction[],
+): MonthlyCashFlowByChecking {
+  const chaseIds = new Set<string>();
+  const capitalOneIds = new Set<string>();
+
+  for (const account of accounts) {
+    if (!isCheckingLikeAccount(account)) continue;
+    const key = classifyInstitution(account.institutionName);
+    if (key === "chase") chaseIds.add(account.plaidAccountId);
+    if (key === "capital_one") capitalOneIds.add(account.plaidAccountId);
+  }
+
+  const chaseTxns = transactions.filter((txn) => txn.accountId && chaseIds.has(txn.accountId));
+  const capitalOneTxns = transactions.filter(
+    (txn) => txn.accountId && capitalOneIds.has(txn.accountId),
+  );
+
+  const availableScopes: MonthlyCashFlowScope[] = ["all"];
+  if (chaseIds.size > 0) availableScopes.push("chase");
+  if (capitalOneIds.size > 0) availableScopes.push("capital_one");
+
+  const combinedIds = new Set<string>([...chaseIds, ...capitalOneIds]);
+  const combinedTxns =
+    combinedIds.size > 0
+      ? transactions.filter((txn) => txn.accountId && combinedIds.has(txn.accountId))
+      : (fallbackAllTransactions ?? transactions);
+
+  return {
+    all: buildMonthlyCashFlowSeries(combinedTxns, months, referenceDate),
+    chase: buildMonthlyCashFlowSeries(chaseTxns, months, referenceDate),
+    capitalOne: buildMonthlyCashFlowSeries(capitalOneTxns, months, referenceDate),
+    availableScopes,
+  };
+}
+
 /** Last N days of spending from transactions (not snapshot rows). */
 export function buildDailySpendSeries(
   transactions: CashFlowTransaction[],
@@ -281,7 +375,7 @@ export function buildDailySpendSeries(
 ): DailySpendPoint[] {
   const today = referenceDate
     ? DateTime.fromISO(referenceDate).startOf("day")
-    : DateTime.local().startOf("day");
+    : userNow().startOf("day");
   const start = today.minus({ days: days - 1 });
   const startKey = start.toISODate() ?? "";
   const todayKey = today.toISODate() ?? "";
@@ -324,7 +418,7 @@ export function calculateNetDailyAverage(
   transactions: CashFlowTransaction[],
   days = 14,
 ): number {
-  const cutoff = DateTime.local().minus({ days }).toISODate() ?? "";
+  const cutoff = userNow().minus({ days }).toISODate() ?? "";
   const settled = transactions.filter(
     (t) => !t.pending && !isTransfer(t) && t.date >= cutoff,
   );
@@ -377,7 +471,7 @@ export function calculateWeeklyCashFlow(params: {
   const { transactions, dailyAllowance } = params;
   const today = params.referenceDate
     ? DateTime.fromISO(params.referenceDate)
-    : DateTime.local();
+    : userNow();
   const weekStart = today.startOf("week");
 
   const settled = transactions.filter((t) => !t.pending && !isTransfer(t));
@@ -541,7 +635,7 @@ export function calculateGoalPace(params: {
   }
 
   const daysToComplete = Math.ceil(remaining / dailyContribution);
-  const projected = DateTime.local().plus({ days: daysToComplete });
+  const projected = userNow().plus({ days: daysToComplete });
   const projectedDate = projected.toISODate();
   const monthsToComplete = roundCurrency(daysToComplete / 30);
 
@@ -592,7 +686,7 @@ export type CalendarDay = {
 };
 
 export function buildBillCalendar(days = 14): CalendarDay[] {
-  const today = DateTime.local();
+  const today = userNow();
   const result: CalendarDay[] = [];
 
   for (let i = 0; i < days; i++) {

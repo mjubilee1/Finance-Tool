@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import "dotenv/config";
 import { getEmbedding } from "../src/lib/openai";
-import { getPineconeIndex } from "../src/lib/pinecone";
 import { prisma } from "../src/lib/prisma";
 
 const shouldUpdate = process.argv.includes("--update");
@@ -20,6 +19,8 @@ async function upsertPineconeRecord(params: {
   }
 
   try {
+    // Dynamic import: pinecone.ts uses `server-only`, which throws under plain tsx/node.
+    const { getPineconeIndex } = await import("../src/lib/pinecone");
     const index = getPineconeIndex();
     await index.upsert({
       records: [{
@@ -110,7 +111,7 @@ Coaching rules from this schedule:
   },
   {
     title: "Startup / Career Context",
-    content: `I am a software engineer who can build products. IMPORTANT — current focus (as of mid-2026): I am NOT actively building or selling a real-estate agent SaaS / CRM / outreach product right now. Do not recommend cold outreach to real estate agents, lead lists for brokers, or "ship the real estate AI app" as today's move unless I explicitly say that project is active again. Current high-leverage themes: (1) full-time software career momentum and skill compounding, (2) this personal finance / Growth Intelligence system and related software execution, (3) network/relationship compounding. Real estate still matters as PROPERTY investing (house hacking now, next rental later) — that is wealth strategy, not my current startup product. Prefer income upside via: stronger engineering career, shipping useful software I am actually working on, consulting only if relevant.`
+    content: `I am a software engineer who can build products. IMPORTANT — current focus (as of mid-2026): I am GTM / customer discovery for a private AI product that turns litigation case files into a source-cited chronological timeline WITHOUT uploading confidential files to a public AI service. Technical partner builds the product; I own go-to-market. Primary beachhead: small litigation firms in the DMV (DC / Maryland / Northern Virginia). Ideal users: litigation paralegals and associates who currently build timelines manually or with spreadsheets/legal software. Ideal buyers: managing partners / firm owners who care about privacy, time savings, and fewer timeline mistakes. Do NOT recommend cold outreach to real estate agents, RE SaaS CRM work, or "ship the real estate AI app" unless I explicitly reopen that project. Real estate still matters as PROPERTY investing (house hacking now, next rental later) — wealth strategy, not my current startup product. Daily entrepreneurship routine should emphasize LinkedIn outreach, prospect research (backlog ≥25), customer discovery interviews when scheduled (never invent interviews), market/competitor notes, positioning/offer refinement, and concise evidence-based updates for my technical partner. Prefer income upside via: this litigation-timeline GTM, stronger engineering career, shipping useful software I am actually working on.`
   },
   {
     title: "AI Coach Tone & Expectations",
@@ -126,7 +127,7 @@ Coaching rules from this schedule:
   },
   {
     title: "Growth Intelligence / High-Leverage Life OS",
-    content: `Beyond finance, Growth Intelligence should answer: what is the highest-leverage thing I can do next to maximize long-term growth AND freedom? Mindset: hungry go-getter on offense — impact over penny-pinching. Everything compounds: relationships, skills, reputation, income, investments, health, knowledge, opportunities, time. Optimize for a Compounding Score, not just short-term income or today's discretionary dollar. Operate on micro + weekly loops: today (one high-leverage offensive move; safe-spend math only when relevant) and this week (did anything compound — career, product, fitness, debt, goals, relationships — or was time mostly wasted?). Allow short intentional rest/reset when needed, then get back on attack. Dating/social life is real: I talk to a lot of women and will add them as contacts with notes. Help me balance relationship compounding (follow-ups that build something) vs low-leverage bar nights that only drain cash/time. Do not moralize dating; ask whether the time/money created connection equity or was just spend. Time allocation: career/build/network vs social vs recovery — with Capital One car floor protected. Do NOT invent inactive projects (e.g. real-estate agent SaaS). Weekly review must surface: what worked, what didn't, biggest return, time wasted, stop/do more, relationships improved, goals behind, biggest bottleneck.`
+    content: `Beyond finance, Growth Intelligence should answer: what is the highest-leverage thing I can do next to maximize long-term growth AND freedom? Mindset: hungry go-getter on offense — impact over penny-pinching. Everything compounds: relationships, skills, reputation, income, investments, health, knowledge, opportunities, time. Optimize for a Compounding Score, not just short-term income or today's discretionary dollar. Operate on micro + weekly loops: today (one high-leverage offensive move; safe-spend math only when relevant) and this week (did anything compound — career, product, fitness, debt, goals, relationships — or was time mostly wasted?). Allow short intentional rest/reset when needed, then get back on attack. Dating/social life is real: I talk to a lot of women and will add them as contacts with notes. Help me balance relationship compounding (follow-ups that build something) vs low-leverage bar nights that only drain cash/time. Do not moralize dating; ask whether the time/money created connection equity or was just spend. Time allocation: career/build/network vs social vs recovery — with Capital One car floor protected. Active startup GTM is litigation-timeline AI for DMV small firms (not real-estate agent SaaS). Weekly review must surface: what worked, what didn't, biggest return, time wasted, stop/do more, relationships improved, goals behind, biggest bottleneck.`
   },
   {
     title: "Life Rhythm / Discretionary Dating Social",

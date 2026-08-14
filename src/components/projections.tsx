@@ -13,7 +13,6 @@ import {
   ReferenceLine,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
-import { DateTime } from "luxon";
 import { DEFAULT_DISCRETIONARY_DAILY } from "@/lib/daily-brief";
 import type { CashLadderPoint } from "@/lib/cash-flow";
 import { CashLadderChart } from "@/components/projections/cash-ladder-chart";
@@ -25,6 +24,37 @@ function fetchProjections(excludeDebt: boolean) {
 type SafeSpendScenario = {
   safeDailySpend: number;
   dailyIncomeAssumption: number;
+};
+
+type ProjectionPoint = {
+  date: string;
+  projectedBalance: number;
+  cumulativeRecurringIncome: number;
+  cumulativeRecurringSpend: number;
+  cumulativeVariableIncome: number;
+  cumulativeVariableSpend: number;
+};
+
+type ProjectionModel = {
+  points: ProjectionPoint[];
+  history: Array<{
+    month: string;
+    income: number;
+    spend: number;
+    net: number;
+    incomeChangeRate: number | null;
+    spendChangeRate: number | null;
+  }>;
+  assumptions: {
+    spendMonthlyRate: number;
+    incomeMonthlyRate: number;
+    variableMonthlySpend: number;
+    recurringMonthlySpend: number;
+    recurringMonthlyIncome: number;
+    recurringExpenseCount: number;
+    recurringIncomeCount: number;
+    completedMonthsAnalyzed: number;
+  };
 };
 
 export function Projections() {
@@ -49,6 +79,7 @@ export function Projections() {
     | undefined;
 
   const safeSpendScenario = data?.safeSpendScenario as SafeSpendScenario | undefined;
+  const projectionModel = data?.projectionModel as ProjectionModel | undefined;
   const foodFunTarget = safeSpendScenario?.safeDailySpend ?? DEFAULT_DISCRETIONARY_DAILY;
   const cashLadderSeries = (data?.cashLadderSeries as CashLadderPoint[] | undefined) ?? [];
 
@@ -61,7 +92,7 @@ export function Projections() {
   const spendDeltaVsToday = currentTotalSpend - activeTotalSpend;
 
   const whatIfScenario = useMemo(() => {
-    if (!metrics) {
+    if (!metrics || !projectionModel) {
       return {
         balanceIn30Days: 0,
         balanceIn90Days: 0,
@@ -76,29 +107,36 @@ export function Projections() {
       };
     }
 
-    const balance = metrics.currentTotalBalance;
-    const project = (days: number, net: number) => balance + net * days;
-    const chartData = [];
-    const today = DateTime.now();
-
-    for (let i = 0; i <= 180; i += 15) {
-      const projDate = today.plus({ days: i });
-      chartData.push({
-        date: projDate.toISODate() ?? "",
-        projectedBalance: project(i, metrics.netDailyAverage),
-        whatIfBalance: project(i, plannedNetDaily),
-      });
-    }
+    const recurringDailySpend = projectionModel.assumptions.recurringMonthlySpend / 30.4375;
+    const baselineVariableDailySpend =
+      projectionModel.assumptions.variableMonthlySpend / 30.4375;
+    const plannedVariableDailySpend = Math.max(0, activeTotalSpend - recurringDailySpend);
+    const variableSpendMultiplier =
+      baselineVariableDailySpend > 0
+        ? plannedVariableDailySpend / baselineVariableDailySpend
+        : 1;
+    const chartData = projectionModel.points.map((point) => ({
+      date: point.date,
+      projectedBalance: point.projectedBalance,
+      whatIfBalance:
+        metrics.currentTotalBalance +
+        point.cumulativeRecurringIncome +
+        point.cumulativeVariableIncome -
+        point.cumulativeRecurringSpend -
+        point.cumulativeVariableSpend * variableSpendMultiplier,
+    }));
+    const balanceAt = (days: number, key: "projectedBalance" | "whatIfBalance") =>
+      chartData[Math.min(days, chartData.length - 1)]?.[key] ?? metrics.currentTotalBalance;
 
     return {
-      balanceIn30Days: project(30, plannedNetDaily),
-      balanceIn90Days: project(90, plannedNetDaily),
-      balanceIn180Days: project(180, plannedNetDaily),
-      balanceIfUnchanged180: project(180, metrics.netDailyAverage),
-      monthlySpend: activeTotalSpend * 30,
+      balanceIn30Days: balanceAt(30, "whatIfBalance"),
+      balanceIn90Days: balanceAt(90, "whatIfBalance"),
+      balanceIn180Days: balanceAt(180, "whatIfBalance"),
+      balanceIfUnchanged180: balanceAt(180, "projectedBalance"),
+      monthlySpend: activeTotalSpend * 30.4375,
       projectionData: chartData,
     };
-  }, [metrics, plannedNetDaily, activeTotalSpend]);
+  }, [metrics, projectionModel, activeTotalSpend]);
 
   if (isLoading) {
     return (
@@ -110,7 +148,7 @@ export function Projections() {
     );
   }
 
-  if (!data || data.error || !metrics) {
+  if (!data || data.error || !metrics || !projectionModel) {
     return null;
   }
 
@@ -125,12 +163,12 @@ export function Projections() {
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h2 className="text-xl font-semibold text-[var(--ink)] tracking-tight">
-            What happens to your cash if nothing big changes?
+            What your cash flow is actually trending toward
           </h2>
           <p className="text-sm text-[var(--ink-soft)] mt-2 leading-relaxed">
-            First, check the cash ladder — are you climbing month over month? Then use the sketch
-            below from the last {Math.round(metrics.daysAnalyzed)} days to see where today&apos;s
-            pace (or a tighter one) might land. Compass, not a promise.
+            First, check the cash ladder — are you climbing month over month? Then the sketch
+            below reads complete months of transaction history, month-over-month change, recurring
+            bills, and recurring deposits. Compass, not a promise.
           </p>
         </div>
 
@@ -259,6 +297,102 @@ export function Projections() {
 
       {cashLadderSeries.length > 0 ? <CashLadderChart months={cashLadderSeries} /> : null}
 
+      <div className="app-card p-5 space-y-4">
+        <div>
+          <p className="app-label">Projection service inputs</p>
+          <h3 className="font-semibold text-[var(--ink)] mt-1">
+            Rate of change + scheduled cash flow
+          </h3>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            {
+              label: "Spending trend",
+              value: `${projectionModel.assumptions.spendMonthlyRate >= 0 ? "+" : ""}${(
+                projectionModel.assumptions.spendMonthlyRate * 100
+              ).toFixed(1)}% MoM`,
+              hint: "Variable spending",
+            },
+            {
+              label: "Income trend",
+              value: `${projectionModel.assumptions.incomeMonthlyRate >= 0 ? "+" : ""}${(
+                projectionModel.assumptions.incomeMonthlyRate * 100
+              ).toFixed(1)}% MoM`,
+              hint: "Non-recurring income",
+            },
+            {
+              label: "Bills detected",
+              value: String(projectionModel.assumptions.recurringExpenseCount),
+              hint: `${formatCurrency(projectionModel.assumptions.recurringMonthlySpend)}/mo`,
+            },
+            {
+              label: "Deposits detected",
+              value: String(projectionModel.assumptions.recurringIncomeCount),
+              hint: `${formatCurrency(projectionModel.assumptions.recurringMonthlyIncome)}/mo`,
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="rounded-xl bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] p-3 ring-1 ring-[var(--card-border)]"
+            >
+              <p className="app-label mb-1">{item.label}</p>
+              <p className="font-bold tabular-nums text-[var(--ink)]">{item.value}</p>
+              <p className="text-[11px] text-[var(--ink-soft)] mt-1">{item.hint}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-[var(--ink-soft)]">
+          Based on {projectionModel.assumptions.completedMonthsAnalyzed} completed month
+          {projectionModel.assumptions.completedMonthsAnalyzed === 1 ? "" : "s"}. Extreme monthly
+          changes are capped so one unusual month cannot take over the forecast.
+        </p>
+        <div className="overflow-x-auto rounded-xl ring-1 ring-[var(--card-border)]">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead className="bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] text-[var(--ink-soft)]">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Month</th>
+                <th className="px-3 py-2 text-right font-medium">Income</th>
+                <th className="px-3 py-2 text-right font-medium">Spend</th>
+                <th className="px-3 py-2 text-right font-medium">Spend change</th>
+                <th className="px-3 py-2 text-right font-medium">Net</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectionModel.history.slice(-4).map((month) => (
+                <tr key={month.month} className="border-t border-[var(--card-border)]">
+                  <td className="px-3 py-2 font-medium text-[var(--ink)]">
+                    {new Date(`${month.month}-01T12:00:00`).toLocaleDateString(undefined, {
+                      month: "short",
+                      year: "2-digit",
+                    })}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[var(--ink)]">
+                    {formatCurrency(month.income)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[var(--ink)]">
+                    {formatCurrency(month.spend)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[var(--ink-soft)]">
+                    {month.spendChangeRate === null
+                      ? "—"
+                      : `${month.spendChangeRate >= 0 ? "+" : ""}${(
+                          month.spendChangeRate * 100
+                        ).toFixed(0)}%`}
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right font-medium tabular-nums ${
+                      month.net >= 0 ? "text-[var(--accent-strong)]" : "text-rose-600"
+                    }`}
+                  >
+                    {formatCurrency(month.net)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="app-hero-gradient app-card-elevated p-6 space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -267,9 +401,8 @@ export function Projections() {
               What if total spending averaged {formatCurrency(activeTotalSpend)}/day?
             </h3>
             <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-2xl leading-relaxed">
-              Drag to raise or lower <span className="font-medium text-[var(--ink)]">all</span>{" "}
-              daily spending — not just food/fun. Right now you average about{" "}
-              {formatCurrency(currentTotalSpend)}/day out the door.
+              Drag to raise or lower your spending pace. Detected bills keep their scheduled
+              dates; the slider changes the variable spending built from your actual habits.
             </p>
           </div>
           <div
@@ -397,10 +530,10 @@ export function Projections() {
         </div>
 
         <p className="text-xs text-[var(--ink-soft)] leading-relaxed">
-          Rough math only: assumes income stays near {formatCurrency(dailyIncome)}/day and total
-          spending stays near {formatCurrency(activeTotalSpend)}/day (
-          {formatCurrency(whatIfScenario.monthlySpend)}/month). Real life has blowout weekends,
-          late rent, and interest — so treat this as a compass, not a guarantee.
+          Forecast only: starts from about {formatCurrency(whatIfScenario.monthlySpend)}/month at
+          the slider pace, then applies your measured month-over-month trend and weekday spending
+          shape. Known bills and income land on their expected dates. Late deposits, new bills,
+          and one-off purchases can still move the result.
         </p>
       </div>
 
@@ -408,7 +541,7 @@ export function Projections() {
         <div>
           <h3 className="font-semibold text-[var(--ink)]">Picture of the next 6 months</h3>
           <p className="text-sm text-[var(--ink-soft)]">
-            Solid line = keep today&apos;s pace. Dashed line = the slider plan above.
+            Solid line = transaction-history forecast. Dashed line = the slider plan above.
           </p>
         </div>
         <div className="h-72 w-full">

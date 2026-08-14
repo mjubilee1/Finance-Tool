@@ -2,17 +2,23 @@ import "server-only";
 
 import { DateTime } from "luxon";
 import {
-  DEFAULT_CATEGORY_PERCENTAGES,
   DEFAULT_WEEKLY_HOURS,
+  founderPriorityIndex,
   isLearningCategoryId,
-  normalizeCategoryPercentages,
+  resolveLearningPercentages,
   type CategoryPercentages,
   type LearningCategoryId,
   youtubeAutoplayUrl,
   youtubeWatchUrl,
 } from "@/lib/learning-plan";
+import {
+  buildDailyYoutubeScript,
+} from "@/lib/learning-youtube-script";
 import { prisma } from "@/lib/prisma";
 import { USER_TIME_ZONE } from "@/lib/user-timezone";
+
+export { buildDailyYoutubeScript } from "@/lib/learning-youtube-script";
+export type { DailyYoutubeScriptBundle } from "@/lib/learning-youtube-script";
 
 export const YOUTUBE_CHANNEL_ALLOWLIST = [
   {
@@ -28,6 +34,12 @@ export const YOUTUBE_CHANNEL_ALLOWLIST = [
     defaultMinutes: 20,
   },
   {
+    label: "Lenny's Podcast",
+    channelId: "UC6t1O76G0jYXOAoYCm153dA",
+    category: "startup_product" as LearningCategoryId,
+    defaultMinutes: 45,
+  },
+  {
     label: "Acquired",
     channelId: "UCyFqFYfTW2VoIQKylJ04Rtw",
     category: "founder_stories" as LearningCategoryId,
@@ -40,10 +52,28 @@ export const YOUTUBE_CHANNEL_ALLOWLIST = [
     defaultMinutes: 55,
   },
   {
-    label: "Lex Fridman",
-    channelId: "UCSHZKyawb77ixDdsGog4iWA",
+    label: "All-In Podcast",
+    channelId: "UCESLZhusAkFfsNsApnjF_Cg",
+    category: "founder_stories" as LearningCategoryId,
+    defaultMinutes: 60,
+  },
+  {
+    label: "OpenAI",
+    channelId: "UCXZCJLdBC09xxGZ6gcdrc6A",
     category: "ai" as LearningCategoryId,
-    defaultMinutes: 90,
+    defaultMinutes: 15,
+  },
+  {
+    label: "Google DeepMind",
+    channelId: "UCP7jMXSY2xbc3KCAE0MHQ-A",
+    category: "ai" as LearningCategoryId,
+    defaultMinutes: 15,
+  },
+  {
+    label: "Dwarkesh Patel",
+    channelId: "UCXl4i9dYBrFOabk0xGmbkRA",
+    category: "ai" as LearningCategoryId,
+    defaultMinutes: 70,
   },
   {
     label: "Two Minute Papers",
@@ -52,16 +82,46 @@ export const YOUTUBE_CHANNEL_ALLOWLIST = [
     defaultMinutes: 6,
   },
   {
+    label: "Wes Roth",
+    channelId: "UCqcbQf6yw5KzRoDDcZ_wBSw",
+    category: "ai" as LearningCategoryId,
+    defaultMinutes: 18,
+  },
+  {
+    label: "The AI Advantage",
+    channelId: "UCRJFAp0rewx8kzdhEqDHIlA",
+    category: "ai" as LearningCategoryId,
+    defaultMinutes: 20,
+  },
+  {
+    label: "Lex Fridman",
+    channelId: "UCSHZKyawb77ixDdsGog4iWA",
+    category: "ai" as LearningCategoryId,
+    defaultMinutes: 90,
+  },
+  {
     label: "Fireship",
     channelId: "UCsBjURrPoezykLs9EqgamOA",
     category: "emerging_tech" as LearningCategoryId,
     defaultMinutes: 8,
   },
   {
-    label: "TED",
-    channelId: "UCAuUUnT6oDeKwE6v1NGQxug",
-    category: "leadership" as LearningCategoryId,
-    defaultMinutes: 15,
+    label: "NASA",
+    channelId: "UCLA_DiR1FfKNvjuUpBHmylQ",
+    category: "emerging_tech" as LearningCategoryId,
+    defaultMinutes: 12,
+  },
+  {
+    label: "Everyday Astronaut",
+    channelId: "UC6uKrU_WqJ1R2HMTY3LIx5Q",
+    category: "emerging_tech" as LearningCategoryId,
+    defaultMinutes: 25,
+  },
+  {
+    label: "SaaStr",
+    channelId: "UCwOILzAcxK5CM2M7oRBuWSg",
+    category: "sales_marketing" as LearningCategoryId,
+    defaultMinutes: 20,
   },
   {
     label: "The Diary Of A CEO",
@@ -70,22 +130,10 @@ export const YOUTUBE_CHANNEL_ALLOWLIST = [
     defaultMinutes: 70,
   },
   {
-    label: "GaryVee",
-    channelId: "UCctXZhXmG-kf3tlIXgVZUlw",
-    category: "sales_marketing" as LearningCategoryId,
-    defaultMinutes: 20,
-  },
-  {
     label: "The Plain Bagel",
     channelId: "UCFCEuCsyWP0YkP3CZ3Mr01Q",
     category: "finance_investing" as LearningCategoryId,
     defaultMinutes: 15,
-  },
-  {
-    label: "BiggerPockets",
-    channelId: "UCVWDbXqQ8cupuVpotWNt2eg",
-    category: "real_estate" as LearningCategoryId,
-    defaultMinutes: 25,
   },
 ] as const;
 
@@ -118,6 +166,8 @@ export type LearningYoutubeDigestLike = {
   id: string;
   date: string;
   autoQueued: boolean;
+  dailyScript: string | null;
+  customFeedPrompt: string | null;
   picks: LearningYoutubePickLike[];
   createdAt: string;
   updatedAt: string;
@@ -195,7 +245,7 @@ async function fetchChannelVideos(
   }
 }
 
-/** Allocate ~daily pick count by category mix; prefer higher % topics. */
+/** Allocate ~daily pick count by category mix; prefer higher % founder topics. */
 export function allocateDailyPickSlots(
   percentages: CategoryPercentages,
   totalSlots = 5
@@ -204,7 +254,11 @@ export function allocateDailyPickSlots(
     .filter((entry): entry is [LearningCategoryId, number] => isLearningCategoryId(entry[0]))
     .map(([id, percent]) => ({ id, percent: Math.max(0, percent) }))
     .filter((row) => row.percent > 0)
-    .sort((a, b) => b.percent - a.percent);
+    .sort(
+      (a, b) =>
+        b.percent - a.percent ||
+        founderPriorityIndex(a.id) - founderPriorityIndex(b.id)
+    );
 
   if (weighted.length === 0) {
     return Array.from({ length: totalSlots }, () => "ai" as LearningCategoryId);
@@ -304,6 +358,8 @@ export function serializeYoutubeDigest(digest: {
   id: string;
   date: string;
   autoQueued: boolean;
+  dailyScript?: string | null;
+  customFeedPrompt?: string | null;
   createdAt: Date;
   updatedAt: Date;
   picks: Parameters<typeof serializeYoutubePick>[0][];
@@ -312,6 +368,8 @@ export function serializeYoutubeDigest(digest: {
     id: digest.id,
     date: digest.date,
     autoQueued: digest.autoQueued,
+    dailyScript: digest.dailyScript ?? null,
+    customFeedPrompt: digest.customFeedPrompt ?? null,
     picks: digest.picks.map(serializeYoutubePick),
     createdAt: digest.createdAt.toISOString(),
     updatedAt: digest.updatedAt.toISOString(),
@@ -321,6 +379,43 @@ export function serializeYoutubeDigest(digest: {
 export async function getYoutubeDigestForDate(userId: string, date: string) {
   return prisma.learningYoutubeDigest.findUnique({
     where: { userId_date: { userId, date } },
+    include: { picks: { orderBy: { relevanceScore: "desc" } } },
+  });
+}
+
+/** Attach / refresh daily script + custom-feed prompt from the founder learning mix. */
+export async function ensureYoutubeDigestScript(
+  userId: string,
+  digest: NonNullable<Awaited<ReturnType<typeof getYoutubeDigestForDate>>>
+) {
+  const settings = await prisma.learningPlanSettings.findUnique({
+    where: { userId },
+  });
+  const percentages = resolveLearningPercentages(settings?.categoryPercentages);
+  const weeklyHours = settings?.weeklyHours ?? DEFAULT_WEEKLY_HOURS;
+  const day = DateTime.fromISO(digest.date, { zone: USER_TIME_ZONE });
+  const weekday = day.isValid ? day.weekday : DateTime.now().setZone(USER_TIME_ZONE).weekday;
+  const script = buildDailyYoutubeScript({
+    percentages,
+    weeklyHours,
+    weekday,
+    pickTitles: digest.picks.map((pick) => pick.title),
+  });
+
+  // Skip write when unchanged.
+  if (
+    digest.dailyScript === script.dailyScript &&
+    digest.customFeedPrompt === script.customFeedPrompt
+  ) {
+    return digest;
+  }
+
+  return prisma.learningYoutubeDigest.update({
+    where: { id: digest.id },
+    data: {
+      dailyScript: script.dailyScript,
+      customFeedPrompt: script.customFeedPrompt,
+    },
     include: { picks: { orderBy: { relevanceScore: "desc" } } },
   });
 }
@@ -516,8 +611,9 @@ export async function generateDailyYoutubeDigest(
   const existing = await getYoutubeDigestForDate(userId, today);
 
   if (existing && !options?.force) {
+    const withScript = await ensureYoutubeDigestScript(userId, existing);
     return {
-      digest: serializeYoutubeDigest(existing),
+      digest: serializeYoutubeDigest(withScript),
       refreshed: false,
       alreadyFresh: true,
     };
@@ -526,9 +622,7 @@ export async function generateDailyYoutubeDigest(
   const settings = await prisma.learningPlanSettings.findUnique({
     where: { userId },
   });
-  const percentages = normalizeCategoryPercentages(
-    settings?.categoryPercentages ?? DEFAULT_CATEGORY_PERCENTAGES
-  );
+  const percentages = resolveLearningPercentages(settings?.categoryPercentages);
   const weeklyHours = settings?.weeklyHours ?? DEFAULT_WEEKLY_HOURS;
   const dailyHours = Math.max(0.5, weeklyHours / 7);
   // Roughly 1 pick per ~20–25 minutes of daily drive budget, capped 3–6.
@@ -545,6 +639,16 @@ export async function generateDailyYoutubeDigest(
   const slots = allocateDailyPickSlots(percentages, slotCount);
   const selected = pickVideosForSlots(slots, pool, exclude);
 
+  const now = DateTime.now().setZone(USER_TIME_ZONE);
+  const script = buildDailyYoutubeScript({
+    percentages,
+    weeklyHours,
+    weekday: now.weekday,
+    pickTitles: selected.map((video) => video.title),
+    // Force refresh switches the focus so the script / custom-feed prompt can rotate mid-day.
+    rotationSeed: options?.force ? Math.floor(Date.now() / 1000) % 8 : 0,
+  });
+
   if (existing) {
     await prisma.learningYoutubePick.deleteMany({ where: { digestId: existing.id } });
     await prisma.learningYoutubeDigest.delete({ where: { id: existing.id } });
@@ -555,6 +659,8 @@ export async function generateDailyYoutubeDigest(
       userId,
       date: today,
       autoQueued: false,
+      dailyScript: script.dailyScript,
+      customFeedPrompt: script.customFeedPrompt,
       picks: {
         create: selected.map((video, index) => ({
           videoId: video.videoId,

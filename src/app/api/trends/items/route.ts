@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TREND_ITEM_STATUSES, type TrendItemStatus } from "@/lib/trends-shared";
-import { DateTime } from "luxon";
+import { userToday } from "@/lib/user-timezone";
 
 function themeToDomain(theme: string): "startup" | "career" | "personal" | "financial" {
   if (theme === "startup" || theme === "labs") return "startup";
@@ -53,7 +53,7 @@ export async function PATCH(request: Request) {
     let activityId = item.loggedActivityId;
 
     if (logToGrowth && !item.loggedActivityId) {
-      const today = DateTime.local().toISODate()!;
+      const today = userToday();
       const activity = await prisma.growthActivity.create({
         data: {
           userId: session.user.id,

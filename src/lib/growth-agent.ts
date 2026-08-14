@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getFocusAccounts, filterTransactionsForDailySpend } from "./account-focus";
+import { userNow, userToday } from "./user-timezone";
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { calculateGoalFunding } from "./goal-funding";
 import { storeFinancialMemories } from "./financial-memory";
@@ -16,6 +17,11 @@ import {
   syncCalendarEventsToGrowth,
 } from "@/lib/growth-calendar-sync";
 import {
+  getLocalEventDigestForDate,
+  serializeLocalEventDigest,
+  serializeLocalEventsForAgent,
+} from "@/lib/local-events";
+import {
   IMPROVING_BASELINE,
   WEAK_DOMAIN_THRESHOLD,
   combineCompoundingScore,
@@ -23,6 +29,13 @@ import {
   domainHoursSummary,
   isCompletedGrowthActivity,
 } from "@/lib/growth-scoring";
+import {
+  ENTREPRENEURSHIP_MARKER_PREFIX,
+  ENTREPRENEURSHIP_WEEKLY_TARGETS,
+  getEntrepreneurshipWeekProgress,
+  parseEntrepreneurshipSlot,
+} from "@/lib/entrepreneurship-routine";
+import { loadRelevantMemories } from "@/lib/relevant-memories";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -119,7 +132,7 @@ Explain opportunity cost explicitly.
 Be direct, practical, and numbers-aware. No fluff. No generic motivation.
 
 Active-context rules:
-- Do not invent projects the user is not working on. If core context says a product is inactive (e.g. real-estate agent SaaS), never recommend that work.
+- Do not invent projects the user is not working on. Prefer the active litigation-timeline AI GTM over abandoned ideas (e.g. real-estate agent SaaS) unless core context says that product is active again.
 - Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
 - Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person.
 - Name when an action fits (desk lunch message, Thu deep block, evening/weekend meet).
@@ -140,6 +153,7 @@ Active-context rules:
 - @Name in calendar titles or activity logs links that contact — treat as relationship touchpoints.
 - Goal discipline: do not invent a pile of goals. If freed cash appears (canceled sub, surplus after buffer), prefer pointing it at highest-APR debt or an existing near-term money goal. Mention "create a tracked goal in Goals" only when one clear outcome is worth tracking — never flood the list.
 - Trends digest (trendsContext) is background signal only. Never turn a headline into a new side project. Prefer finishing open leverage / promotion work; reading may inform, not derail.
+- Local events (localEventsContext) is background signal for network / skill / intentional joy outings within driving distance (DMV nearby, Baltimore regional, Richmond/VB weekend stretch). Suggest at most one when it compounds goals and fits day shape — never spam the week with random drives.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block tonight")
@@ -152,7 +166,7 @@ function clamp(score: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(score * 10) / 10));
 }
 
-function weekStartIso(date = DateTime.local()) {
+function weekStartIso(date = userNow()) {
   return date.startOf("week").toISODate()!;
 }
 
@@ -176,11 +190,11 @@ function emptyDomainCounts(): Record<GrowthDomain, number> {
 }
 
 export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetrics> {
-  const today = DateTime.local().toISODate()!;
-  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const thirtyDaysAgo = DateTime.local().minus({ days: 30 }).toISODate()!;
+  const today = userToday();
+  const fourteenDaysAgo = userNow().minus({ days: 14 }).toISODate()!;
+  const thirtyDaysAgo = userNow().minus({ days: 30 }).toISODate()!;
   // Mastery depth needs full history — weeks of logs are not years of compounding.
-  const masteryHorizon = DateTime.local().minus({ years: 5 }).toISODate()!;
+  const masteryHorizon = userNow().minus({ years: 5 }).toISODate()!;
 
   const [activities, contacts, goals, accounts, transactions, priorSnapshots] = await Promise.all([
     prisma.growthActivity.findMany({
@@ -557,20 +571,20 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 
   if (metrics.domains.startup < WEAK_DOMAIN_THRESHOLD) {
     return {
-      action: "Ship one concrete software/career leverage block (feature, learning, or positioning)",
+      action: "Run one GTM block: LinkedIn outreach or qualify 5 DMV litigation prospects",
       whyItMatters:
-        "Career/build momentum compounds only when you ship or learn on work you are actually doing — not abandoned ideas.",
+        "Your active startup is litigation-timeline AI GTM — discovery and outreach compound faster than generic feature busywork.",
       longTermBenefit:
-        "Each real shipped increment improves skills and income upside beyond busywork hours.",
-      timeRequiredMinutes: 90,
+        "A thicker prospect backlog and real discovery conversations unlock pilots, clearer positioning, and better partner priorities.",
+      timeRequiredMinutes: 45,
       opportunityCost:
-        "One focused shipping block can pay for years of low-ROI busywork.",
+        "Skipping outreach keeps the pipeline empty while competitor workflows stay the default.",
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [],
       nextActions: [
-        "Pick one active project (not an abandoned idea)",
-        "Timebox 90 minutes with no distractions",
-        "Write one sentence of what you shipped or learned",
+        "Send 5–10 targeted LinkedIn requests to DMV litigation roles",
+        "Log 5 qualified prospects (name, firm, role, next action)",
+        "Book or prep one discovery conversation — never invent an interview",
       ],
       leverageType: "long_term_leverage",
       domain: "startup",
@@ -619,15 +633,15 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 }
 
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
-  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const today = DateTime.local().toISODate()!;
-  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, calendarContext] =
+  const fourteenDaysAgo = userNow().minus({ days: 14 }).toISODate()!;
+  const today = userToday();
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, todayEvents, calendarContext, entrepreneurshipProgress] =
     await Promise.all([
-      prisma.financialMemory.findMany({
-        where: { userId },
-        orderBy: { importanceScore: "desc" },
-        take: 12,
-      }),
+      loadRelevantMemories(
+        userId,
+        "highest leverage today startup litigation GTM money career body network relationships",
+        { limit: 12 },
+      ),
       prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
       prisma.growthContact.findMany({
         where: { userId },
@@ -664,7 +678,9 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: true,
         },
       }),
+      getLocalEventDigestForDate(userId, today),
       getRecentCalendarContextForGrowth(userId),
+      getEntrepreneurshipWeekProgress(userId),
     ]);
 
   const skippedOrDoneMoves = recentMoves
@@ -703,6 +719,10 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       leverage: a.leverage,
       impact: a.impactScore,
       minutes: a.minutesSpent,
+      status: a.status,
+      entrepreneurshipSlot: a.notes?.includes(ENTREPRENEURSHIP_MARKER_PREFIX)
+        ? parseEntrepreneurshipSlot(a.notes)
+        : null,
     })),
     scoreHistory: snapshots.map((s) => ({
       date: s.date,
@@ -719,7 +739,27 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: todayTrends.focusGuardrail,
         }
       : null,
+    localEventsContext: serializeLocalEventsForAgent(
+      todayEvents ? serializeLocalEventDigest(todayEvents) : null
+    ),
     calendarContext,
+    entrepreneurshipContext: {
+      weeklyTargets: ENTREPRENEURSHIP_WEEKLY_TARGETS,
+      weekProgress: entrepreneurshipProgress,
+      todayItems: recentActivities
+        .filter(
+          (activity) =>
+            activity.date === today &&
+            activity.notes?.includes(ENTREPRENEURSHIP_MARKER_PREFIX),
+        )
+        .map((activity) => ({
+          title: activity.title,
+          status: activity.status,
+          slot: parseEntrepreneurshipSlot(activity.notes),
+        })),
+      rule:
+        "These are real planner items. Prefer unfinished high-impact GTM work; never invent a discovery interview.",
+    },
     metrics,
   };
 }
@@ -769,7 +809,7 @@ export async function generateHighLeverageRecommendation(
   userId: string,
   options?: { force?: boolean },
 ) {
-  const today = DateTime.local().toISODate()!;
+  const today = userToday();
   const existing = await prisma.growthRecommendation.findUnique({
     where: { userId_date: { userId, date: today } },
   });
@@ -806,6 +846,7 @@ Rules for this response:
 - Respect avoidedMoves (skipped/done recently) — do not recycle them.
 - If memories say the user already has a boss promotion checklist / existing promo plan, do not invent a "draft promo one-pager" — either point at executing one concrete next step from their existing path, or pick a different domain.
 - If trendsContext is present, treat it as BACKGROUND SIGNAL only. Do not make "read AI news" or "start a project inspired by a trend" the daily move unless the user already logged a trend note as today's work.
+- If localEventsContext is present, you may suggest ONE high-fit event when social/network/joy is the bottleneck and day shape allows — prefer nearby/evening on office days; stretch (Richmond/VB) only weekend. Do not replace a leverage/build move with an outing unless network/social is clearly the highest leverage today.
 ${avoidNote}
 
 Return JSON exactly (keep every string SHORT — scannable mobile UI):
