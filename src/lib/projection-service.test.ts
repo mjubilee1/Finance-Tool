@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCashFlowProjection, type ProjectionTransaction } from "./projection-service";
+import { buildCashFlowProjection, type ProjectionTransaction } from "./projection-service.ts";
 
 test("compounds MoM habits and lands recurring cash flow on expected dates", () => {
   const transactions: ProjectionTransaction[] = [];
