@@ -163,7 +163,7 @@ function recurringEvents(
       continue;
     }
 
-    let occurrence = DateTime.fromISO(pattern.lastSeen);
+    let occurrence: DateTime = DateTime.fromISO(pattern.lastSeen);
     if (!occurrence.isValid) continue;
     while (occurrence <= today) {
       const next = nextOccurrence(occurrence, pattern.frequency);
