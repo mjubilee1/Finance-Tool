@@ -7,6 +7,7 @@ import {
   Car,
   ChartLine,
   Flame,
+  Home,
   LayoutDashboard,
   MoreHorizontal,
   Receipt,
@@ -33,6 +34,7 @@ export type TabType =
   | "learning"
   | "events"
   | "car"
+  | "home"
   | "calories";
 
 export type NavItem = {
@@ -81,6 +83,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { tab: "projections", label: "Projections", Icon: TrendingUp },
       { tab: "financial-trends", label: "Trends", Icon: ChartLine },
       { tab: "car", label: "Car", Icon: Car },
+      { tab: "home", label: "Home", Icon: Home },
     ],
   },
 ];

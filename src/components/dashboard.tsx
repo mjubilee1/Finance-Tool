@@ -47,6 +47,10 @@ const CarView = dynamic(
   () => import("./car/car-view").then((m) => m.CarView),
   { loading: () => <DashboardSkeleton /> },
 );
+const HomeView = dynamic(
+  () => import("./home/home-view").then((m) => m.HomeView),
+  { loading: () => <DashboardSkeleton /> },
+);
 const CaloriesView = dynamic(
   () => import("./calories/calories-view").then((m) => m.CaloriesView),
   { loading: () => <DashboardSkeleton /> },
@@ -83,6 +87,7 @@ const ConnectBankButton = dynamic(
     ),
   },
 );
+
 
 type DashboardAccount = {
   id: string;
@@ -795,6 +800,7 @@ export function Dashboard() {
             {activeTab === "events" && <LocalEventsView />}
 
             {activeTab === "car" && <CarView />}
+            {activeTab === "home" && <HomeView />}
             {activeTab === "calories" && <CaloriesView />}
 
             {/* View: ACCOUNTS */}

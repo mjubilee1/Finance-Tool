@@ -1,6 +1,8 @@
 import { authOptions } from "@/lib/auth";
 import { getOrCreateCarProfile } from "@/lib/car-profile";
 import { buildKnownCashScheduleContext } from "@/lib/cfo-agent";
+import { buildHomePropertyContext } from "@/lib/home";
+import { getOrCreateHomeProfile } from "@/lib/home-profile";
 import { buildCoachSystemPrompt } from "@/lib/coach-chat-prompt";
 import { classifyCoachIntent } from "@/lib/coach-intent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
@@ -711,6 +713,7 @@ export async function POST(req: Request) {
       projectionTransactions,
       recurringPatterns,
       carProfile,
+      homeProfile,
       lifePulse,
       localEventDigest,
     ] = await Promise.all([
@@ -735,6 +738,7 @@ export async function POST(req: Request) {
         take: 25,
       }),
       getOrCreateCarProfile(session.user.id),
+      getOrCreateHomeProfile(session.user.id),
       buildLifePulse(session.user.id, {
         query: memoryQuery,
         includeNetwork: true,
@@ -744,6 +748,25 @@ export async function POST(req: Request) {
         memoryLimit: 8,
       }),
       getLocalEventDigestForDate(session.user.id, todayIso),
+    ]);
+
+    const [homeTenants, homeRentPayments, homeOpenIssues] = await Promise.all([
+      prisma.homeTenant.findMany({
+        where: { userId: session.user.id, homeProfileId: homeProfile.id },
+        orderBy: [{ status: "asc" }, { unitLabel: "asc" }],
+      }),
+      prisma.homeRentPayment.findMany({
+        where: { userId: session.user.id, homeProfileId: homeProfile.id },
+        orderBy: { paidOn: "desc" },
+        take: 40,
+      }),
+      prisma.homeMaintenanceLog.count({
+        where: {
+          userId: session.user.id,
+          homeProfileId: homeProfile.id,
+          status: { not: "resolved" },
+        },
+      }),
     ]);
 
     const projectionContext = {
@@ -838,10 +861,19 @@ export async function POST(req: Request) {
           confidence: pattern.confidenceScore,
         })),
         projectionContext,
-        cashSchedule: buildKnownCashScheduleContext(userNow(), {
-          typicalPaycheck,
-          carProfile,
-        }),
+        cashSchedule: [
+          buildKnownCashScheduleContext(userNow(), {
+            typicalPaycheck,
+            carProfile,
+            homeProfile,
+          }),
+          buildHomePropertyContext({
+            profile: homeProfile,
+            tenants: homeTenants,
+            payments: homeRentPayments,
+            openIssueCount: homeOpenIssues,
+          }),
+        ].join("\n"),
         typicalPaycheck,
       },
     });
