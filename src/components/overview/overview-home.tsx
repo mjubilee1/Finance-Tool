@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
-import { calendarDateTime } from "@/lib/user-timezone";
+import { calendarDateTime, userNow } from "@/lib/user-timezone";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
 import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint, MonthlyCashFlowByChecking } from "@/lib/cash-flow";
@@ -1111,13 +1111,13 @@ export function OverviewHome({
     timeLabel: "",
     notes: "",
     domain: "personal",
-    date: DateTime.local().toISODate()!,
+    date: userNow().toISODate()!,
   });
   const cfoBrief = aiInsight.cfoBrief;
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
-  const now = DateTime.local();
+  const now = userNow();
   const todayLabel = now.toFormat("EEEE, MMMM d");
   const greeting = getPersonalizedGreeting(userName);
   const quote = getDailyAffirmation();

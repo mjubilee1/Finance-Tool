@@ -33,7 +33,7 @@ import {
   applyTodayUpdates,
   type TodayUpdatesPayload,
 } from "@/lib/today-brief";
-import { calendarDateTime, USER_TIME_ZONE, userNow } from "@/lib/user-timezone";
+import { calendarDateTime, USER_TIME_ZONE, userNow, userToday } from "@/lib/user-timezone";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -433,8 +433,8 @@ function buildProjectionSummary(
 
   let totalSpend = 0;
   let totalIncome = 0;
-  let earliestMs = DateTime.now().toMillis();
-  let latestMs = DateTime.now().minus({ years: 10 }).toMillis();
+  let earliestMs = userNow().toMillis();
+  let latestMs = userNow().minus({ years: 10 }).toMillis();
 
   const incomeBySource = new Map<string, { total: number; count: number }>();
 
@@ -497,7 +497,7 @@ function buildProjectionSummary(
 const chatUsageByUser = new Map<string, { date: string; count: number }>();
 
 function getTodayKey() {
-  return new Date().toISOString().split("T")[0];
+  return userToday();
 }
 
 function incrementChatUsage(userId: string, dailyLimit: number) {
@@ -701,7 +701,7 @@ export async function POST(req: Request) {
       .slice(-3)
       .map((message) => message.content)
       .join("\n");
-    const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
+    const twoYearsAgo = userNow().minus({ years: 2 }).toISODate();
     const [
       accounts,
       goals,
@@ -772,7 +772,7 @@ export async function POST(req: Request) {
       lifePulse,
       localEventsPack,
       calendarContext: {
-        nowIso: userNow().toISO() ?? new Date().toISOString(),
+        nowIso: userNow().toISO()!,
         timeZone: USER_TIME_ZONE,
         upcomingEvents: weekCalendarEvents.map((event) => ({
           eventId: event.id,
@@ -836,7 +836,7 @@ export async function POST(req: Request) {
           confidence: pattern.confidenceScore,
         })),
         projectionContext,
-        cashSchedule: buildKnownCashScheduleContext(DateTime.local(), {
+        cashSchedule: buildKnownCashScheduleContext(userNow(), {
           typicalPaycheck,
           carProfile,
         }),

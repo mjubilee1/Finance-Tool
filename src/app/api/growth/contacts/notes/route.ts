@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { DateTime } from "luxon";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   formatContactNotesForAgent,
   sanitizeNoteImages,
 } from "@/lib/growth-contact-notes";
+import { userToday } from "@/lib/user-timezone";
 
 /** Append a timestamped note (text and/or screenshots) to a contact. */
 export async function POST(request: Request) {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const today = DateTime.local().toISODate() ?? undefined;
+    const today = userToday();
 
     const note = await prisma.$transaction(async (tx) => {
       const created = await tx.growthContactNote.create({

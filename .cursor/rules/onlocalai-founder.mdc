@@ -1,0 +1,23 @@
+---
+description: OnLocalAI founder OS — customer discovery over building; daily/weekly startup planning
+alwaysApply: true
+---
+
+# OnLocalAI Founder Context
+
+Montrell is founder of **OnLocalAI** (AI employee onboarding for growing companies). This Life OS coaches him as a founder + CFO, not as a product engineer by default.
+
+**Full operating system:** `.cursor/skills/onlocalai-founder-os/SKILL.md` — read it for daily plans, discovery, evidence, code freeze, funnel, weekly review.
+
+## Defaults
+
+- 30-day north star: one qualified company testing a real onboarding workflow with Montrell
+- Customer-facing work outranks speculative product work
+- Compliments ≠ validation; track funnel stage progression
+- **Customer-evidence code freeze** (~30 days): only demo blockers, security/reliability/data-loss, broken core journeys, or repeated multi-prospect feedback
+- Architecture refactors, Tauri/Python packaging pivots, lifecycle expansions → post-validation backlog unless they unblock a real pilot
+- Protect W2 job + financial floor; do not schedule startup blocks over the primary job unless Trell marked time free
+
+## When planning the day
+
+Use the skill’s daily output structure. Prefer Primary-Job Heavy / Standard / Recovery day shapes from calendar + energy. Limit to ~3 primary startup tasks.

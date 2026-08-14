@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 
 export const LYFT_WEEKLY_PROGRAM_FEE = 0;
 export const LYFT_WEEKLY_PROGRAM_FEE_LABEL = "no weekly program fee";
@@ -95,7 +96,7 @@ export function parseLyftGrossEarnings(activity: Pick<LyftActivityLike, "categor
 
 export function getLyftWeekRange(dateIso: string) {
   const date = DateTime.fromISO(dateIso);
-  const base = date.isValid ? date : DateTime.local();
+  const base = date.isValid ? date : userNow();
   const start = base.startOf("week");
   const end = start.plus({ days: 6 });
 
@@ -107,7 +108,7 @@ export function getLyftWeekRange(dateIso: string) {
 
 export function getLyftMonthRange(dateIso: string) {
   const date = DateTime.fromISO(dateIso);
-  const base = date.isValid ? date : DateTime.local();
+  const base = date.isValid ? date : userNow();
   const start = base.startOf("month");
   const end = base.endOf("month");
 
@@ -189,7 +190,7 @@ export function summarizeLyftMonth(
   const profitRemainingToGoal = roundCurrency(Math.max(0, targets.monthlyProfitTarget - profitAfterFee));
   const dayOfMonth = DateTime.fromISO(dateIso).isValid
     ? DateTime.fromISO(dateIso).day
-    : DateTime.local().day;
+    : userNow().day;
   const expectedProfitPace = roundCurrency(
     targets.monthlyProfitTarget * Math.min(1, dayOfMonth / daysInMonth),
   );
@@ -236,7 +237,7 @@ export function buildLyftDayBreakdown(
   const targets = resolveLyftGoalTargets(goals);
   const week = summarizeLyftWeek(activities, dateIso, targets);
   const today = DateTime.fromISO(dateIso);
-  const todayIso = today.isValid ? today.toISODate()! : DateTime.local().toISODate()!;
+  const todayIso = today.isValid ? today.toISODate()! : userNow().toISODate()!;
   const start = DateTime.fromISO(week.weekStart);
 
   const earnedByDate = new Map<string, number>();
@@ -310,7 +311,7 @@ export function buildLyftCoachAdvice(params: {
     lyftHourlyNet: params.hourlyNet,
   });
   const today = DateTime.fromISO(params.dateIso);
-  const dayIndex = today.isValid ? today.weekday : DateTime.local().weekday; // 1=Mon … 7=Sun
+  const dayIndex = today.isValid ? today.weekday : userNow().weekday; // 1=Mon … 7=Sun
   const daysElapsed = Math.min(7, Math.max(1, dayIndex));
   const daysRemaining = Math.max(0, 7 - dayIndex);
   const expectedWeeklyProfitPace = roundCurrency(

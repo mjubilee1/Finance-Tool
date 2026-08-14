@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 import {
   Flame,
   Loader2,
@@ -225,9 +226,9 @@ function buildWeeklyTldr(review: NonNullable<GrowthDashboard["weeklyReview"]>): 
 function formatActivityDate(iso: string): string {
   const dt = DateTime.fromISO(iso);
   if (!dt.isValid) return iso;
-  const today = DateTime.local().toISODate();
+  const today = userNow().toISODate();
   if (iso === today) return "Today";
-  if (iso === DateTime.local().minus({ days: 1 }).toISODate()) return "Yesterday";
+  if (iso === userNow().minus({ days: 1 }).toISODate()) return "Yesterday";
   return dt.toFormat("LLL d");
 }
 
@@ -274,7 +275,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const [expandedActivityIds, setExpandedActivityIds] = useState<Set<string>>(new Set());
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [activityForm, setActivityForm] = useState({
-    date: DateTime.local().toISODate() ?? "",
+    date: userNow().toISODate() ?? "",
     domain: "career",
     category: "project",
     title: "",
@@ -288,7 +289,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     name: "",
     relationshipType: "peer",
     trustLevel: "3",
-    lastContactDate: DateTime.local().toISODate() ?? "",
+    lastContactDate: userNow().toISODate() ?? "",
     notes: "",
     suggestedNextAction: "",
     status: "active",

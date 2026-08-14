@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 import { formatCurrency } from "@/lib/format";
 import {
   FINANCIAL_EVENT_CATEGORIES,
@@ -95,7 +95,7 @@ export function FinancialTrendsView() {
   });
 
   const [eventForm, setEventForm] = useState({
-    date: DateTime.local().toISODate() ?? "",
+    date: userNow().toISODate() ?? "",
     title: "",
     category: "other",
     amount: "",

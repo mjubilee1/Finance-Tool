@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getFocusAccounts, filterTransactionsForDailySpend } from "./account-focus";
+import { userNow, userToday } from "./user-timezone";
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { calculateGoalFunding } from "./goal-funding";
 import { storeFinancialMemories } from "./financial-memory";
@@ -165,7 +166,7 @@ function clamp(score: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(score * 10) / 10));
 }
 
-function weekStartIso(date = DateTime.local()) {
+function weekStartIso(date = userNow()) {
   return date.startOf("week").toISODate()!;
 }
 
@@ -189,11 +190,11 @@ function emptyDomainCounts(): Record<GrowthDomain, number> {
 }
 
 export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetrics> {
-  const today = DateTime.local().toISODate()!;
-  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const thirtyDaysAgo = DateTime.local().minus({ days: 30 }).toISODate()!;
+  const today = userToday();
+  const fourteenDaysAgo = userNow().minus({ days: 14 }).toISODate()!;
+  const thirtyDaysAgo = userNow().minus({ days: 30 }).toISODate()!;
   // Mastery depth needs full history — weeks of logs are not years of compounding.
-  const masteryHorizon = DateTime.local().minus({ years: 5 }).toISODate()!;
+  const masteryHorizon = userNow().minus({ years: 5 }).toISODate()!;
 
   const [activities, contacts, goals, accounts, transactions, priorSnapshots] = await Promise.all([
     prisma.growthActivity.findMany({
@@ -632,8 +633,8 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 }
 
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
-  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const today = DateTime.local().toISODate()!;
+  const fourteenDaysAgo = userNow().minus({ days: 14 }).toISODate()!;
+  const today = userToday();
   const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, todayEvents, calendarContext, entrepreneurshipProgress] =
     await Promise.all([
       loadRelevantMemories(
@@ -808,7 +809,7 @@ export async function generateHighLeverageRecommendation(
   userId: string,
   options?: { force?: boolean },
 ) {
-  const today = DateTime.local().toISODate()!;
+  const today = userToday();
   const existing = await prisma.growthRecommendation.findUnique({
     where: { userId_date: { userId, date: today } },
   });

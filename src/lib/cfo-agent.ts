@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 import {
   CAR_FUNDED_BY,
   CAR_INSURANCE_MONTHLY,
@@ -95,7 +96,7 @@ function fridayPaydaysThrough(referenceDate: DateTime, endDateIso: string | null
  * Optional typicalPaycheck overrides the ~$1,555 Amergis default when live payroll is known.
  */
 export function buildKnownCashScheduleContext(
-  referenceDate = DateTime.local(),
+  referenceDate = userNow(),
   options?: { typicalPaycheck?: number | null; carProfile?: CarProfileLike | null },
 ) {
   const nextMortgageDue = nextMonthlyFirst(referenceDate);

@@ -15,3 +15,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Purpose**: long-term financial goals, weekly wins/alerts, micro→macro awareness
 
 Skill: `.cursor/skills/personal-finance-product/SKILL.md`
+
+## Founder (OnLocalAI)
+
+Trell is founder of OnLocalAI (employee onboarding). For daily/weekly startup plans, outreach, discovery, evidence, and build-vs-sell decisions, read **`.cursor/skills/onlocalai-founder-os/SKILL.md`**. Customer discovery outranks speculative product work; code freeze rules apply.

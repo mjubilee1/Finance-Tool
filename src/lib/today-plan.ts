@@ -1,5 +1,5 @@
-import { DateTime } from "luxon";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
+import { userNow } from "@/lib/user-timezone";
 import type { GrowthMetrics } from "@/lib/growth-agent";
 import type { DayShape } from "@/lib/joy-ideas-shared";
 
@@ -112,7 +112,7 @@ export function buildTodayPlan(
   profile: ProfileLike,
   options: BuildTodayPlanOptions = {},
 ) {
-  const now = DateTime.local();
+  const now = userNow();
   const shape = dayShapeFor(now.weekday);
   const isWeekend = shape === "weekend";
   const isOffice = shape === "office";

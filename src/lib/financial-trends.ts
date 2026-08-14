@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { getTransactionActivityDate } from "@/lib/daily-brief";
+import { userNow } from "@/lib/user-timezone";
 
 /** House-hack default when all upstairs + basement rooms are occupied. */
 export const DEFAULT_EXPECTED_MONTHLY_RENT = 2650;
@@ -147,7 +148,7 @@ function currentBuckets(accounts: TrendsAccount[]) {
 function monthKeys(months: number, referenceDate?: string) {
   const today = referenceDate
     ? DateTime.fromISO(referenceDate).startOf("day")
-    : DateTime.local().startOf("day");
+    : userNow().startOf("day");
   const start = today.startOf("month").minus({ months: months - 1 });
   const keys: string[] = [];
   for (let i = 0; i < months; i++) {
@@ -340,7 +341,7 @@ export function findLargeExpensesThisMonth(
 ): LargeExpense[] {
   const today = referenceDate
     ? DateTime.fromISO(referenceDate).startOf("day")
-    : DateTime.local().startOf("day");
+    : userNow().startOf("day");
   const monthKey = today.toFormat("yyyy-MM");
 
   return transactions
