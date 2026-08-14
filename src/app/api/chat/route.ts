@@ -5,6 +5,7 @@ import { buildCoachSystemPrompt } from "@/lib/coach-chat-prompt";
 import { classifyCoachIntent } from "@/lib/coach-intent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
+import { resolveChatModel } from "@/lib/chat-models";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
@@ -653,6 +654,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const requestMessages = sanitizeChatMessages(body.messages);
+    const chatModel = resolveChatModel(body.model);
     const latestUserMessage = [...requestMessages].reverse().find((message) => message.role === "user");
     if (!latestUserMessage) {
       return NextResponse.json({ error: "Send a message or upload a screenshot first." }, { status: 400 });
@@ -850,7 +852,7 @@ export async function POST(req: Request) {
     ];
 
     let response = (await openai.chat.completions.create({
-      model: "gpt-5",
+      model: chatModel,
       messages: openAiMessages,
       response_format: { type: "json_object" },
       max_completion_tokens: 3000,
@@ -865,7 +867,7 @@ export async function POST(req: Request) {
         `[CHAT] empty reply finish=${response.choices[0]?.finish_reason ?? "unknown"} — retrying with verbosity=medium`,
       );
       response = (await openai.chat.completions.create({
-        model: "gpt-5",
+        model: chatModel,
         messages: openAiMessages,
         response_format: { type: "json_object" },
         max_completion_tokens: 4000,
@@ -1072,6 +1074,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       sessionId: coachSession.id,
+      model: chatModel,
       message: chatResponse.message,
       intent: coachIntent,
       spotlight: chatResponse.spotlight ?? null,
