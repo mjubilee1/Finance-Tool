@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Car, MessageSquare, RefreshCw } from "lucide-react";
-import { DateTime } from "luxon";
 import { LyftPaceCard, type LyftPaceSnapshot } from "@/components/overview/lyft-pace-card";
 import { buildLyftPaceSnapshot } from "@/lib/lyft";
+import { userNow } from "@/lib/user-timezone";
 
 type Props = {
   onOpenChat: () => void;
@@ -13,7 +13,7 @@ type Props = {
 };
 
 function emptyPace(): LyftPaceSnapshot {
-  return buildLyftPaceSnapshot([], DateTime.local().toISODate()!);
+  return buildLyftPaceSnapshot([], userNow().toISODate()!);
 }
 
 async function saveLyftEarnings(date: string, amount: number | null) {
@@ -57,7 +57,7 @@ export function LyftBoardView({ onOpenChat, onOpenGrowth }: Props) {
   });
 
   const pace = data?.lyftPace ?? (isLoading ? null : emptyPace());
-  const todayDate = data?.date ?? DateTime.local().toISODate()!;
+  const todayDate = data?.date ?? userNow().toISODate()!;
 
   const refreshPace = async () => {
     await queryClient.invalidateQueries({ queryKey: ["overview-today"] });

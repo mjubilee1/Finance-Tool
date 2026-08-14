@@ -5,6 +5,7 @@ import {
   parseIsoDate,
   type CarProfileLike,
 } from "@/lib/car";
+import { USER_TIME_ZONE } from "@/lib/user-timezone";
 
 /** Interval rules for keeping the financed car healthy and neat through payoff. */
 export const CAR_MAINTENANCE_SCHEDULE = [
@@ -124,8 +125,8 @@ export function summarizeCarLifespan(
   todayIso?: string,
 ): CarLifespanSummary {
   const today = todayIso
-    ? DateTime.fromISO(todayIso, { zone: "America/New_York" }).startOf("day")
-    : DateTime.now().setZone("America/New_York").startOf("day");
+    ? DateTime.fromISO(todayIso, { zone: USER_TIME_ZONE }).startOf("day")
+    : DateTime.now().setZone(USER_TIME_ZONE).startOf("day");
   const start = parseIsoDate(profile.loanStartDate);
   const startOdometerMiles =
     typeof profile.startOdometerMiles === "number" && Number.isFinite(profile.startOdometerMiles)
@@ -190,8 +191,8 @@ export function buildCarServiceSchedule(
   todayIso?: string,
 ): CarServiceScheduleItem[] {
   const today = todayIso
-    ? DateTime.fromISO(todayIso, { zone: "America/New_York" }).startOf("day")
-    : DateTime.now().setZone("America/New_York").startOf("day");
+    ? DateTime.fromISO(todayIso, { zone: USER_TIME_ZONE }).startOf("day")
+    : DateTime.now().setZone(USER_TIME_ZONE).startOf("day");
   const baseline = ownershipBaseline(profile);
   const currentMiles = Math.max(baseline.miles, profile.odometerMiles);
 

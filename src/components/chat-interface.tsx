@@ -11,6 +11,7 @@ import {
   VolumeX,
   LoaderCircle,
   ChevronDown,
+  Sparkles,
 } from "lucide-react";
 import type { SpendingAlert } from "@/lib/spending-alerts";
 import type { ChargeReviewDisposition } from "@/lib/charge-review";
@@ -23,6 +24,13 @@ import { CoachMessageContent } from "./chat/coach-message-content";
 import { useCoachSpeech } from "@/hooks/use-coach-speech";
 import { READ_ALOUD_STORAGE_KEY } from "@/lib/coach-speech";
 import { fetchWithRetry, friendlyChatFetchError } from "@/lib/fetch-with-retry";
+import {
+  CHAT_MODELS,
+  CHAT_MODEL_STORAGE_KEY,
+  DEFAULT_CHAT_MODEL,
+  isChatModelId,
+  type ChatModelId,
+} from "@/lib/chat-models";
 
 /** Once a session exists, the API already loads prior turns from the DB. */
 function buildChatRequestMessages(messages: ChatMessage[], hasSession: boolean): ChatMessage[] {
@@ -147,9 +155,36 @@ export function ChatInterface({
   const [loadingHistorySessionId, setLoadingHistorySessionId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [readAloudEnabled, setReadAloudEnabled] = useState(false);
+  const [chatModel, setChatModel] = useState<ChatModelId>(DEFAULT_CHAT_MODEL);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // Let chat UI paint first; spending radar is secondary to the conversation.
+  const [radarEnabled, setRadarEnabled] = useState(false);
   const readAloudBaselineRef = useRef(0);
   const prevMessageCountRef = useRef(initialCoachMessages.length);
+
+  useEffect(() => {
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const enable = () => {
+      if (!cancelled) setRadarEnabled(true);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(enable, { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(enable, 0);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, []);
 
   const {
     speak,
@@ -171,6 +206,7 @@ export function ChatInterface({
   const { data: radarData, isLoading: radarLoading } = useQuery({
     queryKey: ["spending-alerts"],
     queryFn: fetchSpendingAlerts,
+    enabled: radarEnabled,
   });
 
   useEffect(() => {
@@ -205,6 +241,13 @@ export function ChatInterface({
       readAloudBaselineRef.current = initialCoachMessages.length;
       prevMessageCountRef.current = initialCoachMessages.length;
       setReadAloudEnabled(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const storedModel = window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY);
+    if (isChatModelId(storedModel)) {
+      setChatModel(storedModel);
     }
   }, []);
 
@@ -413,6 +456,7 @@ export function ChatInterface({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId,
+          model: chatModel,
           messages: buildChatRequestMessages(nextMessages, Boolean(sessionId)),
         }),
         // Only retry thrown network failures (e.g. Safari "Load failed"), not HTTP
@@ -433,6 +477,42 @@ export function ChatInterface({
 
       if (Array.isArray(data.memoriesSaved) && data.memoriesSaved.length > 0) {
         assistantMessage += `\n\nSaved for your financial overview: ${data.memoriesSaved.join(", ")}.`;
+      }
+
+      if (
+        (Array.isArray(data.contactNotesCreated) && data.contactNotesCreated.length > 0) ||
+        (Array.isArray(data.contactNotesUpdated) && data.contactNotesUpdated.length > 0) ||
+        (Array.isArray(data.contactNotesSaved) && data.contactNotesSaved.length > 0)
+      ) {
+        const parts: string[] = [];
+        if (Array.isArray(data.contactNotesCreated) && data.contactNotesCreated.length > 0) {
+          parts.push(
+            `Created Growth contacts: ${(data.contactNotesCreated as string[])
+              .map((name) => `@${name}`)
+              .join(", ")}`,
+          );
+        }
+        if (Array.isArray(data.contactNotesUpdated) && data.contactNotesUpdated.length > 0) {
+          parts.push(
+            `Updated Growth notes for: ${(data.contactNotesUpdated as string[])
+              .map((name) => `@${name}`)
+              .join(", ")}`,
+          );
+        } else if (
+          (!Array.isArray(data.contactNotesCreated) || data.contactNotesCreated.length === 0) &&
+          Array.isArray(data.contactNotesSaved) &&
+          data.contactNotesSaved.length > 0
+        ) {
+          parts.push(
+            `Updated Growth notes for: ${(data.contactNotesSaved as string[])
+              .map((name) => `@${name}`)
+              .join(", ")}`,
+          );
+        }
+        if (parts.length > 0) {
+          assistantMessage += `\n\n${parts.join("\n")}`;
+        }
+        await queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
       }
 
       if (data.briefRefreshed) {
@@ -485,35 +565,35 @@ export function ChatInterface({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 sm:gap-3">
-      <div className="shrink-0">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
+      <div className="shrink-0 empty:hidden">
         <SpendingRadar
           alerts={radarData?.alerts ?? []}
           estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
-          isLoading={radarLoading}
+          isLoading={!radarEnabled || radarLoading}
           dismissingId={dismissingId}
           onAskAbout={handleAskAboutAlert}
           onDismiss={handleDismissAlert}
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <div className="inline-flex min-w-0 flex-1 rounded-xl bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-0.5 ring-1 ring-[var(--card-border)] sm:flex-none">
+      <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[color-mix(in_srgb,var(--card-solid)_82%,transparent)] p-1.5 shadow-sm backdrop-blur-xl">
+        <div className="inline-flex min-w-0 rounded-xl bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-0.5">
           <button
             type="button"
             onClick={() => setActiveCoachTab("chat")}
-            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition sm:flex-none sm:px-3.5 ${
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition sm:px-3.5 sm:text-sm ${
               activeCoachTab === "chat"
                 ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >
-            Coach
+            Chat
           </button>
           <button
             type="button"
             onClick={() => setActiveCoachTab("history")}
-            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition sm:flex-none sm:px-3.5 ${
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition sm:px-3.5 sm:text-sm ${
               activeCoachTab === "history"
                 ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
@@ -523,33 +603,59 @@ export function ChatInterface({
           </button>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <label className="relative ml-auto flex min-w-0 items-center gap-1.5 rounded-xl px-2 py-1.5 text-[var(--ink)] ring-1 ring-[var(--card-border)] transition focus-within:ring-[var(--accent)]">
+          <Sparkles size={14} className="shrink-0 text-[var(--ember)]" aria-hidden />
+          <span className="sr-only">Coach model</span>
+          <select
+            value={chatModel}
+            onChange={(event) => {
+              const nextModel = event.target.value;
+              if (!isChatModelId(nextModel)) return;
+              setChatModel(nextModel);
+              window.localStorage.setItem(CHAT_MODEL_STORAGE_KEY, nextModel);
+            }}
+            disabled={isLoading}
+            className="min-w-0 max-w-[7.5rem] cursor-pointer appearance-none bg-transparent pr-4 text-xs font-semibold outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-none sm:text-sm"
+            title="Choose the AI model"
+          >
+            {CHAT_MODELS.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label} · {model.description}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={13}
+            className="pointer-events-none absolute right-1.5 text-[var(--muted)]"
+            aria-hidden
+          />
+        </label>
+
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={toggleReadAloud}
-            className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-sm font-semibold ring-1 transition disabled:opacity-60 sm:px-3 ${
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition disabled:opacity-60 ${
               readAloudEnabled
-                ? "bg-[var(--accent-soft)] text-[var(--accent-strong)] ring-[var(--accent)] dark:text-[var(--accent-bright)]"
-                : "bg-[var(--card)] text-[var(--ink)] ring-[var(--card-border)] hover:bg-[color-mix(in_srgb,var(--ink)_4%,transparent)]"
+                ? "bg-[color-mix(in_srgb,var(--ember)_16%,transparent)] text-[var(--ember)]"
+                : "text-[var(--muted)] hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] hover:text-[var(--ink)]"
             }`}
             disabled={isLoading}
             title={readAloudEnabled ? "Stop reading responses aloud" : "Read coach responses aloud"}
             aria-label={readAloudEnabled ? "Read aloud on" : "Read aloud off"}
           >
             {readAloudEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            <span className="hidden sm:inline">{readAloudEnabled ? "Read aloud on" : "Read aloud off"}</span>
           </button>
 
           <button
             type="button"
             onClick={handleNewChat}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--accent)] px-2.5 py-1.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/15 disabled:opacity-60 sm:px-3"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--ember)] text-white shadow-sm shadow-orange-600/20 transition hover:brightness-110 disabled:opacity-60"
             disabled={isLoading}
             title="New chat"
             aria-label="New chat"
           >
             <MessageSquarePlus size={16} />
-            <span className="hidden sm:inline">New chat</span>
           </button>
         </div>
       </div>

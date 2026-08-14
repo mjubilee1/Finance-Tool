@@ -1,5 +1,7 @@
 import { DateTime } from "luxon";
 import { CAR_FUNDED_BY, carMonthlyTotal, type CarProfileLike } from "@/lib/car";
+import { userNow } from "@/lib/user-timezone";
+export { isCapitalOneInstitution } from "@/lib/institutions";
 
 export type CapOneAccountRow = {
   plaidAccountId: string;
@@ -28,10 +30,6 @@ export type CapOneProjectionPoint = {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
-}
-
-export function isCapitalOneInstitution(name: string | null | undefined) {
-  return Boolean(name && /capital\s*one/i.test(name));
 }
 
 function isLyftInflow(txn: CapOneTxnRow) {
@@ -121,7 +119,7 @@ export function buildCapitalOneProjection(params: {
   // Reserve car floor on top of observed spend so the chart shows Cap One after obligations.
   const netAfterCarFloorDaily = observedNetDaily - carFloorDaily;
 
-  const today = DateTime.now();
+  const today = userNow();
   const projectionData: CapOneProjectionPoint[] = [];
   for (let i = 0; i <= horizonDays; i += stepDays) {
     projectionData.push({

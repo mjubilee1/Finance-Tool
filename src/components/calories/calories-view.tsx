@@ -8,13 +8,15 @@ import {
   Flame,
   Loader2,
   Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DEFAULT_DURATION_WEEKS,
   DEFAULT_MON_WED_TARGET,
   DEFAULT_THU_SUN_TARGET,
+  experimentEndDate,
   formatCals,
   type CalorieDayLogLike,
   type CalorieExperimentLike,
@@ -50,7 +52,15 @@ async function fetchCalories(): Promise<CaloriesBundle> {
   return res.json();
 }
 
-function WeekStrip({ week }: { week: CalorieWeekSummary }) {
+function WeekStrip({
+  week,
+  selectedDate,
+  onSelectDay,
+}: {
+  week: CalorieWeekSummary;
+  selectedDate: string;
+  onSelectDay: (date: string) => void;
+}) {
   const usedPct = Math.min(
     100,
     Math.round((week.loggedCalories / Math.max(week.weeklyBudget, 1)) * 100)
@@ -65,7 +75,7 @@ function WeekStrip({ week }: { week: CalorieWeekSummary }) {
             Weekly calorie budget
           </h2>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            {week.weekStart} → {week.weekEnd} · Judge the week, not one day.
+            {week.weekStart} → {week.weekEnd} · Tap a day to log or edit. Judge the week, not one day.
           </p>
         </div>
         <div className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 ${paceStyles[week.paceStatus]}`}>
@@ -77,15 +87,42 @@ function WeekStrip({ week }: { week: CalorieWeekSummary }) {
         {week.days.map((day) => {
           const over = day.delta != null && day.delta > 0;
           const under = day.delta != null && day.delta < 0;
+          const isSelected = day.date === selectedDate;
+          const canSelect = !day.isFuture;
+          const missing = !day.isFuture && day.calories == null;
+          const baseClass = day.isToday
+            ? "bg-[var(--accent)] text-white ring-[var(--accent)] shadow-sm"
+            : day.isFuture
+              ? "bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] ring-[var(--card-border)] text-[var(--muted)]"
+              : missing
+                ? "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] border border-dashed border-[color-mix(in_srgb,var(--accent)_45%,transparent)] text-[var(--ink-soft)] ring-0"
+                : "bg-[var(--card-solid)] ring-[var(--card-border)] text-[var(--ink-soft)]";
+          const selectedRing = isSelected
+            ? day.isToday
+              ? "outline outline-2 outline-offset-2 outline-white/80"
+              : "outline outline-2 outline-offset-2 outline-[var(--accent)]"
+            : "";
+
           return (
-            <div
+            <button
               key={day.date}
-              className={`rounded-xl p-2 sm:p-3 text-center transition-colors ring-1 ${
-                day.isToday
-                  ? "bg-[var(--accent)] text-white ring-[var(--accent)] shadow-sm"
-                  : day.isFuture
-                    ? "bg-[color-mix(in_srgb,var(--ink)_5%,transparent)] ring-[var(--card-border)] text-[var(--muted)]"
-                    : "bg-[var(--card-solid)] ring-[var(--card-border)] text-[var(--ink-soft)]"
+              type="button"
+              disabled={!canSelect}
+              onClick={() => onSelectDay(day.date)}
+              aria-label={
+                missing
+                  ? `Add calories for ${day.date}`
+                  : day.calories != null
+                    ? `Edit ${day.date}, ${day.calories} calories`
+                    : day.date
+              }
+              aria-pressed={isSelected}
+              className={`rounded-xl p-2 sm:p-3 text-center transition-colors ${
+                missing ? "" : "ring-1"
+              } ${baseClass} ${selectedRing} ${
+                canSelect
+                  ? "cursor-pointer hover:brightness-105 active:scale-[0.98]"
+                  : "cursor-default opacity-70"
               }`}
             >
               <p className="text-[10px] sm:text-xs font-medium uppercase opacity-80">{day.label}</p>
@@ -105,7 +142,7 @@ function WeekStrip({ week }: { week: CalorieWeekSummary }) {
                           : "text-[var(--ink)]"
                 }`}
               >
-                {day.calories != null ? day.calories.toLocaleString("en-US") : "—"}
+                {day.calories != null ? day.calories.toLocaleString("en-US") : missing ? "Add" : "—"}
               </p>
               <p
                 className={`text-[9px] sm:text-[10px] mt-0.5 tabular-nums ${
@@ -114,7 +151,7 @@ function WeekStrip({ week }: { week: CalorieWeekSummary }) {
               >
                 {day.band === "mon_wed" ? "M–W" : "T–S"} {day.target.toLocaleString("en-US")}
               </p>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -307,6 +344,14 @@ export function CaloriesView() {
   const weeks = useMemo(() => data?.weeks ?? [], [data?.weeks]);
   const today = data?.today ?? "";
   const logs = useMemo(() => data?.logs ?? [], [data?.logs]);
+  const logFormRef = useRef<HTMLDivElement>(null);
+
+  const experimentDateBounds = useMemo(() => {
+    if (!experiment) return { min: "", max: today };
+    const end = experimentEndDate(experiment.startDate, experiment.durationWeeks);
+    const max = today && end ? (today < end ? today : end) : today || end;
+    return { min: experiment.startDate, max };
+  }, [experiment, today]);
 
   const currentWeekIndex = useMemo(() => {
     const idx = weeks.findIndex((w) => w.isCurrent);
@@ -340,7 +385,7 @@ export function CaloriesView() {
   const notesInput =
     draft && draft.date === logDate ? draft.notes : (selectedLog?.notes ?? "");
 
-  const selectLogDate = (date: string) => {
+  const selectLogDate = (date: string, opts?: { focusForm?: boolean }) => {
     setLogDateOverride(date);
     const existing = logs.find((l) => l.date === date);
     setDraft({
@@ -348,7 +393,43 @@ export function CaloriesView() {
       calories: existing ? String(existing.calories) : "",
       notes: existing?.notes ?? "",
     });
+    const weekIdxForDate = weeks.findIndex((w) => w.days.some((d) => d.date === date));
+    if (weekIdxForDate >= 0) setWeekOverride(weekIdxForDate);
+    if (opts?.focusForm !== false) {
+      window.requestAnimationFrame(() => {
+        logFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
   };
+
+  const recentDayRows = useMemo(() => {
+    const logsByDate = new Map(logs.map((l) => [l.date, l]));
+    const days = weeks
+      .flatMap((w) => w.days)
+      .filter((d) => !d.isFuture)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+    return days.slice(0, 21).map((day) => ({
+      date: day.date,
+      log: logsByDate.get(day.date),
+      target: day.target,
+      delta: day.delta,
+      isToday: day.isToday,
+    }));
+  }, [logs, weeks]);
+
+  const missingDayCount = useMemo(
+    () => recentDayRows.filter((r) => !r.log).length,
+    [recentDayRows]
+  );
+
+  const firstMissingDate = useMemo(
+    () => recentDayRows.find((r) => !r.log)?.date ?? null,
+    [recentDayRows]
+  );
+
+  const logHeading =
+    logDate === today ? "Log today" : selectedLog ? "Edit day" : "Add day";
 
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
@@ -515,18 +596,21 @@ export function CaloriesView() {
                   Next <ChevronRight size={16} />
                 </button>
               </div>
-              <WeekStrip week={week} />
+              <WeekStrip
+                week={week}
+                selectedDate={logDate}
+                onSelectDay={(date) => selectLogDate(date)}
+              />
             </>
           ) : null}
 
-          <div className="app-card p-5 sm:p-6 space-y-4">
+          <div ref={logFormRef} className="app-card p-5 sm:p-6 space-y-4">
             <div>
               <p className="app-label mb-1">Daily log</p>
-              <h2 className="text-lg font-semibold text-[var(--ink)]">
-                {logDate === today ? "Log today" : "Edit day"}
-              </h2>
+              <h2 className="text-lg font-semibold text-[var(--ink)]">{logHeading}</h2>
               <p className="mt-1 text-xs text-[var(--muted)]">
-                One total for the day. Update anytime — weekly remaining adjusts automatically.
+                One total for any day in the experiment. Missed a day? Pick the date and save —
+                weekly remaining adjusts automatically.
               </p>
             </div>
 
@@ -536,7 +620,9 @@ export function CaloriesView() {
                 <input
                   type="date"
                   value={logDate}
-                  onChange={(e) => selectLogDate(e.target.value)}
+                  min={experimentDateBounds.min || undefined}
+                  max={experimentDateBounds.max || undefined}
+                  onChange={(e) => selectLogDate(e.target.value, { focusForm: false })}
                   className="w-full rounded-xl bg-[var(--card-solid)] px-3 py-2.5 text-sm text-[var(--ink)] ring-1 ring-[var(--card-border)] outline-none focus:ring-2 focus:ring-[var(--ring)]"
                 />
               </label>
@@ -588,7 +674,7 @@ export function CaloriesView() {
                 ) : (
                   <Check size={16} />
                 )}
-                Save day
+                {selectedLog ? "Save day" : "Add day"}
               </button>
               {logs.some((l) => l.date === logDate) ? (
                 <button
@@ -613,51 +699,93 @@ export function CaloriesView() {
             </div>
           </div>
 
-          {logs.length > 0 ? (
+          {recentDayRows.length > 0 ? (
             <div className="app-card p-5 sm:p-6">
-              <p className="app-label mb-3">Recent days</p>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <p className="app-label">Recent days</p>
+                  {missingDayCount > 0 ? (
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {missingDayCount === 1
+                        ? "1 day still needs a log."
+                        : `${missingDayCount} days still need a log.`}
+                    </p>
+                  ) : null}
+                </div>
+                {firstMissingDate ? (
+                  <button
+                    type="button"
+                    onClick={() => selectLogDate(firstMissingDate)}
+                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-soft)]"
+                  >
+                    <Plus size={14} /> Add missing day
+                  </button>
+                ) : null}
+              </div>
               <ul className="divide-y divide-[var(--card-border)]">
-                {logs.slice(0, 14).map((log) => {
-                  const dayWeek = weeks.find((w) =>
-                    w.days.some((d) => d.date === log.date)
-                  );
-                  const dayMeta = dayWeek?.days.find((d) => d.date === log.date);
+                {recentDayRows.map((row) => {
+                  const isMissing = !row.log;
                   return (
                     <li
-                      key={log.id}
-                      className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+                      key={row.date}
+                      className={`flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0 ${
+                        isMissing
+                          ? "bg-[color-mix(in_srgb,var(--accent)_6%,transparent)] -mx-2 px-2 rounded-lg"
+                          : ""
+                      }`}
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--ink)] tabular-nums">
-                          {log.date}
-                          {dayMeta ? (
+                          {row.date}
+                          {row.isToday ? (
+                            <span className="ml-2 text-xs font-medium text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+                              today
+                            </span>
+                          ) : null}
+                          {row.target != null ? (
                             <span className="ml-2 text-xs font-medium text-[var(--muted)]">
-                              target {dayMeta.target.toLocaleString("en-US")}
+                              target {row.target.toLocaleString("en-US")}
                             </span>
                           ) : null}
                         </p>
-                        {log.notes ? (
-                          <p className="text-xs text-[var(--muted)] truncate mt-0.5">{log.notes}</p>
+                        {isMissing ? (
+                          <p className="text-xs text-[var(--muted)] mt-0.5">Not logged yet</p>
+                        ) : row.log?.notes ? (
+                          <p className="text-xs text-[var(--muted)] truncate mt-0.5">
+                            {row.log.notes}
+                          </p>
                         ) : null}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`text-sm font-semibold tabular-nums ${
-                            dayMeta?.delta != null && dayMeta.delta > 0
-                              ? "text-rose-500"
-                              : "text-[var(--ink)]"
-                          }`}
-                        >
-                          {log.calories.toLocaleString("en-US")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => selectLogDate(log.date)}
-                          className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
-                          aria-label="Edit day"
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        {isMissing ? (
+                          <button
+                            type="button"
+                            onClick={() => selectLogDate(row.date)}
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-strong)] dark:text-[var(--accent-bright)] ring-1 ring-[color-mix(in_srgb,var(--accent)_35%,transparent)] hover:bg-[var(--accent-soft)]"
+                          >
+                            <Plus size={12} /> Add
+                          </button>
+                        ) : (
+                          <>
+                            <span
+                              className={`text-sm font-semibold tabular-nums ${
+                                row.delta != null && row.delta > 0
+                                  ? "text-rose-500"
+                                  : "text-[var(--ink)]"
+                              }`}
+                            >
+                              {row.log!.calories.toLocaleString("en-US")}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => selectLogDate(row.date)}
+                              className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
+                              aria-label="Edit day"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </li>
                   );

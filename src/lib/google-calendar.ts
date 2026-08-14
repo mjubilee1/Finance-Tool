@@ -219,7 +219,11 @@ export function getGoogleCalendarRedirectUri(request: Request) {
   return `${origin}/api/integrations/google-calendar/callback`;
 }
 
-export function buildGoogleCalendarAuthUrl(state: string, redirectUri: string) {
+export function buildGoogleCalendarAuthUrl(
+  state: string,
+  redirectUri: string,
+  options?: { forceConsent?: boolean },
+) {
   const { clientId } = getGoogleCalendarCredentials();
   const url = new URL(GOOGLE_AUTH_URL);
 
@@ -228,9 +232,13 @@ export function buildGoogleCalendarAuthUrl(state: string, redirectUri: string) {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", GOOGLE_CALENDAR_EVENTS_SCOPE);
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", state);
+  // Only force the Google consent screen when we need a brand-new refresh token.
+  // Re-prompting every connect is what makes access feel "temporary."
+  if (options?.forceConsent) {
+    url.searchParams.set("prompt", "consent");
+  }
 
   return url;
 }
@@ -415,6 +423,38 @@ export async function fetchUpcomingGoogleCalendarEvents(
   });
 
   if (response.status === 401 || response.status === 403) {
+    // Access token may be revoked while refresh still works — try one refresh before nagging.
+    const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
+    if (connection?.encryptedRefreshToken) {
+      try {
+        const refreshed = await refreshGoogleCalendarAccessToken(
+          userId,
+          connection.encryptedRefreshToken,
+          connection.scopes,
+        );
+        if (refreshed) {
+          const retry = await fetch(url, {
+            headers: { Authorization: `Bearer ${refreshed}` },
+          });
+          if (retry.ok) {
+            const data = (await retry.json()) as { items?: GoogleCalendarApiEvent[] };
+            await prisma.googleCalendarConnection.update({
+              where: { userId },
+              data: { lastSyncAt: new Date(), status: "active" },
+            });
+            return {
+              ...(await getGoogleCalendarStatus(userId)),
+              events: (data.items ?? [])
+                .map(normalizeCalendarEvent)
+                .filter((event): event is GoogleCalendarEvent => Boolean(event)),
+            };
+          }
+        }
+      } catch {
+        // fall through to reconnect
+      }
+    }
+
     await prisma.googleCalendarConnection.update({
       where: { userId },
       data: { status: "needs_reconnect" },

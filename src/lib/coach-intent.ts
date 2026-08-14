@@ -39,9 +39,13 @@ export function classifyCoachIntent(message: string): CoachIntent {
   }
 
   if (
-    /\b(promotion|network|contact|follow.?up|leverage|growth tab|startup|career block|who should i)\b/.test(
+    /\b(promotion|network|contact|contacts|follow.?up|leverage|growth tab|startup|founder|founders|entrepreneur|yc|outreach|mentor|senior|manager|colleague|reconnect|intro)\b/.test(
       text,
-    )
+    ) ||
+    /\bwho (should|do|would|can|you think)\b/.test(text) ||
+    /\b(people|person|someone).{0,40}\b(should|reach|go for|talk|message|dm)\b/.test(text) ||
+    /\bnotes?.{0,40}\b(people|contacts|person)\b/.test(text) ||
+    /\breach out\b/.test(text)
   ) {
     return "growth";
   }

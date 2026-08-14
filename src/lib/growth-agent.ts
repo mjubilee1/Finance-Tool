@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { openai } from "./openai";
 import { prisma } from "./prisma";
 import { getFocusAccounts, filterTransactionsForDailySpend } from "./account-focus";
+import { userNow, userToday } from "./user-timezone";
 import { calculateDailyBriefMetrics } from "./daily-brief";
 import { calculateGoalFunding } from "./goal-funding";
 import { storeFinancialMemories } from "./financial-memory";
@@ -16,6 +17,11 @@ import {
   syncCalendarEventsToGrowth,
 } from "@/lib/growth-calendar-sync";
 import {
+  getLocalEventDigestForDate,
+  serializeLocalEventDigest,
+  serializeLocalEventsForAgent,
+} from "@/lib/local-events";
+import {
   IMPROVING_BASELINE,
   WEAK_DOMAIN_THRESHOLD,
   combineCompoundingScore,
@@ -23,6 +29,13 @@ import {
   domainHoursSummary,
   isCompletedGrowthActivity,
 } from "@/lib/growth-scoring";
+import {
+  ENTREPRENEURSHIP_MARKER_PREFIX,
+  ENTREPRENEURSHIP_WEEKLY_TARGETS,
+  getEntrepreneurshipWeekProgress,
+  parseEntrepreneurshipSlot,
+} from "@/lib/entrepreneurship-routine";
+import { loadRelevantMemories } from "@/lib/relevant-memories";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -83,12 +96,14 @@ You are the user's Growth Intelligence agent inside a Personal Life OS.
 Your job is NOT to organize life. Your job is to answer:
 "What is the highest-leverage thing I can do next to maximize long-term growth?"
 
+Mindset: hungry go-getter on offense. Impact over penny-pinching. Short rest/reset when needed, then attack again.
+
 NORTH STAR:
 ${COACH_NORTH_STAR}
 
 Core philosophy: everything compounds — relationships, skills, reputation, income,
 investments, businesses, health, knowledge, opportunities, and time.
-Evaluate decisions by long-term impact, not only immediate reward.
+Evaluate decisions by long-term impact, not only immediate reward or today's discretionary dollar cap.
 
 Scoring honesty (critical):
 - Domain / compounding scores are on a mastery scale. 100 ≈ ~10,000 quality-weighted hours
@@ -117,16 +132,17 @@ Explain opportunity cost explicitly.
 Be direct, practical, and numbers-aware. No fluff. No generic motivation.
 
 Active-context rules:
-- Do not invent projects the user is not working on. If core context says a product is inactive (e.g. real-estate agent SaaS), never recommend that work.
+- Do not invent projects the user is not working on. Prefer the active litigation-timeline AI GTM over abandoned ideas (e.g. real-estate agent SaaS) unless core context says that product is active again.
 - Do not recommend listing vacant units that context says are already rented (e.g. basement already leased).
 - Respect Weekly Schedule / Daily Rhythm: Mon–Wed office (~9–5) = desk/async actions only mid-day; Thu–Fri WFH = better for deep work/calls/in-person.
 - Name when an action fits (desk lunch message, Thu deep block, evening/weekend meet).
-- Capital One funds owned-car payment (~$513/mo) and insurance (~$352/mo) — keep those current before Cap One fun/goals spend. Prefer career/build/network leverage over low-ROI busywork.
+- Capital One funds owned-car payment (~$513/mo) and insurance (~$352/mo) — keep those current before Cap One fun/goals spend. Prefer founder/build/network leverage over low-ROI busywork.
 - Real estate here usually means property investing / house hacking readiness — not building agent software — unless context says otherwise.
-- Default discretionary target ~$40 most days (food/fun; gas/car costs outside); celebrate streaks. Allow earned bar/dating/clothes spend after solid days — judge the WEEK for compounding vs waste, not one night in isolation.
+- Discretionary ~$40 is tracker background math, not the headline. Judge spend by IMPACT: does it buy leverage, recovery, or connection equity — or is it waste? Allow earned bar/dating/clothes after solid days; judge the WEEK for compounding vs waste, not one night in isolation.
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
 - Family/personal contacts can exist unlabeled or as "family" without notes — do not nag for notes or treat them as compounding bottlenecks. Prioritize notes on mentors, founders, peers, investors, dating-with-intent.
-- Mix money + life: career/promotion, fitness/body, startup leverage, relationships, and cash are one reinforcing system — not a finance-only coach.
+- Mix money + life: career/build, fitness/body, startup leverage, relationships, and cash are one reinforcing system — not a finance-only coach.
+- When recommending outreach, pick real contacts from CONTEXT.contacts notes. Prefer founders/builders/YC/operators/connectors. Do NOT invent "reach out to your manager/EM/PM" unless the user explicitly asks about W2 promotion.
 - When the user shares screenshots (gym schedule, calendar, plans), treat extracted facts as durable context for recommendations — prefer schedule-feasible moves.
 - Home base is Oxon Hill / DMV. Suggest nearby leisure for breaks after logged effort; save longer trips for weekends or open days. Rest and local enjoyment are allowed when intentional.
 - Joy ideas are generated live (weather + day shape + date) — do not rely on a stale joyOptions list.
@@ -137,6 +153,7 @@ Active-context rules:
 - @Name in calendar titles or activity logs links that contact — treat as relationship touchpoints.
 - Goal discipline: do not invent a pile of goals. If freed cash appears (canceled sub, surplus after buffer), prefer pointing it at highest-APR debt or an existing near-term money goal. Mention "create a tracked goal in Goals" only when one clear outcome is worth tracking — never flood the list.
 - Trends digest (trendsContext) is background signal only. Never turn a headline into a new side project. Prefer finishing open leverage / promotion work; reading may inform, not derail.
+- Local events (localEventsContext) is background signal for network / skill / intentional joy outings within driving distance (DMV nearby, Baltimore regional, Richmond/VB weekend stretch). Suggest at most one when it compounds goals and fits day shape — never spam the week with random drives.
 
 Writing style for recommendations (critical — UI is small):
 - action: one short imperative, max ~16 words (e.g. "Protect a 90-min career/build block tonight")
@@ -149,7 +166,7 @@ function clamp(score: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Math.round(score * 10) / 10));
 }
 
-function weekStartIso(date = DateTime.local()) {
+function weekStartIso(date = userNow()) {
   return date.startOf("week").toISODate()!;
 }
 
@@ -173,11 +190,11 @@ function emptyDomainCounts(): Record<GrowthDomain, number> {
 }
 
 export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetrics> {
-  const today = DateTime.local().toISODate()!;
-  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const thirtyDaysAgo = DateTime.local().minus({ days: 30 }).toISODate()!;
+  const today = userToday();
+  const fourteenDaysAgo = userNow().minus({ days: 14 }).toISODate()!;
+  const thirtyDaysAgo = userNow().minus({ days: 30 }).toISODate()!;
   // Mastery depth needs full history — weeks of logs are not years of compounding.
-  const masteryHorizon = DateTime.local().minus({ years: 5 }).toISODate()!;
+  const masteryHorizon = userNow().minus({ years: 5 }).toISODate()!;
 
   const [activities, contacts, goals, accounts, transactions, priorSnapshots] = await Promise.all([
     prisma.growthActivity.findMany({
@@ -554,20 +571,20 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 
   if (metrics.domains.startup < WEAK_DOMAIN_THRESHOLD) {
     return {
-      action: "Ship one concrete software/career leverage block (feature, learning, or positioning)",
+      action: "Run one GTM block: LinkedIn outreach or qualify 5 DMV litigation prospects",
       whyItMatters:
-        "Career/build momentum compounds only when you ship or learn on work you are actually doing — not abandoned ideas.",
+        "Your active startup is litigation-timeline AI GTM — discovery and outreach compound faster than generic feature busywork.",
       longTermBenefit:
-        "Each real shipped increment improves skills and income upside beyond busywork hours.",
-      timeRequiredMinutes: 90,
+        "A thicker prospect backlog and real discovery conversations unlock pilots, clearer positioning, and better partner priorities.",
+      timeRequiredMinutes: 45,
       opportunityCost:
-        "One focused shipping block can pay for years of low-ROI busywork.",
+        "Skipping outreach keeps the pipeline empty while competitor workflows stay the default.",
       relatedGoals: metrics.goalsBehind.map((g) => g.name).slice(0, 3),
       relatedPeople: [],
       nextActions: [
-        "Pick one active project (not an abandoned idea)",
-        "Timebox 90 minutes with no distractions",
-        "Write one sentence of what you shipped or learned",
+        "Send 5–10 targeted LinkedIn requests to DMV litigation roles",
+        "Log 5 qualified prospects (name, firm, role, next action)",
+        "Book or prep one discovery conversation — never invent an interview",
       ],
       leverageType: "long_term_leverage",
       domain: "startup",
@@ -616,15 +633,15 @@ function buildFallbackRecommendation(metrics: GrowthMetrics): GrowthRecommendati
 }
 
 async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
-  const fourteenDaysAgo = DateTime.local().minus({ days: 14 }).toISODate()!;
-  const today = DateTime.local().toISODate()!;
-  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, calendarContext] =
+  const fourteenDaysAgo = userNow().minus({ days: 14 }).toISODate()!;
+  const today = userToday();
+  const [memories, goals, contacts, recentActivities, snapshots, profile, recentMoves, todayTrends, todayEvents, calendarContext, entrepreneurshipProgress] =
     await Promise.all([
-      prisma.financialMemory.findMany({
-        where: { userId },
-        orderBy: { importanceScore: "desc" },
-        take: 12,
-      }),
+      loadRelevantMemories(
+        userId,
+        "highest leverage today startup litigation GTM money career body network relationships",
+        { limit: 12 },
+      ),
       prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
       prisma.growthContact.findMany({
         where: { userId },
@@ -661,7 +678,9 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: true,
         },
       }),
+      getLocalEventDigestForDate(userId, today),
       getRecentCalendarContextForGrowth(userId),
+      getEntrepreneurshipWeekProgress(userId),
     ]);
 
   const skippedOrDoneMoves = recentMoves
@@ -700,6 +719,10 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       leverage: a.leverage,
       impact: a.impactScore,
       minutes: a.minutesSpent,
+      status: a.status,
+      entrepreneurshipSlot: a.notes?.includes(ENTREPRENEURSHIP_MARKER_PREFIX)
+        ? parseEntrepreneurshipSlot(a.notes)
+        : null,
     })),
     scoreHistory: snapshots.map((s) => ({
       date: s.date,
@@ -716,7 +739,27 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
           focusGuardrail: todayTrends.focusGuardrail,
         }
       : null,
+    localEventsContext: serializeLocalEventsForAgent(
+      todayEvents ? serializeLocalEventDigest(todayEvents) : null
+    ),
     calendarContext,
+    entrepreneurshipContext: {
+      weeklyTargets: ENTREPRENEURSHIP_WEEKLY_TARGETS,
+      weekProgress: entrepreneurshipProgress,
+      todayItems: recentActivities
+        .filter(
+          (activity) =>
+            activity.date === today &&
+            activity.notes?.includes(ENTREPRENEURSHIP_MARKER_PREFIX),
+        )
+        .map((activity) => ({
+          title: activity.title,
+          status: activity.status,
+          slot: parseEntrepreneurshipSlot(activity.notes),
+        })),
+      rule:
+        "These are real planner items. Prefer unfinished high-impact GTM work; never invent a discovery interview.",
+    },
     metrics,
   };
 }
@@ -766,7 +809,7 @@ export async function generateHighLeverageRecommendation(
   userId: string,
   options?: { force?: boolean },
 ) {
-  const today = DateTime.local().toISODate()!;
+  const today = userToday();
   const existing = await prisma.growthRecommendation.findUnique({
     where: { userId_date: { userId, date: today } },
   });
@@ -803,6 +846,7 @@ Rules for this response:
 - Respect avoidedMoves (skipped/done recently) — do not recycle them.
 - If memories say the user already has a boss promotion checklist / existing promo plan, do not invent a "draft promo one-pager" — either point at executing one concrete next step from their existing path, or pick a different domain.
 - If trendsContext is present, treat it as BACKGROUND SIGNAL only. Do not make "read AI news" or "start a project inspired by a trend" the daily move unless the user already logged a trend note as today's work.
+- If localEventsContext is present, you may suggest ONE high-fit event when social/network/joy is the bottleneck and day shape allows — prefer nearby/evening on office days; stretch (Richmond/VB) only weekend. Do not replace a leverage/build move with an outing unless network/social is clearly the highest leverage today.
 ${avoidNote}
 
 Return JSON exactly (keep every string SHORT — scannable mobile UI):

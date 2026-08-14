@@ -139,6 +139,28 @@ html.dark .app-page::before {
   -webkit-backdrop-filter: blur(14px);
 }
 
+.app-mobile-tabbar {
+  background: color-mix(in srgb, var(--header) 92%, transparent);
+  border-top: 1px solid var(--card-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+@keyframes app-more-sheet-up {
+  from {
+    transform: translateY(12%);
+    opacity: 0.85;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.app-more-sheet {
+  animation: app-more-sheet-up 180ms ease-out;
+}
+
 .app-brand-mark {
   background: linear-gradient(145deg, #3b82f6 0%, #2563eb 45%, #ea580c 120%);
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);

@@ -2,7 +2,8 @@ import { CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
 import { COACH_NORTH_STAR } from "@/lib/life-os-north-star";
 import { GOAL_SUGGESTION_RULES } from "@/lib/goal-suggestion";
 import type { CoachIntent } from "@/lib/coach-intent";
-import type { TodayBriefContext } from "@/lib/today-brief";
+import type { CoachNetworkContact } from "@/lib/coach-network";
+import type { LifePulse } from "@/lib/life-pulse";
 import type { WeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
 
 const MORNING_BRIEF_FORMAT = `
@@ -16,11 +17,11 @@ Schedule
 • [User-added planner blocks if any]
 
 Money (quick)
-• [Status + safe spend — 1-2 lines max unless they asked for finance detail]
-• [Spending warning only if relevant]
+• [Status + floor check — 1-2 lines; safe spend only if they asked or cash is tight]
+• [Spending warning only if the week is leaking without upside]
 
 Today's move
-• [Growth recommendation action — or rest-of-day pivot if they skipped something]
+• [Highest-impact offensive move — or rest/reset pivot if they skipped something / need recovery]
 
 Rest of day
 • [One revised priority if plan changed; otherwise one concrete next step]
@@ -58,16 +59,36 @@ MESSAGE FORMATTING (required — the UI renders markdown):
   - …
 `;
 
+const ENTREPRENEUR_NETWORK_RULES = `
+NETWORK / OUTREACH RULES (critical):
+- Default path is ENTREPRENEUR / BUILDER leverage — founders, operators, YC/builder circles, warm intros that unlock ventures, distribution, capital, or shipping — NOT climbing a W2 manager ladder.
+- When recommending who to reach out to, ONLY pick real people from GROWTH_CONTACTS (use their notes). Prefer @Name in the reply.
+- Do NOT invent "your EM / PM / senior on the SDLC path" or generic corporate-manager outreach unless the user explicitly asks about W2 promotion at their current job.
+- If the user asks whether they have a senior/manager from a previous company: answer from GROWTH_CONTACTS notes. If none match, say so plainly and pivot to the strongest founder/builder/peer contacts they DO have.
+- Rank picks by note signal (YC, founders, builders, buyers, connectors, operators) + mutual value + recency — not by job-title prestige.
+- W2 promotion help is opt-in only when they ask about promo / boss list / current company ladder.
+`;
+
 const BASE_LIFE_OS_RULES = `
 You are the user's Life OS coach — money core plus career, body, network, and intentional joy.
+Mindset: hungry go-getter on offense — impact first, not a save-$40 budget lecture.
 Be direct, brief, and actionable. One reinforcing system: buffer → debt → credit → reserves → next property AND career/body/network leverage.
+Judge decisions by system impact (what it protects, frees, or unlocks) before lecturing about small discretionary amounts.
+The ~$40/day figure is tracker background math — mention it only when the user asks about safe spend / budget, or when the week is clearly leaking without upside.
+Prefer offensive next moves: income, startup/build leverage, network equity, debt velocity when the floor is safe. Short rest/reset is allowed when earned or needed — then get back on attack.
+Default network advice to entrepreneur/builder compounding — not corporate manager ladder climbs.
 Distinguish emotional safety from CFO math when relevant.
 When the user teaches durable facts, store them in memoriesToStore.
+When the user teaches facts about a person (met someone new, outreach, no reply, intro), populate contactNotesToStore:
+- Existing people: match GROWTH_CONTACTS with @Name and append notes.
+- New people: set createIfMissing true, include relationshipType label + note so Growth gets a new contact.
 Joy preferences are options, not automatic assignments.
 When the user uploads photo(s), read them carefully and store durable schedule/money facts in memoriesToStore.
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
 
 ${MESSAGE_FORMAT_RULES}
+
+${ENTREPRENEUR_NETWORK_RULES}
 
 NORTH STAR:
 ${COACH_NORTH_STAR}
@@ -79,7 +100,6 @@ type FinancePack = {
   recentTransactions: unknown;
   recurringPatterns: unknown;
   projectionContext: unknown;
-  memories: string;
   cashSchedule: string;
   typicalPaycheck: number | null;
 };
@@ -96,15 +116,30 @@ type CalendarContext = {
   }>;
 };
 
+type NetworkPack = {
+  contacts: CoachNetworkContact[];
+  withNotesCount: number;
+};
+
 export function buildCoachSystemPrompt(params: {
   intent: CoachIntent;
   userName: string | null;
-  todayBrief: TodayBriefContext;
+  lifePulse: LifePulse;
   financePack: FinancePack;
   calendarContext: CalendarContext;
-  weeklyPlan: WeeklyOperatingPlan;
+  localEventsPack?: unknown;
 }) {
-  const { intent, userName, todayBrief, financePack, calendarContext, weeklyPlan } = params;
+  const {
+    intent,
+    userName,
+    lifePulse,
+    financePack,
+    calendarContext,
+    localEventsPack,
+  } = params;
+  const todayBrief = lifePulse.todayBrief;
+  const weeklyPlan: WeeklyOperatingPlan = lifePulse.weeklyPlan;
+  const networkPack: NetworkPack | null = lifePulse.network;
   const includeFullFinance = intent === "finance";
   const includeGrowthFocus = intent === "growth" || intent === "day_update";
   const includeTodayBrief =
@@ -112,8 +147,27 @@ export function buildCoachSystemPrompt(params: {
     intent === "day_update" ||
     intent === "general" ||
     intent === "growth";
+  const includeNetwork =
+    Boolean(networkPack?.contacts.length) &&
+    (intent === "growth" || intent === "general" || intent === "day_update");
 
-  const sections = [BASE_LIFE_OS_RULES];
+  const sections = [
+    BASE_LIFE_OS_RULES,
+    `
+APP_WIDE_LIFE_PULSE (shared source of truth across Overview, Growth, and Coach):
+${JSON.stringify({
+  generatedAt: lifePulse.generatedAt,
+  date: lifePulse.date,
+  entrepreneurship: lifePulse.entrepreneurship,
+  relevantMemories: lifePulse.relevantMemories,
+})}
+
+Pulse rules:
+- Treat this as current app state, not a generic prompt template.
+- Entrepreneurship tasks are real planner items. Respect done/skipped status and never invent an interview.
+- Use relevantMemories before generic assumptions. If a memory conflicts with current app data, current app data wins.
+`,
+  ];
 
   if (intent === "morning_brief") {
     sections.push(MORNING_BRIEF_FORMAT);
@@ -140,9 +194,6 @@ ${JSON.stringify(todayBrief)}
   if (includeFullFinance) {
     sections.push(financePack.cashSchedule);
     sections.push(`
-MEMORIES:
-${financePack.memories}
-
 CURRENT ACCOUNTS:
 ${JSON.stringify(financePack.accounts)}
 
@@ -169,15 +220,36 @@ ${financePack.cashSchedule}
 LIGHT FINANCE CONTEXT (expand only if the question needs it):
 ${JSON.stringify(todayBrief.moneyHeadline)}
 ${financePack.cashSchedule}
-
-MEMORIES (recent):
-${financePack.memories}
 `);
   }
 
   if (includeGrowthFocus && !includeFullFinance) {
     sections.push(`
 GROWTH FOCUS: Use TODAY_BRIEF recommendation and planner blocks. Tie advice to day shape (${todayBrief.dayShape}).
+Primary leverage path = build/startup/founder network. W2 promotion is secondary and only when they ask.
+`);
+  }
+
+  if (includeNetwork && networkPack) {
+    sections.push(`
+GROWTH_CONTACTS (source of truth for who to reach out to — ${networkPack.withNotesCount} have notes):
+${JSON.stringify(networkPack.contacts)}
+`);
+  }
+
+  if (localEventsPack) {
+    sections.push(`
+LOCAL_EVENTS_RADAR (DMV nearby + Baltimore regional + Richmond/Virginia Beach stretch drives):
+${JSON.stringify(localEventsPack)}
+
+Local events rules:
+- Prefer nearby (Oxon Hill / National Harbor / PG / DC) for office evenings.
+- Baltimore = regional — Thu evening or weekend preferred.
+- Richmond / Virginia Beach = weekend trip only.
+- Suggest events that compound network, skills, festivals with energy, fitness, intentional social/dating, or real-estate market awareness — not low-ROI random nightlife.
+- At most one concrete event suggestion unless the user asks for a weekend plan.
+- If confidence is directional, tell them to verify the listing before committing.
+- When they want to go, offer to add a Google Calendar block with travel buffer and optional @Contact linking.
 `);
   }
 
@@ -235,6 +307,18 @@ Return JSON only with this exact shape:
     "regenerateTodaysMove": false,
     "logActivity": null
   },
+  "contactNotesToStore": [
+    {
+      "contactMention": "@Alex Rivera",
+      "note": "Met at National Harbor mixer — building a fintech tooling idea.",
+      "lastContactDate": "2026-07-23",
+      "status": "active",
+      "relationshipType": "founder",
+      "mutualValue": "Builder intros / fintech feedback",
+      "suggestedNextAction": "Send LinkedIn + offer 15-min feedback swap",
+      "createIfMissing": true
+    }
+  ],
   "spotlight": {
     "transactionId": "optional id from RECENT TRANSACTIONS if known",
     "merchant": "Merchant or charge label",
@@ -270,6 +354,19 @@ todayUpdates rules:
 - Use activityId when editing an existing user_plan item so it updates instead of creating a duplicate.
 - Use @Name in logActivity.title or notes to link a contact (e.g. "Coffee with @Jane Smith").
 - Use category "user_plan" when adding an item to the user's operating plan/list. date is optional YYYY-MM-DD; default is today.
+
+contactNotesToStore rules:
+- When the user teaches a durable fact about a person (met someone, reached out, no reply, intro, label change), use this — do NOT only put it in memoriesToStore.
+- contactMention: preferred @Name. For new people, use the name they said (e.g. "@Alex Rivera").
+- note: 1–2 short sentences capturing what happened / who they are.
+- createIfMissing: true when this is a new person not already in GROWTH_CONTACTS (meeting someone, first intro). false/omit when clearly updating an existing contact.
+- relationshipType (label): one of unlabeled, family, peer, social, dating, mentor, founder, investor, colleague, tenant, other. Prefer founder/peer/mentor/investor for builder network; dating/social when that fits; colleague only for work peers.
+- lastContactDate: YYYY-MM-DD when they say when it happened. Default today for "just met".
+- status: active for new/warm; fading when no reply / going cold; dormant when clearly dead.
+- suggestedNextAction / mutualValue: optional short strings.
+- If the person already exists, match them and append the note (still set relationshipType if the user is labeling them).
+- Return [] when they are only asking questions and not teaching contact facts.
+- Max 5 contacts per turn.
 
 Use spotlight null when the user is not asking about a specific transaction.
 Use goalSuggestion null unless one high-value tracked goal clearly helps.

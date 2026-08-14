@@ -6,7 +6,7 @@ import {
   generateHighLeverageRecommendation,
   generateWeeklyGrowthReview,
 } from "@/lib/growth-agent";
-import { DateTime } from "luxon";
+import { userWeekday } from "@/lib/user-timezone";
 
 export async function POST(req: Request) {
   const { cronSecret, aiBriefRefreshHours } = getCostControlConfig();
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     let skipped = 0;
     let growthRecommendations = 0;
     let weeklyReviews = 0;
-    const isSunday = DateTime.local().weekday === 7;
+    const isSunday = userWeekday() === 7;
 
     for (const user of users) {
       try {

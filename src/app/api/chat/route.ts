@@ -7,28 +7,36 @@ import { buildCoachSystemPrompt } from "@/lib/coach-chat-prompt";
 import { classifyCoachIntent } from "@/lib/coach-intent";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import { getCostControlConfig } from "@/lib/env";
+import { resolveChatModel } from "@/lib/chat-models";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { parseGoalSuggestion, type GoalSuggestion } from "@/lib/goal-suggestion";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
 import {
   createOrUpdateGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
-  fetchUpcomingGoogleCalendarEvents,
   updateGoogleCalendarEvent,
   type CreateGoogleCalendarEventInput,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
+import {
+  applyCoachContactNotes,
+  formatCoachContactNoteSummary,
+  parseCoachContactNotes,
+} from "@/lib/coach-contact-notes";
+import {
+  getLocalEventDigestForDate,
+  serializeLocalEventDigest,
+  serializeLocalEventsForAgent,
+} from "@/lib/local-events";
+import { buildLifePulse } from "@/lib/life-pulse";
 import { openai } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 import {
   applyTodayUpdates,
-  buildTodayBriefContext,
   type TodayUpdatesPayload,
 } from "@/lib/today-brief";
-import { buildWeeklyOperatingPlan } from "@/lib/weekly-operating-plan";
-import { loadUserPlanActivitiesBetween } from "@/lib/planner";
-import { calendarDateTime, USER_TIME_ZONE, userNow } from "@/lib/user-timezone";
+import { calendarDateTime, USER_TIME_ZONE, userNow, userToday } from "@/lib/user-timezone";
 import { DateTime } from "luxon";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -92,6 +100,7 @@ type ChatResponsePayload = {
   memoriesToStore: ChatMemory[];
   shouldRefreshBrief: boolean;
   todayUpdates?: TodayUpdatesPayload | null;
+  contactNotesToStore?: import("@/lib/coach-contact-notes").CoachContactNoteUpdate[];
   spotlight?: {
     transactionId?: string;
     merchant: string;
@@ -261,30 +270,6 @@ function describeCalendarEvent(event: GoogleCalendarEvent) {
   return event.htmlLink ? `${label}: ${event.htmlLink}` : label;
 }
 
-async function loadCoachWeekCalendarEvents(userId: string) {
-  const now = userNow();
-
-  try {
-    // Wider window so schedule updates can match/dedupe events beyond "this week".
-    const calendar = await fetchUpcomingGoogleCalendarEvents(userId, {
-      timeMin: now.minus({ days: 2 }).startOf("day").toJSDate(),
-      timeMax: now.plus({ days: 21 }).endOf("day").toJSDate(),
-      maxResults: 80,
-    });
-
-    return calendar.events;
-  } catch {
-    return [] as GoogleCalendarEvent[];
-  }
-}
-
-async function loadCoachWeekUserPlanActivities(userId: string) {
-  const now = userNow();
-  const startDate = now.toISODate()!;
-  const endDate = now.plus({ days: 6 }).toISODate()!;
-  return loadUserPlanActivitiesBetween(userId, startDate, endDate);
-}
-
 function stringifyStoredJson(value: unknown) {
   if (!value) return null;
 
@@ -364,14 +349,28 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       memoriesToStore: [],
       shouldRefreshBrief: false,
       todayUpdates: null,
+      contactNotesToStore: [],
       goalSuggestion: null,
     };
   }
 
   try {
-    const parsed = JSON.parse(content) as Partial<ChatResponsePayload>;
-    const message =
-      typeof parsed.message === "string" ? normalizeCoachMessage(parsed.message) : "";
+    const parsed = JSON.parse(content) as Partial<ChatResponsePayload> & {
+      reply?: unknown;
+      response?: unknown;
+      text?: unknown;
+    };
+    const rawMessage =
+      typeof parsed.message === "string"
+        ? parsed.message
+        : typeof parsed.reply === "string"
+          ? parsed.reply
+          : typeof parsed.response === "string"
+            ? parsed.response
+            : typeof parsed.text === "string"
+              ? parsed.text
+              : "";
+    const message = normalizeCoachMessage(rawMessage);
     const memoriesToStore = Array.isArray(parsed.memoriesToStore)
       ? parsed.memoriesToStore.filter((memory): memory is ChatMemory =>
           typeof memory?.title === "string" &&
@@ -390,6 +389,9 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       memoriesToStore,
       shouldRefreshBrief: parsed.shouldRefreshBrief === true,
       todayUpdates,
+      contactNotesToStore: parseCoachContactNotes(
+        (parsed as { contactNotesToStore?: unknown }).contactNotesToStore,
+      ),
       spotlight:
         parsed.spotlight &&
         typeof parsed.spotlight === "object" &&
@@ -406,6 +408,7 @@ function parseChatResponse(response: ChatCompletion): ChatResponsePayload {
       memoriesToStore: [],
       shouldRefreshBrief: false,
       todayUpdates: null,
+      contactNotesToStore: [],
       goalSuggestion: null,
       calendarEvent: null,
     };
@@ -433,8 +436,8 @@ function buildProjectionSummary(
 
   let totalSpend = 0;
   let totalIncome = 0;
-  let earliestMs = DateTime.now().toMillis();
-  let latestMs = DateTime.now().minus({ years: 10 }).toMillis();
+  let earliestMs = userNow().toMillis();
+  let latestMs = userNow().minus({ years: 10 }).toMillis();
 
   const incomeBySource = new Map<string, { total: number; count: number }>();
 
@@ -497,7 +500,7 @@ function buildProjectionSummary(
 const chatUsageByUser = new Map<string, { date: string; count: number }>();
 
 function getTodayKey() {
-  return new Date().toISOString().split("T")[0];
+  return userToday();
 }
 
 function incrementChatUsage(userId: string, dailyLimit: number) {
@@ -653,6 +656,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const requestMessages = sanitizeChatMessages(body.messages);
+    const chatModel = resolveChatModel(body.model);
     const latestUserMessage = [...requestMessages].reverse().find((message) => message.role === "user");
     if (!latestUserMessage) {
       return NextResponse.json({ error: "Send a message or upload a screenshot first." }, { status: 400 });
@@ -694,8 +698,25 @@ export async function POST(req: Request) {
       ).slice(-MAX_CONTEXT_MESSAGES),
     );
 
-    const twoYearsAgo = DateTime.now().minus({ years: 2 }).toISODate();
-    const [accounts, goals, recentTransactions, projectionTransactions, memoryRecords, recurringPatterns, carProfile, homeProfile] = await Promise.all([
+    const coachIntent = classifyCoachIntent(latestUserMessage.content);
+    const todayIso = userNow().toISODate()!;
+    const memoryQuery = recentMessages
+      .filter((message) => message.role === "user")
+      .slice(-3)
+      .map((message) => message.content)
+      .join("\n");
+    const twoYearsAgo = userNow().minus({ years: 2 }).toISODate();
+    const [
+      accounts,
+      goals,
+      recentTransactions,
+      projectionTransactions,
+      recurringPatterns,
+      carProfile,
+      homeProfile,
+      lifePulse,
+      localEventDigest,
+    ] = await Promise.all([
       prisma.financialAccount.findMany({
         where: { userId: session.user.id },
       }),
@@ -712,17 +733,21 @@ export async function POST(req: Request) {
         },
         orderBy: { date: "asc" },
       }),
-      prisma.financialMemory.findMany({
-        where: { userId: session.user.id },
-        orderBy: { importanceScore: "desc" },
-        take: 8,
-      }),
       prisma.recurringPattern.findMany({
         where: { userId: session.user.id },
         take: 25,
       }),
       getOrCreateCarProfile(session.user.id),
       getOrCreateHomeProfile(session.user.id),
+      buildLifePulse(session.user.id, {
+        query: memoryQuery,
+        includeNetwork: true,
+        ensureEntrepreneurship: true,
+        calendarDaysBack: 2,
+        calendarDaysAhead: 21,
+        memoryLimit: 8,
+      }),
+      getLocalEventDigestForDate(session.user.id, todayIso),
     ]);
 
     const [homeTenants, homeRentPayments, homeOpenIssues] = await Promise.all([
@@ -744,10 +769,6 @@ export async function POST(req: Request) {
       }),
     ]);
 
-    const memories = memoryRecords
-      .map((memory) => memory.content)
-      .join("\n");
-
     const projectionContext = {
       debtExcluded: buildProjectionSummary(accounts, projectionTransactions, true),
       debtIncluded: buildProjectionSummary(accounts, projectionTransactions, false),
@@ -764,25 +785,19 @@ export async function POST(req: Request) {
       return payroll ? Math.abs(payroll.amount) : null;
     })();
 
-    const coachIntent = classifyCoachIntent(latestUserMessage.content);
-    const [todayBrief, weekCalendarEvents, userPlanActivities] = await Promise.all([
-      buildTodayBriefContext(session.user.id),
-      loadCoachWeekCalendarEvents(session.user.id),
-      loadCoachWeekUserPlanActivities(session.user.id),
-    ]);
-    const weeklyPlan = buildWeeklyOperatingPlan({
-      start: userNow(),
-      calendarEvents: weekCalendarEvents,
-      userPlanActivities,
-    });
+    const todayBrief = lifePulse.todayBrief;
+    const weekCalendarEvents = lifePulse.calendar.events;
+    const localEventsPack = serializeLocalEventsForAgent(
+      localEventDigest ? serializeLocalEventDigest(localEventDigest) : null
+    );
 
     const systemPrompt = buildCoachSystemPrompt({
       intent: coachIntent,
       userName: session.user.name ?? null,
-      todayBrief,
-      weeklyPlan,
+      lifePulse,
+      localEventsPack,
       calendarContext: {
-        nowIso: userNow().toISO() ?? new Date().toISOString(),
+        nowIso: userNow().toISO()!,
         timeZone: USER_TIME_ZONE,
         upcomingEvents: weekCalendarEvents.map((event) => ({
           eventId: event.id,
@@ -846,9 +861,8 @@ export async function POST(req: Request) {
           confidence: pattern.confidenceScore,
         })),
         projectionContext,
-        memories,
         cashSchedule: [
-          buildKnownCashScheduleContext(DateTime.local(), {
+          buildKnownCashScheduleContext(userNow(), {
             typicalPaycheck,
             carProfile,
             homeProfile,
@@ -864,21 +878,41 @@ export async function POST(req: Request) {
       },
     });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...toOpenAiMessages(recentMessages),
-      ],
+    const openAiMessages = [
+      { role: "system" as const, content: systemPrompt },
+      ...toOpenAiMessages(recentMessages),
+    ];
+
+    let response = (await openai.chat.completions.create({
+      model: chatModel,
+      messages: openAiMessages,
       response_format: { type: "json_object" },
       max_completion_tokens: 3000,
       reasoning_effort: "minimal",
       verbosity: "low",
-    }) as ChatCompletion;
+    })) as ChatCompletion;
 
-    const chatResponse = parseChatResponse(response);
+    let chatResponse = parseChatResponse(response);
+    // GPT-5 + verbosity:low sometimes returns empty content; one retry with medium verbosity.
     if (!chatResponse.message) {
-      throw new Error(`OpenAI returned an empty chat response. Finish reason: ${response.choices[0]?.finish_reason ?? "unknown"}`);
+      console.warn(
+        `[CHAT] empty reply finish=${response.choices[0]?.finish_reason ?? "unknown"} — retrying with verbosity=medium`,
+      );
+      response = (await openai.chat.completions.create({
+        model: chatModel,
+        messages: openAiMessages,
+        response_format: { type: "json_object" },
+        max_completion_tokens: 4000,
+        reasoning_effort: "minimal",
+        verbosity: "medium",
+      })) as ChatCompletion;
+      chatResponse = parseChatResponse(response);
+    }
+
+    if (!chatResponse.message) {
+      throw new Error(
+        `OpenAI returned an empty chat response. Finish reason: ${response.choices[0]?.finish_reason ?? "unknown"}`,
+      );
     }
 
     const savedMemoryTitles = chatResponse.memoriesToStore.length > 0
@@ -889,6 +923,16 @@ export async function POST(req: Request) {
           limit: 3,
         })
       : [];
+
+    const contactNotesResult = await applyCoachContactNotes(
+      session.user.id,
+      chatResponse.contactNotesToStore ?? [],
+    );
+    const contactNotesSaved = [
+      ...contactNotesResult.created,
+      ...contactNotesResult.updated,
+    ];
+    const contactNotesSummary = formatCoachContactNoteSummary(contactNotesResult);
 
     let briefRefreshed = false;
     if (savedMemoryTitles.length > 0 && chatResponse.shouldRefreshBrief) {
@@ -992,6 +1036,9 @@ export async function POST(req: Request) {
     if (savedMemoryTitles.length > 0) {
       assistantHistoryMessage += `\n\nSaved for your financial overview: ${savedMemoryTitles.join(", ")}.`;
     }
+    if (contactNotesSummary) {
+      assistantHistoryMessage += `\n\n${contactNotesSummary}`;
+    }
     if (briefRefreshed) {
       assistantHistoryMessage += "\n\nI refreshed your daily brief. Check Overview for the updated daily spend limit.";
     }
@@ -1059,6 +1106,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       sessionId: coachSession.id,
+      model: chatModel,
       message: chatResponse.message,
       intent: coachIntent,
       spotlight: chatResponse.spotlight ?? null,
@@ -1069,8 +1117,11 @@ export async function POST(req: Request) {
       calendarEventAction,
       calendarEventError,
       memoriesSaved: savedMemoryTitles,
+      contactNotesSaved,
+      contactNotesCreated: contactNotesResult.created,
+      contactNotesUpdated: contactNotesResult.updated,
       briefRefreshed,
-      todayUpdated: todayApplied.length > 0,
+      todayUpdated: todayApplied.length > 0 || contactNotesSaved.length > 0,
       todayApplied,
       refreshedMoveAction,
     });

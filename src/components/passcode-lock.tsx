@@ -26,10 +26,21 @@ export function PasscodeLock({ children }: { children: React.ReactNode }) {
     }
   }, [status]);
 
-  if (!mounted) return null;
+  // Avoid a blank first paint while localStorage unlock state is read.
+  // Do not render children here — financial UI must stay gated until unlock is known.
+  if (!mounted || status === "loading") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-zinc-50 dark:bg-zinc-950">
+        <div className="flex flex-col items-center gap-3 text-zinc-500 dark:text-zinc-400">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600 dark:text-emerald-400" />
+          <p className="text-sm font-medium">Loading Life OS…</p>
+        </div>
+      </div>
+    );
+  }
 
-  // If not authenticated or loading, we don't show the lock screen (let the dashboard handle unauthenticated state)
-  if (status === "loading" || status === "unauthenticated") {
+  // Unauthenticated: skip lock screen (dashboard / login handle the next step)
+  if (status === "unauthenticated") {
     return <>{children}</>;
   }
 

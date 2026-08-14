@@ -1,8 +1,8 @@
 import "server-only";
 
-import { DateTime } from "luxon";
 import { prisma } from "@/lib/prisma";
 import { openai } from "@/lib/openai";
+import { userToday } from "@/lib/user-timezone";
 import {
   MAX_DMV_TREND_ITEMS,
   MAX_TECH_TREND_ITEMS,
@@ -44,6 +44,12 @@ export const TREND_SOURCE_ALLOWLIST = [
   { label: "MIT CSAIL", url: "https://www.csail.mit.edu/news" },
   { label: "Hugging Face", url: "https://huggingface.co/blog" },
   { label: "a16z", url: "https://a16z.com/" },
+  // Startup accelerators & research labs — YC and peers
+  { label: "Y Combinator", url: "https://www.ycombinator.com/blog" },
+  { label: "Techstars", url: "https://www.techstars.com/blog" },
+  { label: "500 Global", url: "https://500.co/content" },
+  { label: "Berkeley SkyDeck", url: "https://skydeck.berkeley.edu/" },
+  { label: "MIT Sandbox", url: "https://sandbox.mit.edu/newsroom" },
   // Markets / property
   { label: "BlackRock Real Assets", url: "https://www.blackrock.com/institutions/en-us/insights/real-assets" },
   { label: "BlackRock Insights", url: "https://www.blackrock.com/us/individual/insights" },
@@ -419,7 +425,7 @@ export async function generateTrendDigest(
   userId: string,
   options?: { force?: boolean },
 ) {
-  const today = DateTime.local().toISODate()!;
+  const today = userToday();
   const existing = await getTrendDigestForDate(userId, today);
 
   if (existing && !options?.force) {
@@ -444,6 +450,7 @@ Two SEPARATE lanes (never blend):
 
 HARD RULES:
 - techItems: 3–4 items. Themes ONLY: ai_models | labs | infra | startup | hardware_software
+- Vary sources across the batch — don't let every item come from the same lab. When something notable comes out of a top accelerator or research lab (Y Combinator, Techstars, 500 Global, Berkeley SkyDeck, MIT Sandbox), use theme "startup" so Trell sees how the best programs in the world are building and learning, not just what frontier labs ship.
 - NEVER put real_estate, markets, Metro, WMATA, Maryland politics, or Fannie Mae into techItems or techMainThing.
 - dmvItems: 1–3 items. Themes: dmv_state | real_estate | markets
 - techMainThing = pure builder/AI focus. dmvMainThing = local or housing focus.

@@ -8,7 +8,7 @@ import { getBriefRefreshStatus } from "@/lib/daily-snapshot";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import {
   buildDailySpendSeries,
-  buildMonthlyCashFlowSeries,
+  buildMonthlyCashFlowByChecking,
   calculateTodayCashFlow,
   calculateWeeklyCashFlow,
   calculateNetDailyAverage,
@@ -20,7 +20,7 @@ import {
   sumDepositoryCash,
 } from "@/lib/account-focus";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
-import { DateTime } from "luxon";
+import { userNow, userToday } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
@@ -30,9 +30,9 @@ export async function GET() {
     }
 
     const userId = session.user.id;
-    const twoWeeksAgo = DateTime.local().minus({ days: 14 }).toISODate();
-    const thirtyDaysAgo = DateTime.local().minus({ days: 29 }).toISODate();
-    const sixMonthsAgo = DateTime.local().minus({ months: 6 }).startOf("month").toISODate();
+    const twoWeeksAgo = userNow().minus({ days: 14 }).toISODate();
+    const thirtyDaysAgo = userNow().minus({ days: 29 }).toISODate();
+    const sixMonthsAgo = userNow().minus({ months: 6 }).startOf("month").toISODate();
     const { dailyBalanceCallLimit } = getPlaidConfig();
 
     const [
@@ -122,7 +122,7 @@ export async function GET() {
     const spendingTransactions = filterTransactionsForDailySpend(recentTransactions, accounts);
     const chartSpendTransactions = filterTransactionsForDailySpend(chartTransactions, accounts);
 
-    const todayKey = DateTime.local().toISODate() ?? "";
+    const todayKey = userToday();
     const briefMetrics = calculateDailyBriefMetrics({
       date: todayKey,
       transactions: spendingTransactions,
@@ -144,7 +144,17 @@ export async function GET() {
     });
 
     const dailySpendSeries = buildDailySpendSeries(chartSpendTransactions, 30, todayKey);
-    const monthlyCashFlowSeries = buildMonthlyCashFlowSeries(focusMonthlyTransactions, 6, todayKey);
+    // "All" is the union of the Chase + Cap One checking transactions below, so it
+    // always reconciles to chase + capitalOne. The focus (primary-flagged) rollup is
+    // only used as a fallback when neither bank is detected on the linked accounts.
+    const monthlyCashFlowByChecking = buildMonthlyCashFlowByChecking(
+      monthlyTransactions,
+      accounts,
+      6,
+      todayKey,
+      focusMonthlyTransactions,
+    );
+    const monthlyCashFlowSeries = monthlyCashFlowByChecking.all;
     const goalsWithMonth = await attachGoalMonthPaid(userId, goals);
 
     return NextResponse.json({
@@ -155,6 +165,7 @@ export async function GET() {
       snapshots: snapshots.reverse(),
       dailySpendSeries,
       monthlyCashFlowSeries,
+      monthlyCashFlowByChecking,
       aiInsight,
       accounts,
       goals: goalsWithMonth,

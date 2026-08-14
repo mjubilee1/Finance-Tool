@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist_Mono, Sora } from "next/font/google";
+import { getServerSession } from "next-auth";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { authOptions } from "@/lib/auth";
 import "./globals.css";
 
 const sora = Sora({
@@ -59,11 +61,14 @@ const themeInitScript = `
 })();
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Hydrate SessionProvider so authenticated queries can start without waiting on /api/auth/session.
+  const session = await getServerSession(authOptions);
+
   return (
     <html
       lang="en"
@@ -75,7 +80,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full app-page font-sans text-[var(--foreground)]">
         <ThemeProvider>
-          <AuthProvider>
+          <AuthProvider session={session}>
             <QueryProvider>{children}</QueryProvider>
           </AuthProvider>
         </ThemeProvider>

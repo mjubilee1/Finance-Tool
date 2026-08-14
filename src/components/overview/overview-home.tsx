@@ -4,10 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { formatCurrency } from "@/lib/format";
-import { calendarDateTime } from "@/lib/user-timezone";
+import { calendarDateTime, userNow } from "@/lib/user-timezone";
 import { getDailyAffirmation, getPersonalizedGreeting } from "@/lib/daily-affirmation";
 import { getStatusStyle } from "@/lib/cash-flow";
-import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint } from "@/lib/cash-flow";
+import type { TodayCashFlow, WeeklyCashFlow, DailySpendPoint, MonthlyCashFlowPoint, MonthlyCashFlowByChecking } from "@/lib/cash-flow";
 import { WeeklyCashFlowStrip } from "./weekly-cash-flow-strip";
 import { MonthlyCashFlowChart } from "./monthly-cash-flow-chart";
 import { BillCalendar } from "./bill-calendar";
@@ -172,6 +172,13 @@ type TodayOverviewResponse = {
   };
   calendar: GoogleCalendarOverview | null;
   weekPlan?: WeeklyOperatingPlanOverview | null;
+  entrepreneurship?: {
+    sectionLabel: string;
+    weeklyTargets: string[];
+    weekDoneCount: number;
+    stage: string;
+    upcomingInterviewTitle: string | null;
+  } | null;
 };
 
 const DAY_SHAPE_LABEL: Record<TodayOverviewResponse["brief"]["dayShape"], string> = {
@@ -246,6 +253,33 @@ type PlannerFormState = {
 };
 
 const PLANNER_DOMAINS = ["personal", "career", "fitness", "financial", "social", "startup"] as const;
+
+const ENTREPRENEURSHIP_WEEKLY_TARGETS_FALLBACK = [
+  "25–50 qualified LinkedIn connection requests",
+  "10 direct professional emails where appropriate",
+  "3–5 conversations scheduled",
+  "2–4 interviews completed",
+  "At least one documented market insight",
+  "One concise evidence-based update for your technical partner",
+] as const;
+
+function isEntrepreneurshipBlock(block: { notes?: string | null }) {
+  return Boolean(block.notes?.includes("entrepreneurship:"));
+}
+
+function displayPlannerNotes(notes: string | null | undefined) {
+  if (!notes) return null;
+  const cleaned = notes.replace(/\n*\s*entrepreneurship:[a-z_]+\s*/gi, "\n").trim();
+  return cleaned || null;
+}
+
+function preserveEntrepreneurshipMarker(existingNotes: string | null | undefined, nextNotes: string) {
+  const match = existingNotes?.match(/entrepreneurship:[a-z_]+/i);
+  if (!match?.[0]) return nextNotes;
+  if (nextNotes.includes(match[0])) return nextNotes;
+  const base = nextNotes.trim();
+  return base ? `${base}\n\n${match[0]}` : match[0];
+}
 
 async function plannerRequest(method: string, body?: Record<string, unknown>, id?: string) {
   const url = id ? `/api/planner?id=${encodeURIComponent(id)}` : "/api/planner";
@@ -513,44 +547,67 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
   const handleConnect = () => {
     window.location.assign("/api/integrations/google-calendar/connect");
   };
-  const needsReconnect = calendar.status === "needs_reconnect" || Boolean(calendar.error);
-  const showBanner = !calendar.connected || needsReconnect;
+  const authNeedsAction =
+    calendar.status === "needs_reconnect" || calendar.status === "not_connected";
+  const loadFailedWhileConnected =
+    Boolean(calendar.error) && calendar.connected && calendar.status === "active";
+  const showBanner = authNeedsAction || loadFailedWhileConnected;
 
-  if (showBanner) {
+  if (!showBanner) return null;
+
+  if (loadFailedWhileConnected) {
     return (
-      <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+      <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--ember)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--ember)_24%,transparent)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-[var(--ink)]">
-              {needsReconnect ? "Reconnect Google Calendar" : "Connect Google Calendar"}
-            </p>
+            <p className="text-sm font-semibold text-[var(--ink)]">Couldn&apos;t load calendar events</p>
             <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
-              {calendar.error
-                ? calendar.error
-                : needsReconnect
-                ? "Saved calendar credentials can’t be used anymore. Reconnect so Coach can create events again."
-                : "Pull in appointments and let Coach create events from chat or voice."}
+              {calendar.error ?? "Temporary Google Calendar error. Your connection is still saved."}
             </p>
           </div>
           <button
             type="button"
-            onClick={handleConnect}
-            disabled={!calendar.connectAvailable}
-            className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => window.location.reload()}
+            className="rounded-full app-btn-primary px-3.5 py-2 text-xs"
           >
-            {needsReconnect ? "Reconnect" : "Connect"}
+            Retry
           </button>
         </div>
-        {!calendar.connectAvailable ? (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-            Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable this.
-          </p>
-        ) : null}
       </div>
     );
   }
 
-  return null;
+  const needsReconnect = calendar.status === "needs_reconnect";
+
+  return (
+    <div className="mb-4 rounded-xl bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_24%,transparent)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--ink)]">
+            {needsReconnect ? "Reconnect Google Calendar" : "Connect Google Calendar"}
+          </p>
+          <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
+            {needsReconnect
+              ? "Saved calendar credentials can’t be used anymore. Reconnect once so Coach can create events again."
+              : "Pull in appointments and let Coach create events from chat or voice."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleConnect}
+          disabled={!calendar.connectAvailable}
+          className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {needsReconnect ? "Reconnect" : "Connect"}
+        </button>
+      </div>
+      {!calendar.connectAvailable ? (
+        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+          Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable this.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function weeklyBlockTone(block: WeeklyOperatingPlanOverview["days"][number]["blocks"][number]) {
@@ -1005,6 +1062,7 @@ type Props = {
   refreshHours?: number;
   dailySpendSeries: DailySpendPoint[];
   monthlyCashFlowSeries?: MonthlyCashFlowPoint[];
+  monthlyCashFlowByChecking?: MonthlyCashFlowByChecking | null;
   onOpenChat: () => void;
   onOpenRecurring?: () => void;
   onOpenGrowth?: () => void;
@@ -1027,6 +1085,7 @@ export function OverviewHome({
   refreshHours,
   dailySpendSeries,
   monthlyCashFlowSeries = [],
+  monthlyCashFlowByChecking = null,
   onOpenChat,
   onOpenRecurring,
   onOpenGrowth,
@@ -1052,13 +1111,13 @@ export function OverviewHome({
     timeLabel: "",
     notes: "",
     domain: "personal",
-    date: DateTime.local().toISODate()!,
+    date: userNow().toISODate()!,
   });
   const cfoBrief = aiInsight.cfoBrief;
   const recurringReviews = aiInsight.recurringTransactionsToReview ?? [];
   const statusStyle = getStatusStyle(cfoBrief?.status);
   const statusLabel = cfoBrief?.status ?? `${aiInsight.financialHealthScore ?? "—"}/100`;
-  const now = DateTime.local();
+  const now = userNow();
   const todayLabel = now.toFormat("EEEE, MMMM d");
   const greeting = getPersonalizedGreeting(userName);
   const quote = getDailyAffirmation();
@@ -1081,7 +1140,10 @@ export function OverviewHome({
   const completed = new Set(brief?.completedBlockKeys ?? []);
   const skipped = new Set(brief?.skippedBlockKeys ?? []);
   const systemBlocks = brief?.plan.blocks ?? [];
-  const userBlocks = brief?.userPlanBlocks ?? [];
+  const allUserBlocks = brief?.userPlanBlocks ?? [];
+  const entrepreneurshipBlocks = allUserBlocks.filter((block) => isEntrepreneurshipBlock(block));
+  const userBlocks = allUserBlocks.filter((block) => !isEntrepreneurshipBlock(block));
+  const entrepreneurshipMeta = todayOverview?.entrepreneurship ?? null;
   const leverageBlock = systemBlocks.find((block) => block.key === "leverage");
   const calendar = todayOverview?.calendar ?? null;
   const calendarEvents = calendar?.connected ? calendar.events : [];
@@ -1258,7 +1320,10 @@ export function OverviewHome({
       </div>
 
       {monthlyCashFlowSeries.length > 0 ? (
-        <MonthlyCashFlowChart months={monthlyCashFlowSeries} />
+        <MonthlyCashFlowChart
+          months={monthlyCashFlowSeries}
+          byChecking={monthlyCashFlowByChecking}
+        />
       ) : null}
 
       {/* Today's schedule — main stage */}
@@ -1297,6 +1362,177 @@ export function OverviewHome({
         ) : (
           <>
             <GoogleCalendarAgenda calendar={calendar} />
+
+            {(entrepreneurshipBlocks.length > 0 || entrepreneurshipMeta) ? (
+              <div className="mb-5 rounded-xl bg-[color-mix(in_srgb,var(--accent)_6%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_20%,transparent)]">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-strong)] dark:text-[var(--accent-bright)]">
+                  {entrepreneurshipMeta?.sectionLabel ?? "Entrepreneurship & Business Growth"}
+                </p>
+                <p className="mt-1 text-sm text-[var(--ink-soft)] leading-relaxed">
+                  Pipeline-aware daily GTM for litigation-timeline AI — outreach, discovery, research, positioning, partner sync.
+                  {entrepreneurshipMeta?.weekDoneCount != null ? (
+                    <>
+                      {" "}
+                      This week: {entrepreneurshipMeta.weekDoneCount} entrepreneurship block
+                      {entrepreneurshipMeta.weekDoneCount === 1 ? "" : "s"} done.
+                    </>
+                  ) : null}
+                </p>
+                <div className="mt-3">
+                  <p className="text-xs font-semibold text-[var(--ink)]">Weekly targets</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {(entrepreneurshipMeta?.weeklyTargets?.length
+                      ? entrepreneurshipMeta.weeklyTargets
+                      : ENTREPRENEURSHIP_WEEKLY_TARGETS_FALLBACK
+                    ).map((target) => (
+                      <li key={target} className="text-xs text-[var(--muted)] leading-snug">
+                        · {target}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {entrepreneurshipBlocks.length > 0 ? (
+                  <ol className="mt-3 space-y-2">
+                    {entrepreneurshipBlocks.map((block) => {
+                      const isDone = block.status === "done";
+                      const isEditing = editingItemId === block.id;
+                      const detail = displayPlannerNotes(block.notes);
+                      return (
+                        <li
+                          key={`entrepreneurship-${block.id}`}
+                          className={`rounded-lg bg-[var(--card)] px-3 py-2 ring-1 ring-[var(--card-border)] ${isDone ? "opacity-70" : ""}`}
+                        >
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className={`font-semibold text-[var(--ink)] ${isDone ? "line-through" : ""}`}>
+                              {block.title}
+                            </p>
+                            <p className="text-xs font-medium tabular-nums text-[var(--muted)]">
+                              {block.timeLabel || (block.minutesSpent != null ? `${block.minutesSpent} min` : "")}
+                            </p>
+                          </div>
+                          <p className="text-xs text-[var(--muted)] mt-0.5 capitalize">
+                            {block.domain}
+                            {isDone ? " · done" : block.status === "skipped" ? " · skipped" : ""}
+                          </p>
+                          {detail ? (
+                            <p className="text-sm text-[var(--ink-soft)] mt-1 leading-relaxed">{detail}</p>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <PlannerActionButton
+                              label={isDone ? "Undo done" : "Mark done"}
+                              tone="success"
+                              disabled={plannerBusy !== null}
+                              onClick={() =>
+                                void runPlanner(`ent-done-${block.id}`, async () => {
+                                  await plannerRequest("PATCH", {
+                                    id: block.id,
+                                    status: isDone ? "planned" : "done",
+                                  });
+                                })
+                              }
+                            >
+                              <Check size={14} />
+                              <span className="sm:inline">Done</span>
+                            </PlannerActionButton>
+                            <PlannerActionButton
+                              label={block.status === "skipped" ? "Undo skipped" : "Didn't do"}
+                              tone="danger"
+                              disabled={plannerBusy !== null}
+                              onClick={() => {
+                                if (block.status === "skipped") {
+                                  void runPlanner(`ent-unskip-${block.id}`, async () => {
+                                    await plannerRequest("PATCH", { id: block.id, status: "planned" });
+                                  });
+                                  return;
+                                }
+                                setEditingItemId(null);
+                                setAddingItem(false);
+                                setTodaySkipTarget({ kind: "user", key: block.id, label: block.title });
+                                setTodaySkipReason("");
+                              }}
+                            >
+                              <X size={14} />
+                              <span className="sm:inline">Skip</span>
+                            </PlannerActionButton>
+                            <PlannerActionButton
+                              label="Edit"
+                              tone="accent"
+                              disabled={plannerBusy !== null}
+                              onClick={() => {
+                                setTodaySkipTarget(null);
+                                setEditingItemId(block.id);
+                                setAddingItem(false);
+                                setPlannerForm({
+                                  title: block.title,
+                                  timeLabel: block.timeLabel ?? "",
+                                  notes: detail ?? "",
+                                  domain: block.domain,
+                                  date: block.date || todayDate,
+                                });
+                              }}
+                            >
+                              <Pencil size={14} />
+                            </PlannerActionButton>
+                          </div>
+                          {todaySkipTarget?.kind === "user" && todaySkipTarget.key === block.id ? (
+                            <SkipReasonForm
+                              label={block.title}
+                              reason={todaySkipReason}
+                              onReasonChange={setTodaySkipReason}
+                              busy={plannerBusy !== null}
+                              onCancel={() => {
+                                setTodaySkipTarget(null);
+                                setTodaySkipReason("");
+                              }}
+                              onSave={() =>
+                                void runPlanner(`ent-skip-${block.id}`, async () => {
+                                  await plannerRequest("PATCH", {
+                                    id: block.id,
+                                    status: "skipped",
+                                    notes: preserveEntrepreneurshipMarker(
+                                      block.notes,
+                                      todaySkipReason.trim() || detail || "Skipped from today planner.",
+                                    ),
+                                  });
+                                  setTodaySkipTarget(null);
+                                  setTodaySkipReason("");
+                                })
+                              }
+                            />
+                          ) : null}
+                          {isEditing ? (
+                            <PlannerItemForm
+                              form={plannerForm}
+                              onChange={setPlannerForm}
+                              busy={plannerBusy !== null}
+                              saveLabel="Save"
+                              onCancel={() => setEditingItemId(null)}
+                              onSave={() =>
+                                void runPlanner(`ent-edit-${block.id}`, async () => {
+                                  await plannerRequest("PATCH", {
+                                    id: block.id,
+                                    title: plannerForm.title,
+                                    domain: plannerForm.domain,
+                                    notes:
+                                      preserveEntrepreneurshipMarker(
+                                        block.notes,
+                                        plannerForm.notes || "",
+                                      ) || null,
+                                    timeLabel: plannerForm.timeLabel || null,
+                                    date: plannerForm.date || todayDate,
+                                  });
+                                  setEditingItemId(null);
+                                })
+                              }
+                            />
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : null}
+              </div>
+            ) : null}
 
             {plannerError ? (
               <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-400/30 dark:text-rose-300">
@@ -1411,8 +1647,10 @@ export function OverviewHome({
                           {block.domain} · your block
                           {isDone ? " · done" : block.status === "skipped" ? " · skipped" : ""}
                         </p>
-                        {block.notes ? (
-                          <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">{block.notes}</p>
+                        {displayPlannerNotes(block.notes) ? (
+                          <p className="text-sm text-[var(--ink-soft)] mt-0.5 leading-relaxed">
+                            {displayPlannerNotes(block.notes)}
+                          </p>
                         ) : null}
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <PlannerActionButton label="Move up" disabled={!canMoveUp || plannerBusy !== null} onClick={() => moveItem(-1)}>
@@ -1468,7 +1706,7 @@ export function OverviewHome({
                               setPlannerForm({
                                 title: block.title,
                                 timeLabel: block.timeLabel ?? "",
-                                notes: block.notes ?? "",
+                                notes: displayPlannerNotes(block.notes) ?? "",
                                 domain: block.domain,
                                 date: block.date || todayDate,
                               });
@@ -1504,7 +1742,12 @@ export function OverviewHome({
                                 await plannerRequest("PATCH", {
                                   id: block.id,
                                   status: "skipped",
-                                  notes: todaySkipReason.trim() || block.notes || "Skipped from today planner.",
+                                  notes: preserveEntrepreneurshipMarker(
+                                    block.notes,
+                                    todaySkipReason.trim() ||
+                                      displayPlannerNotes(block.notes) ||
+                                      "Skipped from today planner.",
+                                  ),
                                 });
                                 setTodaySkipTarget(null);
                                 setTodaySkipReason("");
@@ -1525,7 +1768,10 @@ export function OverviewHome({
                                   id: block.id,
                                   title: plannerForm.title,
                                   domain: plannerForm.domain,
-                                  notes: plannerForm.notes || null,
+                                  notes: preserveEntrepreneurshipMarker(
+                                    block.notes,
+                                    plannerForm.notes || "",
+                                  ) || null,
                                   timeLabel: plannerForm.timeLabel || null,
                                   date: plannerForm.date || todayDate,
                                 });

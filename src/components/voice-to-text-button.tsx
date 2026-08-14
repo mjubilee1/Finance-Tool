@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, MicOff } from "lucide-react";
+import { ensureMicrophoneAccess, pauseMicrophoneAccess } from "@/lib/media-permissions";
 
 type Props = {
   value: string;
@@ -34,12 +35,14 @@ export function VoiceToTextButton({
   useEffect(() => {
     return () => {
       mediaRecorderRef.current?.stop();
-      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      // Pause only — stopping tracks forces Safari/iOS to re-ask for mic permission.
+      pauseMicrophoneAccess();
+      mediaStreamRef.current = null;
     };
   }, []);
 
-  const stopRecordingTracks = () => {
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+  const softReleaseMic = () => {
+    pauseMicrophoneAccess();
     mediaStreamRef.current = null;
   };
 
@@ -81,7 +84,7 @@ export function VoiceToTextButton({
     setError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await ensureMicrophoneAccess();
       mediaStreamRef.current = stream;
       chunksRef.current = [];
 
@@ -97,7 +100,7 @@ export function VoiceToTextButton({
 
       recorder.onstop = async () => {
         setIsRecording(false);
-        stopRecordingTracks();
+        softReleaseMic();
 
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         chunksRef.current = [];
@@ -110,9 +113,9 @@ export function VoiceToTextButton({
       mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
-    } catch {
-      setError("Microphone access is required.");
-      stopRecordingTracks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Microphone access is required.");
+      softReleaseMic();
     }
   };
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { userNow } from "@/lib/user-timezone";
 import {
   Flame,
   Loader2,
@@ -30,6 +31,7 @@ import { formatCurrency } from "@/lib/format";
 import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { ActivityTitleInput } from "@/components/growth/activity-title-input";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
+import { MEDIA_IMAGE_ACCEPT } from "@/lib/media-permissions";
 import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-shared";
 import { GOOD_WEEK_CHECKLIST } from "@/lib/life-os-north-star";
 
@@ -224,9 +226,9 @@ function buildWeeklyTldr(review: NonNullable<GrowthDashboard["weeklyReview"]>): 
 function formatActivityDate(iso: string): string {
   const dt = DateTime.fromISO(iso);
   if (!dt.isValid) return iso;
-  const today = DateTime.local().toISODate();
+  const today = userNow().toISODate();
   if (iso === today) return "Today";
-  if (iso === DateTime.local().minus({ days: 1 }).toISODate()) return "Yesterday";
+  if (iso === userNow().minus({ days: 1 }).toISODate()) return "Yesterday";
   return dt.toFormat("LLL d");
 }
 
@@ -273,7 +275,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   const [expandedActivityIds, setExpandedActivityIds] = useState<Set<string>>(new Set());
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [activityForm, setActivityForm] = useState({
-    date: DateTime.local().toISODate() ?? "",
+    date: userNow().toISODate() ?? "",
     domain: "career",
     category: "project",
     title: "",
@@ -287,7 +289,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     name: "",
     relationshipType: "peer",
     trustLevel: "3",
-    lastContactDate: DateTime.local().toISODate() ?? "",
+    lastContactDate: userNow().toISODate() ?? "",
     notes: "",
     suggestedNextAction: "",
     status: "active",
@@ -605,7 +607,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
               onClick={onOpenTrends}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl ring-1 ring-slate-200/70"
             >
-              Tech →
+              Learning →
             </button>
           ) : null}
           <button
@@ -1241,7 +1243,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                                       <ImagePlus className="h-4 w-4" />
                                       <input
                                         type="file"
-                                        accept="image/jpeg,image/png,image/webp,image/gif"
+                                        accept={MEDIA_IMAGE_ACCEPT}
                                         multiple
                                         className="sr-only"
                                         disabled={busy === "contact-notes"}
