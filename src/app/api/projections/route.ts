@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calculateDailyBriefMetrics } from "@/lib/daily-brief";
 import { filterTransactionsByFocus, getFocusAccounts, hasPrimarySelection } from "@/lib/account-focus";
+import { buildCashLadderSeries } from "@/lib/cash-flow";
 import { buildCashFlowProjection } from "@/lib/projection-service";
 import { userNow, userToday } from "@/lib/user-timezone";
 
@@ -144,6 +145,9 @@ export async function GET(request: Request) {
     const projectSafeSpendBalance = (days: number) =>
       currentTotalBalance + safeSpendNetDailyAverage * days;
 
+    // Actual month-over-month cash ladder (history) — complements the forward projection sketch.
+    const cashLadderSeries = buildCashLadderSeries(transactions, 6, todayKey);
+
     return NextResponse.json({
       metrics: {
         totalSpend,
@@ -180,6 +184,7 @@ export async function GET(request: Request) {
       },
       projectionModel: projection,
       projectionData: projection.points,
+      cashLadderSeries,
     });
   } catch (error) {
     console.error("Failed to fetch projections:", error);

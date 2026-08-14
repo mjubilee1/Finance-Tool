@@ -14,6 +14,8 @@ import {
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
 import { DEFAULT_DISCRETIONARY_DAILY } from "@/lib/daily-brief";
+import type { CashLadderPoint } from "@/lib/cash-flow";
+import { CashLadderChart } from "@/components/projections/cash-ladder-chart";
 
 function fetchProjections(excludeDebt: boolean) {
   return fetch(`/api/projections?excludeDebt=${excludeDebt}`).then((res) => res.json());
@@ -79,6 +81,7 @@ export function Projections() {
   const safeSpendScenario = data?.safeSpendScenario as SafeSpendScenario | undefined;
   const projectionModel = data?.projectionModel as ProjectionModel | undefined;
   const foodFunTarget = safeSpendScenario?.safeDailySpend ?? DEFAULT_DISCRETIONARY_DAILY;
+  const cashLadderSeries = (data?.cashLadderSeries as CashLadderPoint[] | undefined) ?? [];
 
   // Slider = TOTAL daily spend (bills + gas + food + everything), not the $40 food/fun target.
   const currentTotalSpend = metrics?.dailyAverageSpend ?? 0;
@@ -163,9 +166,9 @@ export function Projections() {
             What your cash flow is actually trending toward
           </h2>
           <p className="text-sm text-[var(--ink-soft)] mt-2 leading-relaxed">
-            This forecast reads complete months of transaction history, month-over-month change,
-            recurring bills, and recurring deposits. It is a habit-based estimate, not a straight
-            line or a guarantee.
+            First, check the cash ladder — are you climbing month over month? Then the sketch
+            below reads complete months of transaction history, month-over-month change, recurring
+            bills, and recurring deposits. Compass, not a promise.
           </p>
         </div>
 
@@ -291,6 +294,8 @@ export function Projections() {
           </p>
         </div>
       ) : null}
+
+      {cashLadderSeries.length > 0 ? <CashLadderChart months={cashLadderSeries} /> : null}
 
       <div className="app-card p-5 space-y-4">
         <div>
