@@ -7,9 +7,9 @@ import {
     refreshPlaidBalances,
     type BalanceRefreshMeta,
 } from "@/lib/plaid-balances";
-import { getSyncFeedback, postPlaidSync, syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
+import { getSyncFeedback, postPlaidSync, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Wallet } from "lucide-react";
+import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Settings, Wallet } from "lucide-react";
 import dynamic from "next/dynamic";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -26,6 +26,10 @@ import { ChatInterface } from "./chat-interface";
 import { DashboardSkeleton } from "./dashboard-skeleton";
 import { LazyPlaidOAuthHandler } from "./lazy-plaid-oauth-handler";
 import { ThemeToggle } from "./theme-toggle";
+const SettingsView = dynamic(
+  () => import("./settings/settings-view").then((m) => m.SettingsView),
+  { loading: () => <DashboardSkeleton /> },
+);
 /** Non-default tabs load on demand so Coach boots with a smaller JS graph. */
 const OverviewHome = dynamic(
   () => import("./overview/overview-home").then((m) => m.OverviewHome),
@@ -253,6 +257,7 @@ export function Dashboard() {
   });
 
   const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
@@ -397,6 +402,14 @@ export function Dashboard() {
       cancelled = true;
     };
   }, [activeTab, status]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google_calendar")) {
+      setSettingsOpen(true);
+    }
+  }, []);
 
   const {
     transactions = [],
@@ -568,51 +581,24 @@ export function Dashboard() {
   const selectTab = (tab: TabType) => {
     setActiveTab(tab);
     setIsMoreOpen(false);
+    setSettingsOpen(false);
+  };
+
+  const openSettings = () => {
+    setIsMoreOpen(false);
+    setSettingsOpen(true);
   };
 
   const shellFooter = (
     <>
-      <div className="app-card mb-4 p-3 text-center text-sm">
-        {accounts.length > 0 ? (
-          <>
-            <p className="mb-2 font-medium text-slate-900">{accounts.length} accounts linked</p>
-            <ConnectBankButton
-              onLinked={handleBankLinked}
-              className="w-full border-none bg-white/70 px-3 py-1.5 text-xs text-slate-800 shadow-none ring-1 ring-[var(--card-border)] hover:bg-white"
-            />
-            <button
-              type="button"
-              onClick={() => handleSyncTransactions({ bypassCooldown: true })}
-              disabled={syncStatus === "loading"}
-              className="app-btn-primary mt-2 w-full rounded-lg px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {syncStatus === "loading" ? "Syncing..." : "Sync transactions"}
-            </button>
-            {syncFeedback ? (
-              <p className={`mt-2 text-xs leading-relaxed ${syncFeedbackClassName(syncFeedback.tone)}`}>
-                {syncFeedback.message}
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <ConnectBankButton onLinked={handleBankLinked} className="w-full text-sm" />
-        )}
-      </div>
-
       <button
         type="button"
-        onClick={handleReloadApp}
+        onClick={openSettings}
         className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--card-solid)] px-3 py-2.5 text-sm font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--card-solid)_88%,var(--accent))]"
       >
-        <RotateCcw size={16} />
-        Reload app
+        <Settings size={16} />
+        Settings
       </button>
-
-      <div className="mb-3">
-        <p className="app-label mb-1.5 px-1">Theme</p>
-        <ThemeToggle />
-      </div>
-
       <div className="flex items-center justify-between px-2">
         <span className="truncate pr-2 text-sm font-medium text-slate-700">
           {session?.user?.name || "User"}
@@ -670,7 +656,9 @@ export function Dashboard() {
       <main className="flex h-full min-w-0 flex-1 flex-col bg-transparent pb-[calc(3.75rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 app-shell-header">
           <div className="flex items-center gap-2">
-            {activeTab === "chat" ? (
+            {settingsOpen ? (
+              <span className="text-base font-semibold text-slate-900 md:hidden">Settings</span>
+            ) : activeTab === "chat" ? (
               <div className="flex items-center gap-2 md:hidden">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]">
                   <BrainCircuit size={14} className="text-white" />
@@ -694,6 +682,19 @@ export function Dashboard() {
                 {error instanceof Error ? error.message : "Failed to load"}
               </span>
             ) : null}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((open) => !open)}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold app-card transition-colors sm:px-3 ${
+                settingsOpen ? "text-[var(--accent-strong)]" : "text-slate-700 hover:bg-white"
+              }`}
+              title="Settings"
+              aria-label="Settings"
+              aria-pressed={settingsOpen}
+            >
+              <Settings size={16} />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
             <ThemeToggle compact />
             <button
               type="button"
@@ -720,20 +721,34 @@ export function Dashboard() {
 
         <div
           className={`flex-1 overflow-x-hidden ${
-            activeTab === "chat"
-              ? "flex min-h-0 flex-col overflow-hidden p-2 sm:p-3 md:p-8"
-              : "overflow-y-auto p-4 md:p-8"
+            settingsOpen || activeTab !== "chat"
+              ? "overflow-y-auto p-4 md:p-8"
+              : "flex min-h-0 flex-col overflow-hidden p-2 sm:p-3 md:p-8"
           }`}
         >
           {/* h-full only for chat — on other tabs it pads the scroll area and leaves a huge empty gap under the last card */}
           <div
             className={`max-w-4xl mx-auto w-full min-w-0 flex flex-col ${
-              activeTab === "chat" ? "min-h-0 flex-1" : ""
+              activeTab === "chat" && !settingsOpen ? "min-h-0 flex-1" : ""
             }`}
           >
-            
-            {/* View: CHAT */}
-            {activeTab === 'chat' && (
+            {settingsOpen ? (
+              <SettingsView
+                userName={session?.user?.name}
+                userEmail={session?.user?.email}
+                accountsCount={accounts.length}
+                syncStatus={syncStatus}
+                syncFeedback={syncFeedback}
+                onBankLinked={handleBankLinked}
+                onSync={() => {
+                  void handleSyncTransactions({ bypassCooldown: true });
+                }}
+                onSignOut={() => signOut()}
+                onClose={() => setSettingsOpen(false)}
+              />
+            ) : null}
+
+            {!settingsOpen && activeTab === 'chat' && (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="mb-2 hidden shrink-0 md:block">
                   <div className="flex items-center gap-3">
@@ -758,7 +773,7 @@ export function Dashboard() {
             )}
 
             {/* View: OVERVIEW */}
-            {activeTab === 'overview' && (
+            {!settingsOpen && activeTab === 'overview' && (
               isLoading && !data ? (
                 <DashboardSkeleton />
               ) : cashFlow ? (
@@ -776,6 +791,7 @@ export function Dashboard() {
                   onOpenGrowth={() => selectTab('growth')}
                   onOpenGoals={() => selectTab('goals')}
                   onOpenTrends={() => selectTab("learning")}
+                  onOpenSettings={openSettings}
                   priorityGoal={priorityGoal}
                   isBriefPending={!aiInsight && transactions.length > 0}
                   userName={session?.user?.name}
@@ -789,22 +805,22 @@ export function Dashboard() {
             )}
 
             {/* View: GROWTH */}
-            {activeTab === "growth" && (
+            {!settingsOpen && activeTab === "growth" && (
               <GrowthView onOpenTrends={() => selectTab("learning")} />
             )}
 
-            {activeTab === "learning" && (
+            {!settingsOpen && activeTab === "learning" && (
               <LearningPlanView onOpenGrowth={() => selectTab("growth")} />
             )}
 
-            {activeTab === "events" && <LocalEventsView />}
+            {!settingsOpen && activeTab === "events" && <LocalEventsView />}
 
-            {activeTab === "car" && <CarView />}
-            {activeTab === "home" && <HomeView />}
-            {activeTab === "calories" && <CaloriesView />}
+            {!settingsOpen && activeTab === "car" && <CarView />}
+            {!settingsOpen && activeTab === "home" && <HomeView />}
+            {!settingsOpen && activeTab === "calories" && <CaloriesView />}
 
             {/* View: ACCOUNTS */}
-            {activeTab === 'accounts' && (
+            {!settingsOpen && activeTab === 'accounts' && (
               <AccountsView
                 accounts={accounts}
                 onBankLinked={handleBankLinked}
@@ -828,7 +844,7 @@ export function Dashboard() {
             )}
 
             {/* View: RECURRING */}
-            {activeTab === 'recurring' && (
+            {!settingsOpen && activeTab === 'recurring' && (
               <RecurringView
                 onAskCfo={(prompt) => {
                   setChatSeedPrompt(prompt);
@@ -844,7 +860,7 @@ export function Dashboard() {
             )}
 
             {/* View: TRANSACTIONS */}
-            {activeTab === 'transactions' && (
+            {!settingsOpen && activeTab === 'transactions' && (
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block">Transactions</h1>
@@ -960,7 +976,7 @@ export function Dashboard() {
             )}
 
             {/* View: PROJECTIONS */}
-            {activeTab === 'projections' && (
+            {!settingsOpen && activeTab === 'projections' && (
               <div className="space-y-6">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block mb-6">Projections</h1>
                 <div className="app-card p-6">
@@ -970,7 +986,7 @@ export function Dashboard() {
             )}
 
             {/* View: FINANCIAL TRENDS */}
-            {activeTab === "financial-trends" && (
+            {!settingsOpen && activeTab === "financial-trends" && (
               <div className="space-y-6">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block mb-6">
                   Financial Trends
@@ -986,7 +1002,7 @@ export function Dashboard() {
             )}
 
             {/* View: GOALS */}
-            {activeTab === 'goals' && (
+            {!settingsOpen && activeTab === 'goals' && (
               <GoalsView
                 goals={goals}
                 netDailyAverage={cashFlow?.netDailyAverage ?? 0}

@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Car,
   ChartLine,
+  ChevronDown,
   Flame,
   Home,
   LayoutDashboard,
@@ -19,7 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export type TabType =
   | "chat"
@@ -262,34 +263,102 @@ type SidebarNavProps = {
   onSelectTab: (tab: TabType) => void;
 };
 
+const NAV_COLLAPSE_KEY = "life-os-nav-collapsed";
+
+function loadCollapsedSections(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(NAV_COLLAPSE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, boolean>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export function SidebarNav({ activeTab, onSelectTab }: SidebarNavProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setCollapsed(loadCollapsedSections());
+  }, []);
+
+  const toggleSection = (id: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(NAV_COLLAPSE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore quota / private mode
+      }
+      return next;
+    });
+  };
+
   return (
-    <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
-      {NAV_SECTIONS.map((section) => (
-        <div key={section.id}>
-          <p className="app-label mb-1 px-2">{section.label}</p>
-          <div className="space-y-0.5">
-            {section.items.map(({ tab, label, Icon }) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => onSelectTab(tab)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
-                  activeTab === tab
-                    ? "app-nav-active"
-                    : "text-slate-600 hover:bg-blue-50/60 hover:text-slate-900"
-                }`}
-              >
-                <Icon
-                  size={18}
-                  className={activeTab === tab ? "text-blue-600" : "text-slate-400"}
-                />
-                {label}
-              </button>
-            ))}
+    <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
+      {NAV_SECTIONS.map((section) => {
+        const isCollapsed = Boolean(collapsed[section.id]);
+        const containsActive = section.items.some((item) => item.tab === activeTab);
+
+        return (
+          <div key={section.id}>
+            <button
+              type="button"
+              onClick={() => toggleSection(section.id)}
+              className="mb-1 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-[var(--accent-soft)]"
+              aria-expanded={!isCollapsed}
+              aria-controls={`nav-section-${section.id}`}
+            >
+              <span className="app-label">{section.label}</span>
+              <ChevronDown
+                size={14}
+                className={`text-[var(--muted)] transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+              />
+            </button>
+            {isCollapsed ? (
+              containsActive ? (
+                <div id={`nav-section-${section.id}`} className="space-y-0.5">
+                  {section.items
+                    .filter((item) => item.tab === activeTab)
+                    .map(({ tab, label, Icon }) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => onSelectTab(tab)}
+                        className="app-nav-active flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm"
+                      >
+                        <Icon size={18} className="text-blue-600" />
+                        {label}
+                      </button>
+                    ))}
+                </div>
+              ) : null
+            ) : (
+              <div id={`nav-section-${section.id}`} className="space-y-0.5">
+                {section.items.map(({ tab, label, Icon }) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => onSelectTab(tab)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
+                      activeTab === tab
+                        ? "app-nav-active"
+                        : "text-slate-600 hover:bg-blue-50/60 hover:text-slate-900"
+                    }`}
+                  >
+                    <Icon
+                      size={18}
+                      className={activeTab === tab ? "text-blue-600" : "text-slate-400"}
+                    />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }

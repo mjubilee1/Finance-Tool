@@ -501,7 +501,7 @@ function buildGoogleCalendarEventBody(input: CreateGoogleCalendarEventInput) {
 async function requireGoogleCalendarWriteAccess(userId: string) {
   const connection = await prisma.googleCalendarConnection.findUnique({ where: { userId } });
   if (!connection) {
-    throw new Error("Connect Google Calendar on Overview before I can change events.");
+    throw new Error("Connect Google Calendar in Settings before I can change events.");
   }
 
   if (!hasCalendarEventWriteScope(connection.scopes)) {
@@ -517,8 +517,8 @@ async function requireGoogleCalendarWriteAccess(userId: string) {
     const status = await getGoogleCalendarStatus(userId);
     throw new Error(
       status.status === "not_connected"
-        ? "Connect Google Calendar on Overview before I can change events."
-        : "Reconnect Google Calendar on Overview — the saved token expired or needs fresh approval.",
+        ? "Connect Google Calendar in Settings before I can change events."
+        : "Reconnect Google Calendar in Settings — the saved token expired or needs fresh approval.",
     );
   }
 

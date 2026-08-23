@@ -541,7 +541,13 @@ function buildTimelineItems(
   return ordered;
 }
 
-function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview | null }) {
+function GoogleCalendarAgenda({
+  calendar,
+  onOpenSettings,
+}: {
+  calendar: GoogleCalendarOverview | null;
+  onOpenSettings?: () => void;
+}) {
   if (!calendar) return null;
 
   const handleConnect = () => {
@@ -592,14 +598,25 @@ function GoogleCalendarAgenda({ calendar }: { calendar: GoogleCalendarOverview |
               : "Pull in appointments and let Coach create events from chat or voice."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleConnect}
-          disabled={!calendar.connectAvailable}
-          className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {needsReconnect ? "Reconnect" : "Connect"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={!calendar.connectAvailable}
+            className="rounded-full app-btn-primary px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {needsReconnect ? "Reconnect" : "Connect"}
+          </button>
+          {onOpenSettings ? (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="rounded-full px-3.5 py-2 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)]"
+            >
+              Settings
+            </button>
+          ) : null}
+        </div>
       </div>
       {!calendar.connectAvailable ? (
         <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
@@ -1068,6 +1085,7 @@ type Props = {
   onOpenGrowth?: () => void;
   onOpenGoals?: () => void;
   onOpenTrends?: () => void;
+  onOpenSettings?: () => void;
   priorityGoal?: {
     name: string;
     paceMessage: string;
@@ -1091,6 +1109,7 @@ export function OverviewHome({
   onOpenGrowth,
   isBriefPending = false,
   userName,
+  onOpenSettings,
 }: Props) {
   const queryClient = useQueryClient();
   const [showCashDetails, setShowCashDetails] = useState(false);
@@ -1361,7 +1380,7 @@ export function OverviewHome({
           </p>
         ) : (
           <>
-            <GoogleCalendarAgenda calendar={calendar} />
+            <GoogleCalendarAgenda calendar={calendar} onOpenSettings={onOpenSettings} />
 
             {(entrepreneurshipBlocks.length > 0 || entrepreneurshipMeta) ? (
               <div className="mb-5 rounded-xl bg-[color-mix(in_srgb,var(--accent)_6%,transparent)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_20%,transparent)]">
