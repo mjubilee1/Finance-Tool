@@ -92,7 +92,7 @@ async function promptForBumpType(currentVersion, streams = getPromptStreams()) {
   }
 }
 
-async function resolveBumpType(currentVersion) {
+async function resolveBumpType() {
   const fromEnv = getBumpTypeFromEnv();
   if (fromEnv) {
     console.log(`Using VERSION_BUMP=${fromEnv}.`);
@@ -104,13 +104,7 @@ async function resolveBumpType(currentVersion) {
     return "skip";
   }
 
-  const prompted = await promptForBumpType(currentVersion);
-  if (prompted) {
-    return prompted;
-  }
-
-  console.log("No TTY available — auto-bumping patch.");
-  console.log("Set VERSION_BUMP=minor|major|patch|skip to override.");
+  console.log("Auto-bumping patch. Use VERSION_BUMP=minor|major|skip to override.");
   return "patch";
 }
 
@@ -140,7 +134,7 @@ async function main() {
   } else if (manual) {
     bumpType = await promptForBumpType(currentVersion);
   } else {
-    bumpType = await resolveBumpType(currentVersion);
+    bumpType = await resolveBumpType();
   }
 
   if (!bumpType) {

@@ -1,4 +1,30 @@
 #!/usr/bin/env sh
 
-# Version bump on push is disabled — just push.
+branch_from_ref() {
+  printf "%s" "$1" | sed 's#^refs/heads/##'
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    node scripts/bump-version.mjs
+    code=$?
+
+    if [ "$code" -eq 2 ]; then
+      branch=$(branch_from_ref "$local_ref")
+      version=$(node -p "require('./package.json').version")
+      cat >/dev/null
+
+      echo "Uploading v${version}..."
+      if SKIP_VERSION_BUMP=1 git push --no-verify origin "$branch" --follow-tags; then
+        echo "Pushed v${version} to origin/${branch}."
+        echo "If Git says the hook declined, ignore it — the push already finished."
+        exit 1
+      fi
+      exit 1
+    fi
+
+    exit $code
+  fi
+done
+
 exit 0
