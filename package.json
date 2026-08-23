@@ -1,6 +1,6 @@
 {
   "name": "financial-projection-tool",
-  "version": "6.13.5",
+  "version": "6.14.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
