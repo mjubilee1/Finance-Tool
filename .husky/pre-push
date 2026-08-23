@@ -1,19 +1,19 @@
 #!/usr/bin/env sh
 
-branch_from_ref() {
-  printf "%s" "$1" | sed 's#^refs/heads/##'
-}
-
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$remote_ref" = "refs/heads/main" ]; then
     node scripts/bump-version.mjs
     code=$?
 
     if [ "$code" -eq 2 ]; then
-      branch=$(branch_from_ref "$local_ref")
-      echo "Pushing v$(node -p "require('./package.json').version") to origin/$branch..."
-      SKIP_VERSION_BUMP=1 git push --no-verify origin "$branch" --follow-tags
-      exit $?
+      version=$(node -p "require('./package.json').version")
+      echo ""
+      echo "Bumped to v${version}."
+      echo "This push was stopped on purpose so the release commit is included."
+      echo "Push one more time (it will not ask again):"
+      echo "  git push origin main"
+      echo ""
+      exit 1
     fi
 
     exit $code

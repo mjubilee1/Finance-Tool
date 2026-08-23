@@ -88,7 +88,7 @@ async function promptForBumpType(currentVersion, streams = getPromptStreams()) {
     rl.close();
     if (streams.ownsStreams) {
       streams.input.destroy();
-      streams.output.end();
+      // Do not .end() /dev/tty — that can freeze the terminal after the prompt.
     }
   }
 }
