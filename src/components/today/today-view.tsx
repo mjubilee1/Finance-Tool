@@ -4,7 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Plus,
   SkipForward,
   Wallet,
@@ -125,6 +127,7 @@ export function TodayView({
   const queryClient = useQueryClient();
   const [expandedRef, setExpandedRef] = useState<string | null>(null);
   const [addingItem, setAddingItem] = useState(false);
+  const [showLaterItems, setShowLaterItems] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [plannerBusy, setPlannerBusy] = useState<string | null>(null);
   const [plannerError, setPlannerError] = useState<string | null>(null);
@@ -400,38 +403,34 @@ export function TodayView({
           ) : (
             <ol>
               {recommendation?.action && recommendation.status === "pending" && !hasOpenBusiness ? (
-                <li className="border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]">
-                  <div className="flex items-stretch">
-                    <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3 py-1">
-                      <span className="w-12 shrink-0 text-[11px] font-semibold tabular-nums text-[var(--ink-soft)]">
-                        {recommendation.timeRequiredMinutes ? `${recommendation.timeRequiredMinutes}m` : "Now"}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold leading-tight text-[var(--ink)]">
-                          {plainLabel(recommendation.action)}
-                        </span>
-                        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                          1 · Today
-                        </span>
-                      </span>
-                    </div>
+                <li className="border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--accent)_12%,var(--card-solid))]">
+                  <div className="flex min-h-16 items-center">
                     <button
                       type="button"
                       aria-label="Mark done"
                       disabled={moveBusy !== null}
                       onClick={() => updateMoveStatus(recommendation.id, "done")}
-                      className="m-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-800 ring-1 ring-teal-400/40 dark:text-teal-200"
+                      className="m-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--card-solid)] text-[var(--accent-strong)] ring-2 ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
                     >
-                      <Check size={16} />
+                      <Check size={18} strokeWidth={2.5} />
                     </button>
+                    <div className="min-w-0 flex-1 py-2.5 pr-1">
+                      <span className="line-clamp-2 text-[15px] font-semibold leading-5 text-[var(--ink)]">
+                        {plainLabel(recommendation.action)}
+                      </span>
+                      <span className="mt-1 block text-[11px] font-semibold text-[var(--accent-strong)]">
+                        {recommendation.timeRequiredMinutes ? `${recommendation.timeRequiredMinutes} min` : "Now"}
+                        {" · Main thing"}
+                      </span>
+                    </div>
                     <button
                       type="button"
                       aria-label="Skip"
                       disabled={moveBusy !== null}
                       onClick={() => updateMoveStatus(recommendation.id, "skipped")}
-                      className="mr-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-rose-700 ring-1 ring-rose-400/35 dark:text-rose-200"
+                      className="m-2 ml-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--muted)] ring-1 ring-[var(--card-border)]"
                     >
-                      <SkipForward size={16} />
+                      <SkipForward size={18} />
                     </button>
                   </div>
                 </li>
@@ -479,67 +478,64 @@ export function TodayView({
                       isMain ? "bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]" : ""
                     }`}
                   >
-                    <div className="flex items-stretch">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedRef(expanded ? null : item.ref)}
-                        className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3 py-1 text-left"
-                      >
-                        <span
-                          className={`w-12 shrink-0 text-[11px] font-semibold tabular-nums ${
-                            status === "open" ? "text-[var(--ink-soft)]" : "text-[var(--muted)]"
-                          }`}
-                        >
-                          {itemTime(item)}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span
-                            className={`block truncate text-sm font-semibold leading-tight ${
-                              status === "done"
-                                ? "text-[var(--muted)] line-through"
-                                : status === "skipped"
-                                  ? "text-[var(--muted)]"
-                                  : "text-[var(--ink)]"
-                            }`}
-                          >
-                            {item.type === "calendar" && item.event.htmlLink ? (
-                              <a
-                                href={item.event.htmlLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(event) => event.stopPropagation()}
-                                className="hover:text-[var(--accent)]"
-                              >
-                                {itemTitle(item)}
-                              </a>
-                            ) : (
-                              itemTitle(item)
-                            )}
-                          </span>
-                          <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                            {isMain ? "Today" : itemKind(item)}
-                            {status === "skipped" ? " · skipped" : ""}
-                          </span>
-                        </span>
-                      </button>
+                    <div className="flex min-h-16 items-stretch">
                       {item.type !== "calendar" ? (
                         <button
                           type="button"
                           aria-label={status === "done" ? "Undo done" : "Mark done"}
                           onClick={toggleDone}
-                          className={`m-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 ${
+                          className={`m-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full ring-1 ${
                             status === "done"
-                              ? "bg-teal-500/20 text-teal-800 ring-teal-400/40 dark:text-teal-200"
-                              : "bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] text-[var(--muted)] ring-[var(--card-border)]"
+                              ? "bg-teal-500/20 text-teal-800 ring-teal-400/50 dark:text-teal-200"
+                              : "bg-[var(--card-solid)] text-[var(--muted)] ring-[color-mix(in_srgb,var(--muted)_35%,transparent)]"
                           }`}
                         >
-                          <Check size={16} />
+                          <Check size={18} strokeWidth={status === "done" ? 2.75 : 2} />
                         </button>
                       ) : (
-                        <span className="m-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center text-[var(--muted)]">
-                          <CalendarDays size={16} />
+                        <span className="m-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--card-solid)] text-[var(--accent-strong)] ring-1 ring-[var(--card-border)]">
+                          <CalendarDays size={18} />
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRef(expanded ? null : item.ref)}
+                        className="min-w-0 flex-1 py-2.5 pr-3 text-left"
+                      >
+                        <span
+                          className={`line-clamp-2 text-[15px] font-semibold leading-5 ${
+                            status === "done"
+                              ? "text-[var(--muted)] line-through decoration-2"
+                              : status === "skipped"
+                                ? "text-[var(--muted)]"
+                                : "text-[var(--ink)]"
+                          }`}
+                        >
+                          {item.type === "calendar" && item.event.htmlLink ? (
+                            <a
+                              href={item.event.htmlLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              className="hover:text-[var(--accent)]"
+                            >
+                              {itemTitle(item)}
+                            </a>
+                          ) : (
+                            itemTitle(item)
+                          )}
+                        </span>
+                        <span
+                          className={`mt-1 block truncate text-[11px] font-semibold ${
+                            isMain ? "text-[var(--accent-strong)]" : "text-[var(--muted)]"
+                          }`}
+                        >
+                          <span className="tabular-nums">{itemTime(item)}</span>
+                          {" · "}
+                          {isMain ? "Main thing" : itemKind(item)}
+                          {status === "skipped" ? " · Skipped" : ""}
+                        </span>
+                      </button>
                     </div>
 
                     {expanded ? (
@@ -657,25 +653,6 @@ export function TodayView({
             </ol>
           )}
 
-          {laterItems.length > 0 ? (
-            <>
-              <p className="border-t border-[var(--card-border)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Later this week
-              </p>
-              <ol>
-                {laterItems.map((item) => (
-                  <li key={item.key} className="flex min-h-11 items-center gap-3 border-t border-[var(--card-border)] px-3">
-                    <span className="w-12 shrink-0 text-[11px] font-semibold text-[var(--muted)]">{item.dayLabel}</span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--ink-soft)]">
-                      {plainLabel(item.title)}
-                    </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted)]">{item.time}</span>
-                  </li>
-                ))}
-              </ol>
-            </>
-          ) : null}
-
           <div className="border-t border-[var(--card-border)] px-3 py-2">
             {addingItem ? (
               <PlannerItemForm
@@ -718,7 +695,7 @@ export function TodayView({
                     date: todayDate,
                   });
                 }}
-                className="inline-flex min-h-10 items-center gap-1.5 text-sm font-semibold text-[var(--ink-soft)]"
+                className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-[var(--ink-soft)]"
               >
                 <Plus size={16} />
                 Add
@@ -727,6 +704,46 @@ export function TodayView({
           </div>
         </section>
       )}
+
+      {laterItems.length > 0 ? (
+        <section className="overflow-hidden rounded-2xl bg-[var(--card-solid)] ring-1 ring-[var(--card-border)]">
+          <button
+            type="button"
+            aria-expanded={showLaterItems}
+            onClick={() => setShowLaterItems((show) => !show)}
+            className="flex min-h-12 w-full items-center justify-between gap-3 px-3 text-left"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-[var(--ink)]">Later this week</span>
+              <span className="mt-0.5 block text-[11px] text-[var(--muted)]">
+                {laterItems.length} upcoming {laterItems.length === 1 ? "item" : "items"}
+              </span>
+            </span>
+            {showLaterItems ? (
+              <ChevronUp size={18} className="shrink-0 text-[var(--muted)]" />
+            ) : (
+              <ChevronDown size={18} className="shrink-0 text-[var(--muted)]" />
+            )}
+          </button>
+          {showLaterItems ? (
+            <ol className="border-t border-[var(--card-border)]">
+              {laterItems.map((item) => (
+                <li key={item.key} className="flex min-h-14 items-center gap-3 border-b border-[var(--card-border)] px-3 last:border-b-0">
+                  <span className="w-9 shrink-0 text-xs font-semibold text-[var(--accent-strong)]">
+                    {item.dayLabel}
+                  </span>
+                  <span className="min-w-0 flex-1 py-2">
+                    <span className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--ink-soft)]">
+                      {plainLabel(item.title)}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] tabular-nums text-[var(--muted)]">{item.time}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
 
       {cashPulse && onOpenOverview ? (
         <button
