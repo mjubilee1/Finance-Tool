@@ -1,39 +1,4 @@
 #!/usr/bin/env sh
 
-branch_from_ref() {
-  printf "%s" "$1" | sed 's#^refs/heads/##'
-}
-
-while read -r local_ref local_sha remote_ref remote_sha; do
-  if [ "$remote_ref" = "refs/heads/main" ]; then
-    node scripts/bump-version.mjs
-    code=$?
-
-    if [ "$code" -eq 2 ]; then
-      branch=$(branch_from_ref "$local_ref")
-      version=$(node -p "require('./package.json').version")
-
-      # Finish reading hook stdin so Git isn't left waiting.
-      cat >/dev/null
-
-      echo ""
-      echo "Bumped to v${version}. Uploading (one push)..."
-      echo ""
-
-      if SKIP_VERSION_BUMP=1 git push --no-verify origin "$branch" --follow-tags; then
-        echo ""
-        echo "Pushed v${version} to origin/${branch}."
-        echo "If Git prints 'pre-push hook declined', ignore it — this upload already finished."
-        echo ""
-        # Stop the original in-flight push; it would not include the release commit.
-        exit 1
-      fi
-
-      exit 1
-    fi
-
-    exit $code
-  fi
-done
-
+# Version bump on push is disabled — just push.
 exit 0
