@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
-import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
 
@@ -45,14 +45,14 @@ function getBumpTypeFromEnv() {
 
 function getPromptStreams() {
   if (processStdin.isTTY) {
-    return { input: processStdin, output: processStdout, ownsStreams: false };
+    return { input: processStdin, output: processStdout, ownsInput: false };
   }
 
   if (existsSync("/dev/tty")) {
     return {
       input: createReadStream("/dev/tty"),
-      output: createWriteStream("/dev/tty"),
-      ownsStreams: true,
+      output: processStdout,
+      ownsInput: true,
     };
   }
 
@@ -86,9 +86,8 @@ async function promptForBumpType(currentVersion, streams = getPromptStreams()) {
     return bumpTypes[choice] ?? null;
   } finally {
     rl.close();
-    if (streams.ownsStreams) {
+    if (streams.ownsInput) {
       streams.input.destroy();
-      // Do not .end() /dev/tty — that can freeze the terminal after the prompt.
     }
   }
 }
@@ -162,7 +161,7 @@ async function main() {
     return;
   }
 
-  console.log(`\nBumped to v${nextVersion}. Finishing push...\n`);
+  console.log(`\nBumped to v${nextVersion}.`);
   process.exit(EXIT_BUMPED);
 }
 

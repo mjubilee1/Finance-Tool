@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <main className="mx-auto min-h-[100dvh] max-w-2xl px-6 py-12">
       <p className="app-label text-[var(--accent-strong)] mb-2">Life OS</p>
       <h1 className="app-display text-3xl text-[var(--ink)] mb-2">Privacy Policy</h1>
-      <p className="text-sm text-[var(--muted)] mb-8">Last updated August 23, 2026</p>
+      <p className="text-sm text-[var(--muted)] mb-8">Last updated August 24, 2026</p>
 
       <div className="space-y-6 text-sm leading-relaxed text-[var(--ink-soft)]">
         <p>
