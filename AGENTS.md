@@ -13,6 +13,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Chase (primary)**: direct-deposit paychecks
 - **Capital One (secondary)**: car payment + insurance; goals/plans bucket
 - **Purpose**: long-term financial goals, weekly wins/alerts, micro→macro awareness
+- **Device**: phone / mobile browser ~95% of the time — mobile-first UI. Settings is an overlay, not a tab. See `.cursor/rules/mobile-first.mdc`.
 
 Skill: `.cursor/skills/personal-finance-product/SKILL.md`
 

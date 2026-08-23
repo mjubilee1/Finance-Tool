@@ -1,0 +1,22 @@
+---
+description: Phone-first Life OS — Trell uses this in a mobile browser ~95% of the time
+alwaysApply: true
+---
+
+# Mobile-first (phone browser)
+
+Trell uses this app on his **phone ~95% of the time**, in a **mobile browser** (Safari/Chrome), not a desktop or native app. Desktop is the exception.
+
+When building or changing UI, layout, nav, or density:
+
+- **Design for a phone viewport first** (~390px). Desktop/md+ is a stretch, not the default.
+- One job per screen. Do not stack a full daily agenda, week plan, charts, and money brief on the same scroll.
+- **Thumb reach:** primary actions in the bottom tab bar or within easy tap; Settings stays an overlay (header / sidebar footer / More), never a 5th primary tab.
+- Touch targets ≥44px; no hover-only controls; no tiny icon-only buttons without labels where the action matters.
+- Prefer a single column. Charts, tables, and multi-column grids must stay readable without pinch-zoom.
+- Respect safe areas (`app-mobile-tabbar` / bottom padding) so content is not hidden behind the tab bar.
+- **Today** = this calendar day only (events + items dated today). Rank **main thing → least priority**. Do not dump weekly GTM, week-ahead, or other-day blocks onto Today.
+- **Overview** is the Life OS home (day + body + growth + cash) — not a Money tab.
+- Phone tab bar: Coach / Today / Growth / Goals. Overview is in Daily (sidebar) and at the top of More.
+
+Settings (banks, Google Calendar, theme, account) is an overlay, not a nav destination.

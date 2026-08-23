@@ -23,7 +23,7 @@ export async function GET() {
       buildLifePulse(session.user.id, {
         query: "today overview money growth entrepreneurship schedule",
         includeNetwork: false,
-        ensureEntrepreneurship: true,
+        ensureEntrepreneurship: false,
         calendarDaysAhead: 7,
         memoryLimit: 6,
       }),

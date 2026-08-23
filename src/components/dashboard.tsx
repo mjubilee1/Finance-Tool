@@ -1,7 +1,6 @@
 "use client";
 
-import { calculateGoalPace, type DailySpendPoint, type MonthlyCashFlowByChecking, type MonthlyCashFlowPoint } from "@/lib/cash-flow";
-import { isLifeGoalType } from "@/lib/goal-types";
+import type { DailySpendPoint, MonthlyCashFlowByChecking, MonthlyCashFlowPoint } from "@/lib/cash-flow";
 import { formatCurrency } from "@/lib/format";
 import {
     refreshPlaidBalances,
@@ -33,6 +32,10 @@ const SettingsView = dynamic(
 /** Non-default tabs load on demand so Coach boots with a smaller JS graph. */
 const OverviewHome = dynamic(
   () => import("./overview/overview-home").then((m) => m.OverviewHome),
+  { loading: () => <DashboardSkeleton /> },
+);
+const TodayView = dynamic(
+  () => import("./today/today-view").then((m) => m.TodayView),
   { loading: () => <DashboardSkeleton /> },
 );
 const GrowthView = dynamic(
@@ -450,35 +453,6 @@ export function Dashboard() {
         minute: "2-digit",
       })
     : null;
-  const priorityGoal = useMemo(() => {
-    const sorted = [...goals].sort((a, b) => (a.priority ?? 3) - (b.priority ?? 3));
-    const top = sorted[0];
-    if (!top) return null;
-    if (isLifeGoalType(top.category)) {
-      const progress = Math.min(
-        100,
-        Math.round((Math.max(0, top.currentAmount) / Math.max(1, top.targetAmount || 100)) * 100),
-      );
-      return {
-        name: top.name,
-        paceMessage:
-          progress >= 100
-            ? "Complete — pick the next compounding move."
-            : top.targetDate
-              ? `${progress}% in progress · target ${top.targetDate}`
-              : `${progress}% in progress — update from Goals when you push it.`,
-        onTrack: progress > 0,
-      };
-    }
-    if (!cashFlow) return null;
-    const pace = calculateGoalPace({
-      targetAmount: top.targetAmount,
-      currentAmount: top.currentAmount,
-      targetDate: top.targetDate,
-      netDailyAverage: cashFlow.netDailyAverage,
-    });
-    return { name: top.name, paceMessage: pace.paceMessage, onTrack: pace.onTrack };
-  }, [goals, cashFlow]);
 
   const filteredAndSortedTransactions = useMemo(() => {
     let result = [...transactions];
@@ -722,7 +696,9 @@ export function Dashboard() {
         <div
           className={`flex-1 overflow-x-hidden ${
             settingsOpen || activeTab !== "chat"
-              ? "overflow-y-auto p-4 md:p-8"
+              ? activeTab === "today" || activeTab === "overview"
+                ? "overflow-y-auto p-3 md:p-8"
+                : "overflow-y-auto p-4 md:p-8"
               : "flex min-h-0 flex-col overflow-hidden p-2 sm:p-3 md:p-8"
           }`}
         >
@@ -772,6 +748,23 @@ export function Dashboard() {
               </div>
             )}
 
+            {!settingsOpen && activeTab === "today" && (
+              <TodayView
+                onOpenOverview={() => selectTab("overview")}
+                onOpenGrowth={() => selectTab("growth")}
+                onOpenSettings={openSettings}
+                cashPulse={
+                  cashFlow
+                    ? {
+                        checking: cashFlow.primaryCash ?? null,
+                        remainingToday: cashFlow.today.remainingToday,
+                        dailyAllowance: cashFlow.today.dailyAllowance,
+                      }
+                    : null
+                }
+              />
+            )}
+
             {/* View: OVERVIEW */}
             {!settingsOpen && activeTab === 'overview' && (
               isLoading && !data ? (
@@ -788,13 +781,10 @@ export function Dashboard() {
                   monthlyCashFlowByChecking={monthlyCashFlowByChecking}
                   onOpenChat={() => selectTab('chat')}
                   onOpenRecurring={() => selectTab('recurring')}
-                  onOpenGrowth={() => selectTab('growth')}
-                  onOpenGoals={() => selectTab('goals')}
-                  onOpenTrends={() => selectTab("learning")}
-                  onOpenSettings={openSettings}
-                  priorityGoal={priorityGoal}
+                  onOpenToday={() => selectTab("today")}
+                  onOpenGrowth={() => selectTab("growth")}
+                  onOpenGoals={() => selectTab("goals")}
                   isBriefPending={!aiInsight && transactions.length > 0}
-                  userName={session?.user?.name}
                 />
               ) : (
                 <div className="app-card p-8 text-center text-slate-500 leading-relaxed space-y-4">

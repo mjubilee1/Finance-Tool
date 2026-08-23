@@ -10,6 +10,7 @@ Read [context.md](context.md) for full product context.
 ## Product scope
 
 - Built for **one user's personal finances**, not a multi-user or public product
+- **Phone-first:** Trell uses this in a mobile browser ~95% of the time. Design ~390px first; Settings is an overlay, not a nav tab. See `.cursor/rules/mobile-first.mdc`.
 - Optimize for long-term goals, weekly accountability, and micro→macro financial awareness
 - Celebrate good weeks; alert when off track; allow earned discretionary spending and intentional short rest/resets
 - Treat money as a **reinforcing system** — assess how each move hardens stability or accelerates growth, not just whether spending can be cut

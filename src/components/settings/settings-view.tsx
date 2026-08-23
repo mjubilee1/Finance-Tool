@@ -44,7 +44,7 @@ function calendarCopy(calendar: CalendarStatus) {
   }
   return {
     title: "Google Calendar not connected",
-    body: "Connect so Overview and Coach can use your real calendar.",
+      body: "Connect so Today and Coach can use your real calendar.",
   };
 }
 

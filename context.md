@@ -8,8 +8,17 @@ Trell's **default daily app**: open every day, log constantly, get sharper coach
 
 Help stay on track with **long-term goals** (money + career + body + network) while staying sharp day to day. Small choices should connect to the bigger picture: micro logging compounds into macro outcomes.
 
+## Device: phone first
+
+Trell uses this app on his **phone ~95% of the time** in a **mobile browser**. Desktop is rare.
+
+- Design and review every screen for ~390px first. Desktop layouts are a stretch.
+- One primary job per screen on mobile. Do not crowd Today (agenda/planner/calendar) with money charts, week-ahead, and a full cash brief on the same scroll.
+- Bottom nav stays four primary tabs + More. **Settings is an overlay** (header, sidebar footer, More sheet) — not a tab.
+- Touch-friendly: large taps, no hover-only UI, content must clear the mobile tab bar.
+
 The app should:
-- Be the place Trell **opens every day** and **constantly logs into** (activities, contacts, spends, screenshots, wins)
+- Be the place Trell **opens every day on his phone** and **constantly logs into** (activities, contacts, spends, screenshots, wins)
 - Track progress toward goals and plans across life domains
 - **Celebrate good weeks** — e.g. "You did well this week; it's okay to spend a little extra"
 - **Alert** when spending or habits drift off course (including thin network / ignored follow-ups)
@@ -20,6 +29,10 @@ The app should:
 - Call out low-leverage traps plainly: e.g. "Protect a networking / promotion block — don't fill the evening with low-ROI busywork"
 
 ### Daily loop (logging flywheel)
+
+**Today** = this calendar day only (today’s events and items). Rank the list **main thing first → least priority** (protect/leverage, then booked calendar, then user items, optional joy last; done sinks). Do not dump weekly GTM checklists or other-day blocks onto it.
+
+**Overview** is the Life OS home for the whole app — day pulse, growth, body, and cash — not a Money tab. Money screens stay under Money. Week-ahead stays collapsed.
 
 1. **Open Today Planner** — what to protect today (body, leverage, joy)
 2. **One highest-leverage move** — generate once per day; Skip/Done stick. Don't spam regenerate.

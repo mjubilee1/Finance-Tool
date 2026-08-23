@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Receipt,
   Repeat,
+  Sun,
   Target,
   TrendingUp,
   Utensils,
@@ -24,6 +25,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 export type TabType =
   | "chat"
+  | "today"
   | "overview"
   | "accounts"
   | "transactions"
@@ -50,12 +52,23 @@ export type NavSection = {
   items: NavItem[];
 };
 
-/** Primary destinations — Coach first (daily default), then loop + goals. */
+/** Phone tab bar — four slots. Overview lives in Daily / More, not Money. */
 export const PRIMARY_NAV: NavItem[] = [
   { tab: "chat", label: "Coach", Icon: BrainCircuit },
-  { tab: "overview", label: "Overview", Icon: LayoutDashboard },
+  { tab: "today", label: "Today", Icon: Sun },
   { tab: "growth", label: "Growth", Icon: Flame },
   { tab: "goals", label: "Goals", Icon: Target },
+];
+
+const OVERVIEW_NAV: NavItem = { tab: "overview", label: "Overview", Icon: LayoutDashboard };
+
+/** Sidebar Daily — Life OS home sits with Coach / Today, not under Money. */
+export const DAILY_NAV: NavItem[] = [
+  PRIMARY_NAV[0],
+  PRIMARY_NAV[1],
+  OVERVIEW_NAV,
+  PRIMARY_NAV[2],
+  PRIMARY_NAV[3],
 ];
 
 /** Secondary destinations — grouped for sidebar + More sheet. */
@@ -63,7 +76,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: "daily",
     label: "Daily",
-    items: PRIMARY_NAV,
+    items: DAILY_NAV,
   },
   {
     id: "life",
@@ -219,6 +232,26 @@ export function MobileMoreSheet({
         </div>
 
         <div className="space-y-5 px-3 py-4">
+          <button
+            type="button"
+            onClick={() => {
+              onSelectTab("overview");
+              onClose();
+            }}
+            className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-left text-sm ${
+              activeTab === "overview" ? "app-nav-active" : "text-[var(--ink-soft)] hover:bg-[var(--accent-soft)]"
+            }`}
+          >
+            <LayoutDashboard
+              size={18}
+              className={activeTab === "overview" ? "text-[var(--accent-strong)]" : "text-[var(--muted)]"}
+            />
+            <span>
+              <span className="block font-medium">Overview</span>
+              <span className="block text-[11px] text-[var(--muted)]">Life + money home</span>
+            </span>
+          </button>
+
           {secondarySections.map((section) => (
             <div key={section.id}>
               <p className="app-label mb-1.5 px-2">{section.label}</p>

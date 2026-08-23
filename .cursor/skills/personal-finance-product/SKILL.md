@@ -71,6 +71,15 @@ When planning startup / outreach / build decisions for OnLocalAI, follow **`.cur
 - Capital One surplus after car payment + insurance can fund secondary goals
 - Prefer progress toward long-term outcomes over generic monthly totals
 
+## Device (critical)
+
+Trell uses this on his **phone ~95% of the time** (mobile browser). Design and verify ~390px first. Desktop is the exception.
+
+- One job per screen; do not stack today's agenda with money charts on the same mobile scroll
+- Bottom nav: four primary tabs + More. **Settings is an overlay**, not a tab
+- Touch targets, no hover-only, content clears the tab bar
+- Details: `.cursor/rules/mobile-first.mdc`
+
 ## Build checklist
 
 When adding a feature, ask:
@@ -79,6 +88,7 @@ When adding a feature, ask:
 2. Does income/account routing match Chase vs Capital One (including car bills)?
 3. Does copy coach toward long-term goals, not just budgets?
 4. Does it celebrate wins or warn on drift when appropriate?
+5. Does this work as the first (and usually only) viewport on a phone?
 
 ## Version bump + push
 
