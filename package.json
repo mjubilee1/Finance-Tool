@@ -19,6 +19,10 @@
     "version:patch": "VERSION_BUMP=patch node scripts/bump-version.mjs --manual --no-prompt",
     "version:minor": "VERSION_BUMP=minor node scripts/bump-version.mjs --manual --no-prompt",
     "version:major": "VERSION_BUMP=major node scripts/bump-version.mjs --manual --no-prompt",
+    "push": "git push origin main",
+    "push:patch": "VERSION_BUMP=patch git push origin main",
+    "push:minor": "VERSION_BUMP=minor git push origin main",
+    "push:major": "VERSION_BUMP=major git push origin main",
     "prepare": "husky",
     "db:migrate": "prisma migrate deploy"
   },

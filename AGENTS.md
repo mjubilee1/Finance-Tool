@@ -16,6 +16,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Skill: `.cursor/skills/personal-finance-product/SKILL.md`
 
+## Version bump + push (local and Cloud Agents)
+
+When asked to push / ship / release, **ask Trell: patch, minor, or major?** unless he already said which. Then run `pnpm push:patch`, `pnpm push:minor`, or `pnpm push:major`. Do not use the hanging interactive git version prompt. See `.cursor/rules/version-push.mdc`.
+
 ## Founder (OnLocalAI)
 
 Trell is founder of OnLocalAI (employee onboarding). For daily/weekly startup plans, outreach, discovery, evidence, and build-vs-sell decisions, read **`.cursor/skills/onlocalai-founder-os/SKILL.md`**. Customer discovery outranks speculative product work; code freeze rules apply.

@@ -34,6 +34,10 @@ Read [context.md](context.md) for full product context.
 
 Model income routing, car obligations, goals, and coach advice with this split in mind.
 
+## Version bump + push
+
+When asked to push or ship, ask **patch vs minor vs major**, then run `pnpm push:patch` / `pnpm push:minor` / `pnpm push:major`. See `.cursor/rules/version-push.mdc`.
+
 ## Founder (OnLocalAI)
 
 Trell also runs **OnLocalAI**. For founder daily plans, discovery, evidence, and code-freeze decisions, use `.cursor/skills/onlocalai-founder-os/SKILL.md`. Customer-facing work outranks speculative product work.

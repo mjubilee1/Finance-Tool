@@ -1,0 +1,25 @@
+---
+description: Ask patch vs minor vs major before pushing to main — including Cloud Agents
+alwaysApply: true
+---
+
+# Version bump + push
+
+When Trell asks to push, ship, release, or update the app version — **including Cloud Agents** — do not silently auto-patch and do not rely on the interactive git hook prompt (it hangs).
+
+1. **Ask first:** "Patch, minor, or major?"
+   - **patch** — fixes / small changes
+   - **minor** — new features
+   - **major** — breaking changes
+2. Skip the question only if he already said which one in the same request.
+3. Push with the matching script (this sets `VERSION_BUMP` and runs `git push origin main`):
+
+```bash
+pnpm push:patch
+pnpm push:minor
+pnpm push:major
+```
+
+4. Do not run a nested/manual second push unless the first command actually failed to upload.
+5. If Git prints `pre-push hook declined` after "Pushed vX.Y.Z", the upload already finished — report success, do not push again.
+6. Never use `pnpm patch` for this (`pnpm patch` is a dependency-patching command).

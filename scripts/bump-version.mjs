@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
 
 const RELEASE_COMMIT_RE = /^chore: release v\d+\.\d+\.\d+$/;
 const VALID_BUMP_TYPES = new Set(["patch", "minor", "major", "skip"]);
-const EXIT_BUMPED = 2;
+const BUMP_FLAG = ".git/version-bumped";
 
 function getCurrentVersion() {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
@@ -156,7 +156,7 @@ async function main() {
   }
 
   console.log(`\nBumped to v${nextVersion}.`);
-  process.exit(EXIT_BUMPED);
+  writeFileSync(BUMP_FLAG, nextVersion, "utf8");
 }
 
 main().catch((error) => {

@@ -79,3 +79,7 @@ When adding a feature, ask:
 2. Does income/account routing match Chase vs Capital One (including car bills)?
 3. Does copy coach toward long-term goals, not just budgets?
 4. Does it celebrate wins or warn on drift when appropriate?
+
+## Version bump + push
+
+When Trell asks to push or ship (local or Cloud Agent): ask **patch, minor, or major** unless he already said which, then run `pnpm push:patch` / `pnpm push:minor` / `pnpm push:major`. Do not use the interactive git hook prompt. Details: `.cursor/rules/version-push.mdc`.

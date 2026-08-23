@@ -6,12 +6,12 @@ branch_from_ref() {
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$remote_ref" = "refs/heads/main" ]; then
-    node scripts/bump-version.mjs
-    code=$?
+    node scripts/bump-version.mjs || exit $?
 
-    if [ "$code" -eq 2 ]; then
+    if [ -f .git/version-bumped ]; then
       branch=$(branch_from_ref "$local_ref")
-      version=$(node -p "require('./package.json').version")
+      version=$(cat .git/version-bumped)
+      rm -f .git/version-bumped
       cat >/dev/null
 
       echo "Uploading v${version}..."
@@ -23,7 +23,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       exit 1
     fi
 
-    exit $code
+    exit 0
   fi
 done
 
