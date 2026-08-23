@@ -113,7 +113,8 @@ function pickTodayUserBlocks(blocks: TodayOverviewResponse["brief"]["userPlanBlo
       return (aIdx < 0 ? 99 : aIdx) - (bIdx < 0 ? 99 : bIdx);
     });
   const nextOpen = seeded.filter((block) => block.status === "planned").slice(0, 2);
-  return [...customBusiness, ...nextOpen, ...rest];
+  const settled = seeded.filter((block) => block.status !== "planned").slice(0, 2);
+  return [...customBusiness, ...nextOpen, ...settled, ...rest];
 }
 
 export function TodayView({
@@ -220,6 +221,55 @@ export function TodayView({
     void queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
   };
 
+  const patchTodayCache = (
+    updater: (current: TodayOverviewResponse) => TodayOverviewResponse,
+  ) => {
+    const current = queryClient.getQueryData<TodayOverviewResponse>(["overview-today"]);
+    if (!current) return null;
+    queryClient.setQueryData(["overview-today"], updater(current));
+    return current;
+  };
+
+  const applyItemStatus = (
+    item: TimelineItem,
+    status: "done" | "planned" | "skipped",
+  ) => {
+    return patchTodayCache((current) => {
+      if (item.type === "user") {
+        return {
+          ...current,
+          brief: {
+            ...current.brief,
+            userPlanBlocks: current.brief.userPlanBlocks.map((block) =>
+              block.id === item.block.id ? { ...block, status } : block,
+            ),
+          },
+        };
+      }
+      if (item.type !== "plan") return current;
+      const completedKeys = new Set(current.brief.completedBlockKeys);
+      const skippedKeys = new Set(current.brief.skippedBlockKeys);
+      if (status === "done") {
+        completedKeys.add(item.block.key);
+        skippedKeys.delete(item.block.key);
+      } else if (status === "skipped") {
+        skippedKeys.add(item.block.key);
+        completedKeys.delete(item.block.key);
+      } else {
+        completedKeys.delete(item.block.key);
+        skippedKeys.delete(item.block.key);
+      }
+      return {
+        ...current,
+        brief: {
+          ...current.brief,
+          completedBlockKeys: [...completedKeys],
+          skippedBlockKeys: [...skippedKeys],
+        },
+      };
+    });
+  };
+
   const runPlanner = async (key: string, work: () => Promise<void>) => {
     setPlannerBusy(key);
     setPlannerError(null);
@@ -233,18 +283,58 @@ export function TodayView({
     }
   };
 
-  const updateMoveStatus = async (id: string, status: "done" | "skipped") => {
+  const toggleItemDone = (item: TimelineItem) => {
+    if (item.type !== "plan" && item.type !== "user") return;
+    const current = itemStatus(item, completed, skipped);
+    const nextStatus = current === "done" ? "planned" : "done";
+    const previous = applyItemStatus(item, nextStatus);
+    setPlannerError(null);
+
+    const request =
+      item.type === "plan"
+        ? plannerRequest("PATCH", {
+            action: "system",
+            date: todayDate,
+            blockKey: item.block.key,
+            status: nextStatus,
+          })
+        : plannerRequest("PATCH", {
+            id: item.block.id,
+            status: nextStatus,
+          });
+
+    void request.then(refreshPlanner).catch((err) => {
+      if (previous) queryClient.setQueryData(["overview-today"], previous);
+      setPlannerError(err instanceof Error ? err.message : "Something went wrong");
+    });
+  };
+
+  const updateMoveStatus = (id: string, status: "done" | "skipped") => {
+    const previous = patchTodayCache((current) => {
+      if (!current.brief.recommendation) return current;
+      return {
+        ...current,
+        brief: {
+          ...current.brief,
+          recommendation: { ...current.brief.recommendation, status },
+        },
+      };
+    });
     setMoveBusy(status);
-    try {
-      await fetch("/api/growth/recommend", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      });
-      refreshPlanner();
-    } finally {
-      setMoveBusy(null);
-    }
+    void fetch("/api/growth/recommend", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Could not update move");
+        refreshPlanner();
+      })
+      .catch((err) => {
+        if (previous) queryClient.setQueryData(["overview-today"], previous);
+        setPlannerError(err instanceof Error ? err.message : "Something went wrong");
+      })
+      .finally(() => setMoveBusy(null));
   };
 
   const calendarNeedsAction =
@@ -373,10 +463,7 @@ export function TodayView({
                     });
                   });
 
-                const toggleDone = () => {
-                  if (item.type === "plan") markSystem(status === "done" ? "planned" : "done");
-                  if (item.type === "user") markUser(status === "done" ? "planned" : "done");
-                };
+                const toggleDone = () => toggleItemDone(item);
 
                 const detail =
                   item.type === "plan"
@@ -439,7 +526,6 @@ export function TodayView({
                         <button
                           type="button"
                           aria-label={status === "done" ? "Undo done" : "Mark done"}
-                          disabled={plannerBusy !== null}
                           onClick={toggleDone}
                           className={`m-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 ${
                             status === "done"
