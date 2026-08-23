@@ -142,6 +142,11 @@ export function isEntrepreneurshipBlock(block: { notes?: string | null }) {
   return Boolean(block.notes?.includes("entrepreneurship:"));
 }
 
+export function parseEntrepreneurshipSlot(notes: string | null | undefined) {
+  const match = notes?.match(/entrepreneurship:([a-z_]+)/i);
+  return match?.[1] ?? null;
+}
+
 export function displayPlannerNotes(notes: string | null | undefined) {
   if (!notes) return null;
   const cleaned = notes.replace(/\n*\s*entrepreneurship:[a-z_]+\s*/gi, "\n").trim();
@@ -378,7 +383,8 @@ export function timelinePriorityRank(item: TimelineItem): number {
     return 5;
   }
   const domain = item.block.domain;
-  if (domain === "startup" || domain === "career") return 3;
+  if (domain === "startup") return 1;
+  if (domain === "career") return 3;
   if (domain === "financial" || domain === "fitness") return 4;
   return 6;
 }
@@ -391,7 +397,8 @@ export function timelinePriorityLabel(item: TimelineItem): string {
     if (item.block.key === "joy" || item.block.priority === "optional") return "Optional";
     return formatPlanRole(item.block.role);
   }
-  if (item.block.domain === "startup" || item.block.domain === "career") return "Protect";
+  if (item.block.domain === "startup") return "Business";
+  if (item.block.domain === "career") return "Protect";
   return item.block.domain;
 }
 

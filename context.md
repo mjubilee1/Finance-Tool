@@ -30,7 +30,7 @@ The app should:
 
 ### Daily loop (logging flywheel)
 
-**Today** = this calendar day only (today’s events and items). Rank the list **main thing first → least priority** (protect/leverage, then booked calendar, then user items, optional joy last; done sinks). Do not dump weekly GTM checklists or other-day blocks onto it.
+**Today** is one to-do list: today’s items (main thing first), then **Later this week**. Business / Growth items (outreach, discovery) belong on that same list — next 1–2 open dealings, not a 6-item dump. Do not use “GTM” in the UI.
 
 **Overview** is the Life OS home for the whole app — day pulse, growth, body, and cash — not a Money tab. Money screens stay under Money. Week-ahead stays collapsed.
 

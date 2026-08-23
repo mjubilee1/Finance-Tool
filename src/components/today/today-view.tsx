@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   Check,
-  ChevronDown,
   ChevronRight,
   Plus,
   SkipForward,
@@ -21,6 +20,7 @@ import {
   displayPlannerNotes,
   formatCalendarEventTime,
   isEntrepreneurshipBlock,
+  parseEntrepreneurshipSlot,
   plannerRequest,
   preserveEntrepreneurshipMarker,
   shortTimeLabel,
@@ -30,7 +30,9 @@ import {
   type TimelineItem,
   type TodayOverviewResponse,
 } from "./planner-shared";
-import { WeekAhead } from "./week-ahead";
+function plainLabel(text: string) {
+  return text.replace(/\bGTM\b/gi, "outreach");
+}
 
 type CashPulse = {
   checking: number | null;
@@ -76,18 +78,51 @@ function itemTitle(item: TimelineItem) {
 }
 
 function itemKind(item: TimelineItem) {
+  if (item.type === "user" && (isEntrepreneurshipBlock(item.block) || item.block.domain === "startup")) {
+    return "Business";
+  }
   return timelinePriorityLabel(item);
+}
+
+const BUSINESS_SLOT_ORDER = [
+  "outreach",
+  "customer_discovery",
+  "prospect_research",
+  "interview_prep",
+  "synthesize",
+  "serious_followup",
+  "market_research",
+  "positioning",
+  "partner_update",
+] as const;
+
+function pickTodayUserBlocks(blocks: TodayOverviewResponse["brief"]["userPlanBlocks"]) {
+  const rest = blocks.filter(
+    (block) => !isEntrepreneurshipBlock(block) && block.domain !== "startup",
+  );
+  const customBusiness = blocks.filter(
+    (block) => block.domain === "startup" && !isEntrepreneurshipBlock(block),
+  );
+  const seeded = blocks
+    .filter((block) => isEntrepreneurshipBlock(block))
+    .sort((a, b) => {
+      const aSlot = parseEntrepreneurshipSlot(a.notes);
+      const bSlot = parseEntrepreneurshipSlot(b.notes);
+      const aIdx = BUSINESS_SLOT_ORDER.indexOf((aSlot ?? "partner_update") as (typeof BUSINESS_SLOT_ORDER)[number]);
+      const bIdx = BUSINESS_SLOT_ORDER.indexOf((bSlot ?? "partner_update") as (typeof BUSINESS_SLOT_ORDER)[number]);
+      return (aIdx < 0 ? 99 : aIdx) - (bIdx < 0 ? 99 : bIdx);
+    });
+  const nextOpen = seeded.filter((block) => block.status === "planned").slice(0, 2);
+  return [...customBusiness, ...nextOpen, ...rest];
 }
 
 export function TodayView({
   onOpenOverview,
-  onOpenGrowth,
   onOpenSettings,
   cashPulse,
 }: TodayViewProps) {
   const queryClient = useQueryClient();
   const [expandedRef, setExpandedRef] = useState<string | null>(null);
-  const [showWeek, setShowWeek] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [plannerBusy, setPlannerBusy] = useState<string | null>(null);
@@ -123,8 +158,11 @@ export function TodayView({
   const skipped = useMemo(() => new Set(brief?.skippedBlockKeys ?? []), [brief?.skippedBlockKeys]);
   const systemBlocks = brief?.plan.blocks ?? [];
   const allUserBlocks = brief?.userPlanBlocks ?? [];
-  const todayUserBlocks = allUserBlocks.filter((block) => !isEntrepreneurshipBlock(block));
-  const gtmBlocks = allUserBlocks.filter((block) => isEntrepreneurshipBlock(block));
+  const todayUserBlocks = pickTodayUserBlocks(allUserBlocks);
+  const hasOpenBusiness = todayUserBlocks.some(
+    (block) =>
+      block.status === "planned" && (isEntrepreneurshipBlock(block) || block.domain === "startup"),
+  );
   const calendar = todayOverview?.calendar ?? null;
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const todayDate = brief?.date ?? userNow().toISODate()!;
@@ -145,11 +183,37 @@ export function TodayView({
     });
   }, [brief?.dayShape, calendarEvents, completed, skipped, systemBlocks, todayUserBlocks]);
 
+  const laterItems = useMemo(() => {
+    const days = todayOverview?.weekPlan?.days ?? [];
+    return days
+      .filter((day) => day.date !== todayDate)
+      .flatMap((day) => {
+        const blocks = day.blocks
+          .filter(
+            (block) =>
+              block.source === "google_calendar" ||
+              block.source === "user_plan" ||
+              block.priority === "protect",
+          )
+          .sort((a, b) => {
+            const rank = (block: (typeof day.blocks)[number]) =>
+              block.source === "google_calendar" ? 1 : block.priority === "protect" ? 2 : 3;
+            return rank(a) - rank(b);
+          })
+            .slice(0, 3);
+        return blocks.map((block) => ({
+          key: `${day.date}:${block.id}`,
+          dayLabel: day.weekdayLabel.slice(0, 3),
+          title: block.label,
+          time: block.time.replace(":00", ""),
+        }));
+      });
+  }, [todayDate, todayOverview?.weekPlan?.days]);
+
   const mainRef = timelineItems.find((item) => itemStatus(item, completed, skipped) === "open")?.ref ?? null;
   const openRow = expandedRef;
 
   const doneCount = timelineItems.filter((item) => itemStatus(item, completed, skipped) === "done").length;
-  const openCount = timelineItems.filter((item) => itemStatus(item, completed, skipped) === "open").length;
 
   const refreshPlanner = () => {
     void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
@@ -183,49 +247,27 @@ export function TodayView({
     }
   };
 
-  const generateMove = async (force = false) => {
-    setMoveBusy("recommend");
-    try {
-      await fetch("/api/growth/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
-      });
-      refreshPlanner();
-    } finally {
-      setMoveBusy(null);
-    }
-  };
-
   const calendarNeedsAction =
     calendar &&
     (calendar.status === "needs_reconnect" || calendar.status === "not_connected" || Boolean(calendar.error));
 
   const recommendation = brief?.recommendation;
-  const gtmDone = gtmBlocks.filter((block) => block.status === "done").length;
 
   return (
     <div className="mx-auto max-w-lg space-y-3">
       <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
-            {brief ? `${DAY_SHAPE_LABEL[brief.dayShape]} · ${brief.dayLabel}` : "Today"}
+            {brief ? brief.dayLabel : "Today"}
           </p>
           <h1 className="mt-0.5 truncate text-xl font-semibold tracking-tight text-[var(--ink)]">
             {brief?.dateLabel ?? userNow().toFormat("MMMM d")}
           </h1>
         </div>
-        <p className="shrink-0 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-          Main first
-          <span className="mt-0.5 block tabular-nums text-sm text-[var(--ink-soft)]">
-            {doneCount}/{timelineItems.length || 0}
-          </span>
+        <p className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+          {brief ? DAY_SHAPE_LABEL[brief.dayShape] : ""}
         </p>
       </header>
-
-      {brief?.plan.summary ? (
-        <p className="text-sm leading-snug text-[var(--ink-soft)]">{brief.plan.summary}</p>
-      ) : null}
 
       {calendarNeedsAction ? (
         <button
@@ -245,94 +287,65 @@ export function TodayView({
         </button>
       ) : null}
 
-      {recommendation?.action ? (
-        <section className="rounded-2xl bg-[var(--card-solid)] px-3 py-2.5 ring-1 ring-[var(--card-border)]">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent-strong)]">Move</p>
-              <p className="mt-0.5 text-sm font-semibold leading-snug text-[var(--ink)]">{recommendation.action}</p>
-            </div>
-            {recommendation.status === "pending" ? (
-              <div className="flex shrink-0 gap-1.5">
-                <button
-                  type="button"
-                  disabled={moveBusy !== null}
-                  onClick={() => updateMoveStatus(recommendation.id, "done")}
-                  className="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-teal-500/20 text-teal-800 ring-1 ring-teal-400/40 disabled:opacity-50 dark:text-teal-200"
-                  aria-label="Mark move done"
-                >
-                  <Check size={16} />
-                </button>
-                <button
-                  type="button"
-                  disabled={moveBusy !== null}
-                  onClick={() => updateMoveStatus(recommendation.id, "skipped")}
-                  className="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-rose-500/15 text-rose-700 ring-1 ring-rose-400/35 disabled:opacity-50 dark:text-rose-200"
-                  aria-label="Skip move"
-                >
-                  <SkipForward size={16} />
-                </button>
-              </div>
-            ) : (
-              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                {recommendation.status}
-              </span>
-            )}
-          </div>
-          {recommendation.status === "pending" && recommendation.timeRequiredMinutes ? (
-            <p className="mt-1 text-[11px] text-[var(--muted)]">{recommendation.timeRequiredMinutes}m</p>
-          ) : null}
-          {recommendation.status !== "pending" ? (
-            <button
-              type="button"
-              disabled={moveBusy !== null}
-              onClick={() => generateMove(true)}
-              className="mt-1 text-[11px] font-semibold text-[var(--accent-strong)]"
-            >
-              Different move
-            </button>
-          ) : null}
-        </section>
-      ) : (
-        <button
-          type="button"
-          disabled={moveBusy !== null}
-          onClick={() => generateMove(false)}
-          className="min-h-11 w-full rounded-2xl bg-[var(--card-solid)] px-3 text-sm font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)]"
-        >
-          Get today&apos;s move
-        </button>
-      )}
-
-      {gtmBlocks.length > 0 && onOpenGrowth ? (
-        <button
-          type="button"
-          onClick={onOpenGrowth}
-          className="flex min-h-10 w-full items-center justify-between rounded-xl px-1 text-left text-[12px] font-semibold text-[var(--muted)]"
-        >
-          <span>
-            GTM lives on Growth · {gtmDone}/{gtmBlocks.length} today
-          </span>
-          <ChevronRight size={14} />
-        </button>
-      ) : null}
-
       {isLoading && !brief ? (
         <p className="py-8 text-center text-sm text-[var(--muted)]">Loading today…</p>
       ) : isError && !brief ? (
         <p className="py-8 text-center text-sm text-rose-600">Couldn&apos;t load today. Try Sync.</p>
       ) : (
         <section className="overflow-hidden rounded-2xl bg-[var(--card-solid)] ring-1 ring-[var(--card-border)]">
+          <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+            <p className="text-sm font-semibold text-[var(--ink)]">To-do</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+              Today · {doneCount}/{timelineItems.length || 0}
+            </p>
+          </div>
           {plannerError ? (
             <p className="border-b border-[var(--card-border)] px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
               {plannerError}
             </p>
           ) : null}
 
-          {timelineItems.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">Nothing on the board yet.</p>
+          {timelineItems.length === 0 && !recommendation?.action ? (
+            <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">Nothing for today yet.</p>
           ) : (
             <ol>
+              {recommendation?.action && recommendation.status === "pending" && !hasOpenBusiness ? (
+                <li className="border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)]">
+                  <div className="flex items-stretch">
+                    <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-3 py-1">
+                      <span className="w-12 shrink-0 text-[11px] font-semibold tabular-nums text-[var(--ink-soft)]">
+                        {recommendation.timeRequiredMinutes ? `${recommendation.timeRequiredMinutes}m` : "Now"}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold leading-tight text-[var(--ink)]">
+                          {plainLabel(recommendation.action)}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                          1 · Today
+                        </span>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Mark done"
+                      disabled={moveBusy !== null}
+                      onClick={() => updateMoveStatus(recommendation.id, "done")}
+                      className="m-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-800 ring-1 ring-teal-400/40 dark:text-teal-200"
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Skip"
+                      disabled={moveBusy !== null}
+                      onClick={() => updateMoveStatus(recommendation.id, "skipped")}
+                      className="mr-1.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-rose-700 ring-1 ring-rose-400/35 dark:text-rose-200"
+                    >
+                      <SkipForward size={16} />
+                    </button>
+                  </div>
+                </li>
+              ) : null}
               {timelineItems.map((item) => {
                 const status = itemStatus(item, completed, skipped);
                 const expanded = openRow === item.ref;
@@ -417,8 +430,7 @@ export function TodayView({
                             )}
                           </span>
                           <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                            {isMain ? "Main · " : ""}
-                            {itemKind(item)}
+                            {isMain ? "Today" : itemKind(item)}
                             {status === "skipped" ? " · skipped" : ""}
                           </span>
                         </span>
@@ -559,6 +571,25 @@ export function TodayView({
             </ol>
           )}
 
+          {laterItems.length > 0 ? (
+            <>
+              <p className="border-t border-[var(--card-border)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                Later this week
+              </p>
+              <ol>
+                {laterItems.map((item) => (
+                  <li key={item.key} className="flex min-h-11 items-center gap-3 border-t border-[var(--card-border)] px-3">
+                    <span className="w-12 shrink-0 text-[11px] font-semibold text-[var(--muted)]">{item.dayLabel}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--ink-soft)]">
+                      {plainLabel(item.title)}
+                    </span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted)]">{item.time}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : null}
+
           <div className="border-t border-[var(--card-border)] px-3 py-2">
             {addingItem ? (
               <PlannerItemForm
@@ -611,12 +642,6 @@ export function TodayView({
         </section>
       )}
 
-      {openCount > 0 ? (
-        <p className="text-center text-[11px] text-[var(--muted)]">{openCount} still open · tap a row for skip / edit</p>
-      ) : timelineItems.length > 0 ? (
-        <p className="text-center text-[11px] font-semibold text-teal-700 dark:text-teal-300">Day cleared</p>
-      ) : null}
-
       {cashPulse && onOpenOverview ? (
         <button
           type="button"
@@ -638,17 +663,6 @@ export function TodayView({
         </button>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => setShowWeek((open) => !open)}
-        className="flex min-h-11 w-full items-center justify-between rounded-2xl bg-[var(--card-solid)] px-3 text-sm font-semibold text-[var(--ink)] ring-1 ring-[var(--card-border)]"
-      >
-        Week
-        <ChevronDown size={16} className={`text-[var(--muted)] transition-transform ${showWeek ? "rotate-180" : ""}`} />
-      </button>
-      {showWeek ? (
-        <WeekAhead weekPlan={todayOverview?.weekPlan} todayDate={todayDate} onChanged={refreshPlanner} />
-      ) : null}
     </div>
   );
 }

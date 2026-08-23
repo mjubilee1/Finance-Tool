@@ -217,7 +217,7 @@ export function OverviewHome({
               <Flame size={12} />
               Growth
             </p>
-            <p className="mt-1 text-sm font-semibold text-[var(--ink)]">GTM · {gtmDone} done this week</p>
+            <p className="mt-1 text-sm font-semibold text-[var(--ink)]">Outreach · {gtmDone} done this week</p>
           </button>
         ) : null}
         {onOpenGoals ? (
