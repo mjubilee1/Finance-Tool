@@ -11,11 +11,12 @@ import {
   Target,
 } from "lucide-react";
 import { isLifeGoalType } from "@/lib/goal-types";
-import { userNow } from "@/lib/user-timezone";
+import { calendarDateTime, userNow } from "@/lib/user-timezone";
 import {
   buildTimelineItems,
   displayPlannerNotes,
   formatCalendarEventTime,
+  isEntrepreneurshipBlock,
   pickTodayUserBlocks,
   shortTimeLabel,
   timelinePriorityLabel,
@@ -50,11 +51,15 @@ function itemStatus(
   item: TimelineItem,
   completed: Set<string>,
   skipped: Set<string>,
-): "done" | "skipped" | "open" {
+): "done" | "skipped" | "past" | "open" {
   if (item.type === "user") return item.block.status === "planned" ? "open" : item.block.status;
   if (item.type === "plan") {
     if (completed.has(item.block.key)) return "done";
     if (skipped.has(item.block.key)) return "skipped";
+  }
+  if (item.type === "calendar" && !item.event.allDay) {
+    const cutoff = calendarDateTime(item.event.end ?? item.event.start);
+    if (cutoff.isValid && cutoff < userNow()) return "past";
   }
   return "open";
 }
@@ -127,8 +132,15 @@ export function OverviewHome({
   const openItems = timeline.filter((item) => itemStatus(item, completed, skipped) === "open");
   const doneCount = timeline.filter((item) => itemStatus(item, completed, skipped) === "done").length;
   const skippedItems = timeline.filter((item) => itemStatus(item, completed, skipped) === "skipped");
+  const hasOpenBusiness = brief?.userPlanBlocks.some(
+    (block) =>
+      block.status === "planned" &&
+      (block.domain === "startup" || isEntrepreneurshipBlock(block)),
+  );
   const recommendation =
-    brief?.recommendation?.status === "pending" ? brief.recommendation : null;
+    brief?.recommendation?.status === "pending" && !hasOpenBusiness
+      ? brief.recommendation
+      : null;
   const mainItem = recommendation ? null : (openItems[0] ?? null);
   const nextItems = (recommendation ? openItems : openItems.slice(1)).slice(0, 3);
 
