@@ -21,7 +21,7 @@ export async function GET() {
     });
     const [pulse, digest] = await Promise.all([
       buildLifePulse(session.user.id, {
-        query: "today overview money growth entrepreneurship schedule",
+        query: "today priorities goals commitments growth entrepreneurship schedule",
         includeNetwork: false,
         ensureEntrepreneurship: false,
         calendarDaysAhead: 7,

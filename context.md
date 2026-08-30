@@ -1,12 +1,12 @@
 # Product Context
 
-This is a **personal life OS with a CFO core, built for one user (Trell)** — not a multi-tenant product, not a generic SaaS, and not designed for arbitrary sign-ups or shared accounts.
+This is a **personal execution OS with a CFO core, built for one user (Trell)** — not a multi-tenant product, not a generic SaaS, and not designed for arbitrary sign-ups or shared accounts.
 
 ## Purpose
 
-Trell's **default daily app**: open every day, log constantly, get sharper coaching over time.
+Trell's **default daily app**: open every day, see what matters, execute, log progress, and get sharper coaching over time.
 
-Help stay on track with **long-term goals** (money + career + body + network) while staying sharp day to day. Small choices should connect to the bigger picture: micro logging compounds into macro outcomes.
+Help stay on track with **long-term goals** (career + startup + body + relationships + money) by turning them into clear daily action. The daily hierarchy is **life goals → current priorities → today's actions → consistent execution → long-term results**. Money remains fully tracked, but passive balances, debt totals, and spending movement belong in Money rather than dominating Today or Overview.
 
 ## Device: phone first
 
@@ -32,15 +32,16 @@ The app should:
 
 **Today** is one to-do list: today’s items (main thing first), then **Later this week**. Business / Growth items (outreach, discovery) belong on that same list — next 1–2 open dealings, not a 6-item dump. Do not use “GTM” in the UI.
 
-**Overview** is the Life OS home for the whole app — day pulse, growth, body, and cash — not a Money tab. Money screens stay under Money. Week-ahead stays collapsed.
+**Overview** is the execution-first Life OS home — main thing, next actions, commitments, consistency, life priorities, and near-term deadlines. Passive financial metrics stay under Money. Only a financial event that requires action (due, overdue, transfer, deadline, or threshold intervention) may surface on Today or Overview.
 
-1. **Open Today Planner** — what to protect today (body, leverage, joy)
+1. **Open Today Planner** — know the main thing and what to protect today
 2. **One highest-leverage move** — generate once per day; Skip/Done stick. Don't spam regenerate.
-3. **Log as life happens** — gym, outreach, spend, contact notes, screenshots
-4. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
-5. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
-6. **Learning Plan** — drive-time topic mix + content queue; Tech/DMV news digests live here too. Note into Growth if useful; never spawn a new unfinished project from a headline
-7. **Events** — local outings within driving distance (DMV nearby, Baltimore regional, Richmond / Virginia Beach weekend stretch). Curated for network, skills, festivals, body, intentional social — fed to Coach/Growth as background signal; pick at most one high-fit outing that compounds
+3. **Execute in order** — highest-value actions before low-leverage urgency
+4. **Log as life happens** — work, gym, outreach, contact notes, spends, screenshots
+5. **Let the system remember** — Prisma memories / profile / activities feed tomorrow's plan
+6. **Weekly Review** — what compounded, what to stop, what to do more (network, cash, body, career)
+7. **Learning Plan** — drive-time topic mix + content queue; Tech/DMV news digests live here too. Note into Growth if useful; never spawn a new unfinished project from a headline
+8. **Events** — local outings within driving distance (DMV nearby, Baltimore regional, Richmond / Virginia Beach weekend stretch). Curated for network, skills, festivals, body, intentional social — fed to Coach/Growth as background signal; pick at most one high-fit outing that compounds
 
 The more Trell logs, the sharper the coach gets. Empty weeks produce generic advice; dense logs produce "stop ignoring network follow-ups" and real leverage tradeoffs. Skipped moves are remembered so the same promo-one-pager advice doesn't keep coming back when he already has boss guidance.
 

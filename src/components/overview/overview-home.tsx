@@ -126,7 +126,7 @@ type Props = {
   isBriefPending?: boolean;
 };
 
-export function OverviewHome({
+export function FinanceHome({
   aiInsight,
   cashFlow,
   briefUpdatedLabel,
@@ -177,7 +177,7 @@ export function OverviewHome({
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
             {brief ? `${DAY_SHAPE_LABEL[brief.dayShape]} · ${todayLabel}` : todayLabel}
           </p>
-          <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-[var(--ink)]">Overview</h1>
+          <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-[var(--ink)]">Finance</h1>
         </div>
         <span
           className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}

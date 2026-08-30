@@ -29,9 +29,13 @@ const SettingsView = dynamic(
   () => import("./settings/settings-view").then((m) => m.SettingsView),
   { loading: () => <DashboardSkeleton /> },
 );
-/** Non-default tabs load on demand so Coach boots with a smaller JS graph. */
+/** Daily surfaces and secondary tabs load on demand to keep the shell small. */
 const OverviewHome = dynamic(
-  () => import("./overview/overview-home").then((m) => m.OverviewHome),
+  () => import("./overview/execution-overview").then((m) => m.OverviewHome),
+  { loading: () => <DashboardSkeleton /> },
+);
+const FinanceHome = dynamic(
+  () => import("./overview/overview-home").then((m) => m.FinanceHome),
   { loading: () => <DashboardSkeleton /> },
 );
 const TodayView = dynamic(
@@ -259,7 +263,7 @@ export function Dashboard() {
     enabled: status === "authenticated",
   });
 
-  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [activeTab, setActiveTab] = useState<TabType>("today");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -538,7 +542,7 @@ export function Dashboard() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Life OS</h1>
           <p className="text-slate-500 mb-8 leading-relaxed">
-            Connect your banks, get a daily brief, and turn money + life decisions into clear next actions.
+            Keep the main thing clear, execute today&apos;s highest-value actions, and let the system track the results.
           </p>
           <button
             onClick={() => router.push("/login")}
@@ -600,7 +604,7 @@ export function Dashboard() {
             <div className="leading-tight">
               <span className="app-display block text-[1.05rem] text-slate-900">Life OS</span>
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700/80">
-                Money + life
+                Daily execution
               </span>
             </div>
           </div>
@@ -750,18 +754,7 @@ export function Dashboard() {
 
             {!settingsOpen && activeTab === "today" && (
               <TodayView
-                onOpenOverview={() => selectTab("overview")}
-                onOpenGrowth={() => selectTab("growth")}
                 onOpenSettings={openSettings}
-                cashPulse={
-                  cashFlow
-                    ? {
-                        checking: cashFlow.primaryCash ?? null,
-                        remainingToday: cashFlow.today.remainingToday,
-                        dailyAllowance: cashFlow.today.dailyAllowance,
-                      }
-                    : null
-                }
               />
             )}
 
@@ -769,8 +762,27 @@ export function Dashboard() {
             {!settingsOpen && activeTab === 'overview' && (
               isLoading && !data ? (
                 <DashboardSkeleton />
-              ) : cashFlow ? (
+              ) : (
                 <OverviewHome
+                  goals={goals}
+                  financialActions={{
+                    upcomingBills: displayInsight.cfoBrief?.upcomingBills,
+                    spendingWarning: displayInsight.cfoBrief?.spendingWarning,
+                  }}
+                  onOpenToday={() => selectTab('today')}
+                  onOpenGrowth={() => selectTab("growth")}
+                  onOpenGoals={() => selectTab("goals")}
+                  onOpenFinance={() => selectTab("finance")}
+                />
+              )
+            )}
+
+            {/* View: FINANCE */}
+            {!settingsOpen && activeTab === "finance" && (
+              isLoading && !data ? (
+                <DashboardSkeleton />
+              ) : cashFlow ? (
+                <FinanceHome
                   aiInsight={displayInsight}
                   cashFlow={cashFlow}
                   briefUpdatedLabel={briefUpdatedLabel}
@@ -779,16 +791,16 @@ export function Dashboard() {
                   dailySpendSeries={dailySpendSeries}
                   monthlyCashFlowSeries={monthlyCashFlowSeries}
                   monthlyCashFlowByChecking={monthlyCashFlowByChecking}
-                  onOpenChat={() => selectTab('chat')}
-                  onOpenRecurring={() => selectTab('recurring')}
+                  onOpenChat={() => selectTab("chat")}
+                  onOpenRecurring={() => selectTab("recurring")}
                   onOpenToday={() => selectTab("today")}
                   onOpenGrowth={() => selectTab("growth")}
                   onOpenGoals={() => selectTab("goals")}
                   isBriefPending={!aiInsight && transactions.length > 0}
                 />
               ) : (
-                <div className="app-card p-8 text-center text-slate-500 leading-relaxed space-y-4">
-                  <p>Link a bank account and sync transactions to see your daily cash flow.</p>
+                <div className="app-card space-y-4 p-8 text-center leading-relaxed text-slate-500">
+                  <p>Link a bank account and sync transactions to see your financial dashboard.</p>
                   <ConnectBankButton onLinked={handleBankLinked} className="mx-auto" />
                 </div>
               )

@@ -9,10 +9,8 @@ import {
   ChevronUp,
   Plus,
   SkipForward,
-  Wallet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { formatCurrency } from "@/lib/format";
 import { userNow } from "@/lib/user-timezone";
 import {
   DAY_SHAPE_LABEL,
@@ -22,7 +20,7 @@ import {
   displayPlannerNotes,
   formatCalendarEventTime,
   isEntrepreneurshipBlock,
-  parseEntrepreneurshipSlot,
+  pickTodayUserBlocks,
   plannerRequest,
   preserveEntrepreneurshipMarker,
   shortTimeLabel,
@@ -36,17 +34,8 @@ function plainLabel(text: string) {
   return text.replace(/\bGTM\b/gi, "outreach");
 }
 
-type CashPulse = {
-  checking: number | null;
-  remainingToday: number;
-  dailyAllowance: number;
-};
-
 type TodayViewProps = {
-  onOpenOverview?: () => void;
-  onOpenGrowth?: () => void;
   onOpenSettings?: () => void;
-  cashPulse?: CashPulse | null;
 };
 
 function itemStatus(
@@ -86,43 +75,8 @@ function itemKind(item: TimelineItem) {
   return timelinePriorityLabel(item);
 }
 
-const BUSINESS_SLOT_ORDER = [
-  "outreach",
-  "customer_discovery",
-  "prospect_research",
-  "interview_prep",
-  "synthesize",
-  "serious_followup",
-  "market_research",
-  "positioning",
-  "partner_update",
-] as const;
-
-function pickTodayUserBlocks(blocks: TodayOverviewResponse["brief"]["userPlanBlocks"]) {
-  const rest = blocks.filter(
-    (block) => !isEntrepreneurshipBlock(block) && block.domain !== "startup",
-  );
-  const customBusiness = blocks.filter(
-    (block) => block.domain === "startup" && !isEntrepreneurshipBlock(block),
-  );
-  const seeded = blocks
-    .filter((block) => isEntrepreneurshipBlock(block))
-    .sort((a, b) => {
-      const aSlot = parseEntrepreneurshipSlot(a.notes);
-      const bSlot = parseEntrepreneurshipSlot(b.notes);
-      const aIdx = BUSINESS_SLOT_ORDER.indexOf((aSlot ?? "partner_update") as (typeof BUSINESS_SLOT_ORDER)[number]);
-      const bIdx = BUSINESS_SLOT_ORDER.indexOf((bSlot ?? "partner_update") as (typeof BUSINESS_SLOT_ORDER)[number]);
-      return (aIdx < 0 ? 99 : aIdx) - (bIdx < 0 ? 99 : bIdx);
-    });
-  const nextOpen = seeded.filter((block) => block.status === "planned").slice(0, 2);
-  const settled = seeded.filter((block) => block.status !== "planned").slice(0, 2);
-  return [...customBusiness, ...nextOpen, ...settled, ...rest];
-}
-
 export function TodayView({
-  onOpenOverview,
   onOpenSettings,
-  cashPulse,
 }: TodayViewProps) {
   const queryClient = useQueryClient();
   const [expandedRef, setExpandedRef] = useState<string | null>(null);
@@ -743,27 +697,6 @@ export function TodayView({
             </ol>
           ) : null}
         </section>
-      ) : null}
-
-      {cashPulse && onOpenOverview ? (
-        <button
-          type="button"
-          onClick={onOpenOverview}
-          className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl bg-[var(--card-solid)] px-3 ring-1 ring-[var(--card-border)]"
-        >
-          <span className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
-            <Wallet size={16} className="text-[var(--muted)]" />
-            {cashPulse.checking != null ? formatCurrency(cashPulse.checking) : "Money"}
-          </span>
-          <span
-            className={`text-sm font-semibold tabular-nums ${
-              cashPulse.remainingToday < 0 ? "text-rose-500" : "text-[var(--ink-soft)]"
-            }`}
-          >
-            {formatCurrency(Math.max(0, cashPulse.remainingToday))} left
-            <ChevronRight size={16} className="ml-1 inline" />
-          </span>
-        </button>
       ) : null}
 
     </div>
