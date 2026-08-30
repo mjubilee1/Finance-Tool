@@ -23,6 +23,7 @@ type CfoBriefHeadline = {
   status: string | null;
   safeSpendToday: number | null;
   spendingWarning: string | null;
+  upcomingBills: string[];
   todaysMove: string | null;
   systemImpact: string | null;
 };
@@ -111,6 +112,7 @@ function parseMoneyHeadline(summaryJson: string | null): CfoBriefHeadline {
       status: null,
       safeSpendToday: null,
       spendingWarning: null,
+      upcomingBills: [],
       todaysMove: null,
       systemImpact: null,
     };
@@ -127,6 +129,9 @@ function parseMoneyHeadline(summaryJson: string | null): CfoBriefHeadline {
         typeof brief.safeSpendToday === "number" ? brief.safeSpendToday : null,
       spendingWarning:
         typeof brief.spendingWarning === "string" ? brief.spendingWarning : null,
+      upcomingBills: Array.isArray(brief.upcomingBills)
+        ? brief.upcomingBills.filter((item): item is string => typeof item === "string")
+        : [],
       todaysMove: typeof brief.todaysMove === "string" ? brief.todaysMove : null,
       systemImpact:
         typeof brief.systemImpact === "string" ? brief.systemImpact : null,
@@ -136,6 +141,7 @@ function parseMoneyHeadline(summaryJson: string | null): CfoBriefHeadline {
       status: null,
       safeSpendToday: null,
       spendingWarning: null,
+      upcomingBills: [],
       todaysMove: null,
       systemImpact: null,
     };
@@ -528,15 +534,14 @@ export function formatTodayBriefForSpeech(
     }
   }
 
-  lines.push("", "Money quick");
-  if (brief.moneyHeadline.status) {
-    lines.push(`• Status: ${brief.moneyHeadline.status}.`);
-  }
-  if (brief.moneyHeadline.safeSpendToday != null) {
-    lines.push(`• About $${Math.round(brief.moneyHeadline.safeSpendToday)} room for food and fun today.`);
+  if (brief.moneyHeadline.spendingWarning || brief.moneyHeadline.upcomingBills.length > 0) {
+    lines.push("", "Money action");
   }
   if (brief.moneyHeadline.spendingWarning) {
     lines.push(`• ${brief.moneyHeadline.spendingWarning}`);
+  }
+  for (const bill of brief.moneyHeadline.upcomingBills.slice(0, 2)) {
+    lines.push(`• ${bill}`);
   }
 
   lines.push("", "Today's move");

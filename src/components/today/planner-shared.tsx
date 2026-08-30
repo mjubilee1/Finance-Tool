@@ -31,6 +31,7 @@ export type TodayOverviewResponse = {
     moneyHeadline: {
       status: string | null;
       spendingWarning: string | null;
+      upcomingBills: string[];
       todaysMove: string | null;
       systemImpact: string | null;
     };
@@ -145,6 +146,44 @@ export function isEntrepreneurshipBlock(block: { notes?: string | null }) {
 export function parseEntrepreneurshipSlot(notes: string | null | undefined) {
   const match = notes?.match(/entrepreneurship:([a-z_]+)/i);
   return match?.[1] ?? null;
+}
+
+const BUSINESS_SLOT_ORDER = [
+  "outreach",
+  "customer_discovery",
+  "prospect_research",
+  "interview_prep",
+  "synthesize",
+  "serious_followup",
+  "market_research",
+  "positioning",
+  "partner_update",
+] as const;
+
+/** Keep the daily list focused on the next one or two open business moves. */
+export function pickTodayUserBlocks(blocks: TodayOverviewResponse["brief"]["userPlanBlocks"]) {
+  const rest = blocks.filter(
+    (block) => !isEntrepreneurshipBlock(block) && block.domain !== "startup",
+  );
+  const customBusiness = blocks.filter(
+    (block) => block.domain === "startup" && !isEntrepreneurshipBlock(block),
+  );
+  const seeded = blocks
+    .filter((block) => isEntrepreneurshipBlock(block))
+    .sort((a, b) => {
+      const aSlot = parseEntrepreneurshipSlot(a.notes);
+      const bSlot = parseEntrepreneurshipSlot(b.notes);
+      const aIdx = BUSINESS_SLOT_ORDER.indexOf(
+        (aSlot ?? "partner_update") as (typeof BUSINESS_SLOT_ORDER)[number],
+      );
+      const bIdx = BUSINESS_SLOT_ORDER.indexOf(
+        (bSlot ?? "partner_update") as (typeof BUSINESS_SLOT_ORDER)[number],
+      );
+      return (aIdx < 0 ? 99 : aIdx) - (bIdx < 0 ? 99 : bIdx);
+    });
+  const nextOpen = seeded.filter((block) => block.status === "planned").slice(0, 2);
+  const settled = seeded.filter((block) => block.status !== "planned").slice(0, 2);
+  return [...customBusiness, ...nextOpen, ...settled, ...rest];
 }
 
 export function displayPlannerNotes(notes: string | null | undefined) {

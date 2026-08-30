@@ -7,6 +7,7 @@ import {
   Car,
   ChartLine,
   ChevronDown,
+  CircleDollarSign,
   Flame,
   Home,
   LayoutDashboard,
@@ -27,6 +28,7 @@ export type TabType =
   | "chat"
   | "today"
   | "overview"
+  | "finance"
   | "accounts"
   | "transactions"
   | "recurring"
@@ -91,6 +93,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "money",
     label: "Money",
     items: [
+      { tab: "finance", label: "Finance", Icon: CircleDollarSign },
       { tab: "accounts", label: "Accounts", Icon: Wallet },
       { tab: "transactions", label: "Transactions", Icon: Receipt },
       { tab: "recurring", label: "Recurring", Icon: Repeat },
@@ -219,7 +222,7 @@ export function MobileMoreSheet({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--sidebar)] px-4 py-3">
           <div>
             <p className="app-display text-base text-[var(--ink)]">More</p>
-            <p className="text-[11px] text-[var(--muted)]">Life, money, and settings</p>
+            <p className="text-[11px] text-[var(--muted)]">Execution, life, and money</p>
           </div>
           <button
             type="button"
@@ -248,7 +251,7 @@ export function MobileMoreSheet({
             />
             <span>
               <span className="block font-medium">Overview</span>
-              <span className="block text-[11px] text-[var(--muted)]">Life + money home</span>
+              <span className="block text-[11px] text-[var(--muted)]">Priorities + execution</span>
             </span>
           </button>
 

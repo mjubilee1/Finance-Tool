@@ -118,8 +118,7 @@ export function buildTodayPlan(
   const isOffice = shape === "office";
   const gymFit = gymFitFor(shape);
   const gymRoutine = gymRoutineFrom(profile, options.memorySnippets);
-  const cashTight =
-    metrics.financialSignals.safeSpendToday < 20 || metrics.financialSignals.cashAvailable < 1000;
+  void metrics;
   // Highest-leverage move stays on its own card — not a daily standing block.
   void recommendation;
   const recoveryLabel = isWeekend
@@ -137,16 +136,14 @@ export function buildTodayPlan(
   const recoveryWhy = isWeekend
     ? "Live DMV ideas are fine when the week earned it; keep it intentional."
     : isOffice
-      ? "This is not fake daily fun. It is a capped reset only if cash and the workday are handled."
-      : "This is not fake daily fun. It is a capped reset only if cash and training are handled.";
+      ? "This is a capped reset after the workday and critical commitments are handled."
+      : "This is a capped reset after training and critical commitments are handled.";
   const summary =
     shape === "weekend"
-      ? "Weekend: gym/recovery, social, and events when the week earned it."
+      ? "Protect one meaningful move, then make room for body, relationships, and recovery."
       : shape === "office"
-        ? cashTight
-          ? "Office day: 9-5 work locked, protect cash floor (including Capital One car bills)."
-          : "Office day: 9-5 work locked, no gym block Mon-Wed. Add promotion only when you mean to protect it."
-        : "WFH day: gym in a midday flex pocket inside the job day. Promotion stays optional — not a default block.";
+        ? "Office day: protect the highest-leverage move around the locked 9-5."
+        : "WFH day: protect the highest-leverage move and use a real flex pocket for training.";
 
   return {
     dayLabel: now.toFormat("cccc"),
