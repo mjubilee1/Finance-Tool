@@ -10,7 +10,6 @@ import {
   Flame,
   Target,
 } from "lucide-react";
-import { useMemo } from "react";
 import { isLifeGoalType } from "@/lib/goal-types";
 import { userNow } from "@/lib/user-timezone";
 import {
@@ -108,29 +107,22 @@ export function OverviewHome({
   });
 
   const brief = data?.brief;
-  const completed = useMemo(
-    () => new Set(brief?.completedBlockKeys ?? []),
-    [brief?.completedBlockKeys],
-  );
-  const skipped = useMemo(
-    () => new Set(brief?.skippedBlockKeys ?? []),
-    [brief?.skippedBlockKeys],
-  );
-  const timeline = useMemo(() => {
-    if (!brief) return [];
-    return buildTimelineItems(
-      brief.plan.blocks,
-      pickTodayUserBlocks(brief.userPlanBlocks),
-      data?.calendar?.connected ? data.calendar.events : [],
-      brief.dayShape,
-    ).sort((a, b) => {
-      const statusDifference =
-        (itemStatus(a, completed, skipped) === "open" ? 0 : 1) -
-        (itemStatus(b, completed, skipped) === "open" ? 0 : 1);
-      if (statusDifference) return statusDifference;
-      return timelinePriorityRank(a) - timelinePriorityRank(b) || a.sortKey - b.sortKey;
-    });
-  }, [brief, completed, data?.calendar, skipped]);
+  const completed = new Set(brief?.completedBlockKeys ?? []);
+  const skipped = new Set(brief?.skippedBlockKeys ?? []);
+  const timeline = brief
+    ? buildTimelineItems(
+        brief.plan.blocks,
+        pickTodayUserBlocks(brief.userPlanBlocks),
+        data?.calendar?.connected ? data.calendar.events : [],
+        brief.dayShape,
+      ).sort((a, b) => {
+        const statusDifference =
+          (itemStatus(a, completed, skipped) === "open" ? 0 : 1) -
+          (itemStatus(b, completed, skipped) === "open" ? 0 : 1);
+        if (statusDifference) return statusDifference;
+        return timelinePriorityRank(a) - timelinePriorityRank(b) || a.sortKey - b.sortKey;
+      })
+    : [];
 
   const openItems = timeline.filter((item) => itemStatus(item, completed, skipped) === "open");
   const doneCount = timeline.filter((item) => itemStatus(item, completed, skipped) === "done").length;
