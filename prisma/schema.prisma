@@ -94,6 +94,9 @@ model User {
   coachMessages           CoachMessage[]
   financialEvents         FinancialEvent[]
   financialTrendsSettings FinancialTrendsSettings?
+  operatingSystems        OperatingSystem[]
+  operatingSystemUpdates  OperatingSystemUpdate[]
+  growthWins              GrowthWin[]
 }
 
 model PlaidItem {
@@ -470,6 +473,66 @@ model WeeklyGrowthReview {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, weekStart])
+}
+
+/// A durable life system or milestone tracked from instability through scale.
+/// Unlike a task, a system remains visible until its target state is sustained.
+model OperatingSystem {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  domain       String   // career | business | real_estate | network | health | financial | personal
+  status       String   @default("unstable") // unstable | stabilizing | operational | scaling
+  currentState String   @db.Text
+  targetState  String   @db.Text
+  progress     Float    @default(0)
+  nextAction   String?
+  blocker      String?  @db.Text
+  deadline     String?  // YYYY-MM-DD
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history OperatingSystemUpdate[]
+
+  @@index([userId, isArchived, status])
+  @@index([userId, domain])
+}
+
+/// Append-only evidence of how an operating system changed over time.
+model OperatingSystemUpdate {
+  id           String   @id @default(cuid())
+  userId       String
+  systemId     String
+  status       String
+  progress     Float
+  currentState String   @db.Text
+  note         String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  system OperatingSystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([systemId, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Meaningful evidence that progress happened, independent of daily fluctuations.
+model GrowthWin {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // YYYY-MM-DD
+  title     String
+  domain    String
+  impact    String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([userId, domain])
 }
 
 model GrowthOpportunity {
