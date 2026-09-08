@@ -222,7 +222,7 @@ export function MobileMoreSheet({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--card-border)] bg-[var(--sidebar)] px-4 py-3">
           <div>
             <p className="app-display text-base text-[var(--ink)]">More</p>
-            <p className="text-[11px] text-[var(--muted)]">Execution, life, and money</p>
+            <p className="text-[11px] text-[var(--muted)]">Growth, systems, and infrastructure</p>
           </div>
           <button
             type="button"
@@ -251,7 +251,7 @@ export function MobileMoreSheet({
             />
             <span>
               <span className="block font-medium">Overview</span>
-              <span className="block text-[11px] text-[var(--muted)]">Priorities + execution</span>
+                <span className="block text-[11px] text-[var(--muted)]">Position + trajectory + systems</span>
             </span>
           </button>
 

@@ -63,6 +63,7 @@ export type ScorableContact = {
 export type FinancialScoreInput = {
   cashAvailable: number;
   creditDebt: number;
+  /** Legacy context only. Daily purchase variance must not drive system health. */
   recentDailySpendAverage: number;
   /** 0–100 average progress on active money goals (optional). */
   goalProgressPct?: number;
@@ -307,8 +308,8 @@ export function scoreSocialDomain(
 }
 
 /**
- * Financial score on the same honest scale — cash/debt/spend matter,
- * but peak still means years of hardened floor + low leakage, not one good week.
+ * Financial score on the same honest scale.
+ * Reserve strength, debt, and milestone progress matter; daily purchase variance does not.
  */
 export function scoreFinancialDomain(input: FinancialScoreInput) {
   let score = 16;
@@ -325,12 +326,6 @@ export function scoreFinancialDomain(input: FinancialScoreInput) {
   else if (input.creditDebt >= 4000) score -= 9;
   else if (input.creditDebt >= 1500) score -= 4;
   else if (input.creditDebt < 500) score += 6;
-
-  if (input.recentDailySpendAverage > 120) score -= 16;
-  else if (input.recentDailySpendAverage > 80) score -= 11;
-  else if (input.recentDailySpendAverage > 55) score -= 5;
-  else if (input.recentDailySpendAverage <= 40) score += 10;
-  else if (input.recentDailySpendAverage <= 50) score += 5;
 
   if (input.goalProgressPct != null) {
     if (input.goalProgressPct >= 70) score += 6;
