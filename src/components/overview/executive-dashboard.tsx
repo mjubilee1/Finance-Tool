@@ -119,6 +119,12 @@ const STATUS_ORDER: SystemStatus[] = [
   "operational",
   "scaling",
 ];
+const STATUS_PROGRESS_FLOOR: Record<SystemStatus, number> = {
+  unstable: 0,
+  stabilizing: 35,
+  operational: 75,
+  scaling: 100,
+};
 
 const DOMAIN_LABELS: Record<string, string> = {
   career: "Career",
@@ -235,7 +241,8 @@ export function ExecutiveDashboard({ onOpenGrowth, onOpenFinance, onOpenGoals }:
     const currentIndex = STATUS_ORDER.indexOf(system.status);
     if (currentIndex === STATUS_ORDER.length - 1) return;
     const status = STATUS_ORDER[currentIndex + 1];
-    const progressFloor = { stabilizing: 35, operational: 75, scaling: 100 }[status];
+    if (!status) return;
+    const progressFloor = STATUS_PROGRESS_FLOOR[status];
     setBusy(`system:${system.id}`);
     setErrorMessage(null);
     try {

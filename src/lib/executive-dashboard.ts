@@ -42,6 +42,7 @@ export async function getExecutiveDashboard(userId: string) {
     wins,
     snapshots,
     opportunities,
+    openOpportunityCount,
     recommendation,
     recentActivities,
     contacts,
@@ -67,9 +68,10 @@ export async function getExecutiveDashboard(userId: string) {
     }),
     prisma.growthOpportunity.findMany({
       where: { userId, status: "open" },
-      orderBy: [{ urgency: "desc" }, { updatedAt: "desc" }],
-      take: 8,
+      orderBy: { updatedAt: "desc" },
+      take: 30,
     }),
+    prisma.growthOpportunity.count({ where: { userId, status: "open" } }),
     prisma.growthRecommendation.findFirst({
       where: { userId, status: "pending" },
       orderBy: { date: "desc" },
@@ -119,7 +121,26 @@ export async function getExecutiveDashboard(userId: string) {
     .reduce((sum, account) => sum + (account.currentBalance ?? 0), 0);
 
   const latestSnapshot = snapshots.at(-1) ?? null;
-  const baselineSnapshot = snapshots[0] ?? null;
+  const baselineSnapshot = snapshots.length > 1 ? snapshots[0] : null;
+  const statusRank: Record<string, number> = {
+    unstable: 0,
+    stabilizing: 1,
+    operational: 2,
+    scaling: 3,
+  };
+  const sortedSystems = [...systems].sort(
+    (a, b) =>
+      (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99) ||
+      a.progress - b.progress,
+  );
+  const urgencyRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const sortedOpportunities = [...opportunities]
+    .sort(
+      (a, b) =>
+        (urgencyRank[a.urgency] ?? 99) - (urgencyRank[b.urgency] ?? 99) ||
+        b.updatedAt.getTime() - a.updatedAt.getTime(),
+    )
+    .slice(0, 8);
   const trajectory = TRAJECTORY_DOMAINS.map((domain) => {
     const scoreKey = `${domain}Score` as const;
     const current = latestSnapshot?.[scoreKey] ?? null;
@@ -134,10 +155,24 @@ export async function getExecutiveDashboard(userId: string) {
       daysSinceContact: daysSince(contact.lastContactDate),
     }))
     .filter(
-      (contact) =>
-        contact.status === "fading" ||
-        contact.status === "dormant" ||
-        (contact.daysSinceContact != null && contact.daysSinceContact >= 30),
+      (contact) => {
+        const relationshipType = (contact.relationshipType ?? "").toLowerCase();
+        const isIntentionalRelationship = [
+          "peer",
+          "social",
+          "dating",
+          "mentor",
+          "founder",
+          "investor",
+          "colleague",
+        ].includes(relationshipType);
+        return (
+          isIntentionalRelationship &&
+          (contact.status === "fading" ||
+            contact.status === "dormant" ||
+            (contact.daysSinceContact != null && contact.daysSinceContact >= 30))
+        );
+      },
     )
     .sort((a, b) => (b.daysSinceContact ?? 999) - (a.daysSinceContact ?? 999))
     .slice(0, 5);
@@ -154,7 +189,7 @@ export async function getExecutiveDashboard(userId: string) {
           },
         ]
       : []),
-    ...systems
+    ...sortedSystems
       .filter((system) => system.nextAction)
       .sort((a, b) => a.progress - b.progress)
       .map((system) => ({
@@ -164,7 +199,7 @@ export async function getExecutiveDashboard(userId: string) {
         domain: system.domain,
         source: "system" as const,
       })),
-    ...opportunities.map((opportunity) => ({
+    ...sortedOpportunities.map((opportunity) => ({
       id: `opportunity:${opportunity.id}`,
       title: opportunity.title,
       why: opportunity.description,
@@ -193,7 +228,7 @@ export async function getExecutiveDashboard(userId: string) {
         ["operational", "scaling"].includes(system.status),
       ).length,
       systemsTotal: systems.length,
-      openOpportunities: opportunities.length,
+      openOpportunities: openOpportunityCount,
       winsLast30Days: wins.filter((win) => win.date >= thirtyDaysAgo).length,
       activitiesByDomain,
     },
@@ -205,9 +240,9 @@ export async function getExecutiveDashboard(userId: string) {
       netWorthProxy: round(totalCash + investments - creditDebt),
     },
     trajectory,
-    systems,
+    systems: sortedSystems,
     leverageActions,
-    pipeline: opportunities,
+    pipeline: sortedOpportunities,
     relationshipsNeedingAttention,
     wins,
     today,
