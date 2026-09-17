@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import {
   ensureYoutubeDigestScript,
   generateDailyYoutubeDigest,
@@ -12,16 +11,16 @@ import { USER_TIME_ZONE } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const today = DateTime.now().setZone(USER_TIME_ZONE).toISODate()!;
-    let digestRow = await getYoutubeDigestForDate(session.user.id, today);
+    let digestRow = await getYoutubeDigestForDate(user.id, today);
 
     if (!digestRow) {
-      const result = await generateDailyYoutubeDigest(session.user.id);
+      const result = await generateDailyYoutubeDigest(user.id);
       return NextResponse.json({
         digest: result.digest,
         refreshed: result.refreshed,
@@ -30,7 +29,7 @@ export async function GET() {
       });
     }
 
-    digestRow = await ensureYoutubeDigestScript(session.user.id, digestRow);
+    digestRow = await ensureYoutubeDigestScript(user.id, digestRow);
 
     return NextResponse.json({
       digest: serializeYoutubeDigest(digestRow),
@@ -49,14 +48,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => ({}));
     const force = Boolean(body?.force);
-    const result = await generateDailyYoutubeDigest(session.user.id, { force });
+    const result = await generateDailyYoutubeDigest(user.id, { force });
 
     return NextResponse.json({
       digest: result.digest,

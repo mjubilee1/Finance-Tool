@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { parseIsoDate } from "@/lib/home";
 import { getOrCreateHomeProfile } from "@/lib/home-profile";
 import { prisma } from "@/lib/prisma";
@@ -44,12 +43,12 @@ function serializeProfile(profile: Awaited<ReturnType<typeof getOrCreateHomeProf
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const profile = await getOrCreateHomeProfile(session.user.id);
+    const profile = await getOrCreateHomeProfile(user.id);
     return NextResponse.json({ profile: serializeProfile(profile) });
   } catch (error) {
     console.error("Failed to load home profile:", error);
@@ -59,9 +58,9 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -80,7 +79,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Invalid property label." }, { status: 400 });
     }
 
-    await getOrCreateHomeProfile(session.user.id);
+    await getOrCreateHomeProfile(user.id);
 
     const data: {
       mortgageMonthly?: number;
@@ -95,7 +94,7 @@ export async function PATCH(request: Request) {
     if (notes !== undefined) data.notes = notes;
 
     const profile = await prisma.homeProfile.update({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       data,
     });
 

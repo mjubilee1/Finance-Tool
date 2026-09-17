@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { CAR_MAINTENANCE_TYPES, parseIsoDate } from "@/lib/car";
 import { getOrCreateCarProfile } from "@/lib/car-profile";
 import { prisma } from "@/lib/prisma";
@@ -29,14 +28,14 @@ function serializeLog(log: {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const profile = await getOrCreateCarProfile(session.user.id);
+    const profile = await getOrCreateCarProfile(user.id);
     const logs = await prisma.carMaintenanceLog.findMany({
-      where: { userId: session.user.id, carProfileId: profile.id },
+      where: { userId: user.id, carProfileId: profile.id },
       orderBy: [{ serviceDate: "desc" }, { createdAt: "desc" }],
       take: 50,
     });
@@ -50,9 +49,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -88,12 +87,12 @@ export async function POST(request: Request) {
     const notes =
       typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
 
-    const profile = await getOrCreateCarProfile(session.user.id);
+    const profile = await getOrCreateCarProfile(user.id);
     const serviceDate = serviceDateDt.toISODate()!;
 
     const log = await prisma.carMaintenanceLog.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         carProfileId: profile.id,
         serviceType,
         serviceDate,
@@ -123,9 +122,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -135,7 +134,7 @@ export async function DELETE(request: Request) {
     }
 
     const existing = await prisma.carMaintenanceLog.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Log not found." }, { status: 404 });

@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import {
   buildExperimentWeeks,
   computeWeeklyBudget,
@@ -46,12 +45,12 @@ async function loadActiveBundle(userId: string) {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const bundle = await loadActiveBundle(session.user.id);
+    const bundle = await loadActiveBundle(user.id);
     return NextResponse.json(bundle);
   } catch (error) {
     console.error("Failed to load calorie experiment:", error);
@@ -61,9 +60,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -114,13 +113,13 @@ export async function POST(request: Request) {
     const weeklyBudget = computeWeeklyBudget(monWedTarget, thuSunTarget);
 
     await prisma.calorieExperiment.updateMany({
-      where: { userId: session.user.id, status: "active" },
+      where: { userId: user.id, status: "active" },
       data: { status: "abandoned" },
     });
 
     const experiment = await prisma.calorieExperiment.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         name,
         startDate,
         durationWeeks,
@@ -132,7 +131,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const bundle = await loadActiveBundle(session.user.id);
+    const bundle = await loadActiveBundle(user.id);
     return NextResponse.json(
       { ...bundle, experiment: serializeExperiment(experiment) },
       { status: 201 }
@@ -145,14 +144,14 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
     const experiment = await prisma.calorieExperiment.findFirst({
-      where: { userId: session.user.id, status: "active" },
+      where: { userId: user.id, status: "active" },
       orderBy: { createdAt: "desc" },
     });
     if (!experiment) {
@@ -217,7 +216,7 @@ export async function PATCH(request: Request) {
       data,
     });
 
-    const bundle = await loadActiveBundle(session.user.id);
+    const bundle = await loadActiveBundle(user.id);
     return NextResponse.json(bundle);
   } catch (error) {
     console.error("Failed to update calorie experiment:", error);

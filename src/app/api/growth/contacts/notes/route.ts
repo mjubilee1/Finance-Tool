@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   formatContactNotesForAgent,
@@ -11,9 +10,9 @@ import { userToday } from "@/lib/user-timezone";
 /** Append a timestamped note (text and/or screenshots) to a contact. */
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -32,7 +31,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
     const contact = await prisma.growthContact.findFirst({
       where: { id: contactId, userId },
       include: {

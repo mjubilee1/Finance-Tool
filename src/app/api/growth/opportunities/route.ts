@@ -1,17 +1,16 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getGrowthDashboard } from "@/lib/growth-agent";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const data = await getGrowthDashboard(session.user.id);
+    const data = await getGrowthDashboard(user.id);
     return NextResponse.json({
       opportunities: data.opportunities,
       metrics: data.metrics,
@@ -25,9 +24,9 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -37,7 +36,7 @@ export async function PATCH(request: Request) {
     }
 
     const updated = await prisma.growthOpportunity.updateMany({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
       data: { status },
     });
 

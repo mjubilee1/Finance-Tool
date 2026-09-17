@@ -10,8 +10,6 @@ import { getSyncFeedback, postPlaidSync, type SyncFeedbackTone } from "@/lib/syn
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Settings, Wallet } from "lucide-react";
 import dynamic from "next/dynamic";
-import { signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getTabLabel,
@@ -253,14 +251,11 @@ function fetchDashboard() {
 }
 
 export function Dashboard() {
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: session, status } = useSession();
-  
+
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: fetchDashboard,
-    enabled: status === "authenticated",
   });
 
   const [activeTab, setActiveTab] = useState<TabType>("today");
@@ -384,18 +379,18 @@ export function Dashboard() {
   };
 
   useEffect(() => {
-    if (!data || status !== "authenticated") return;
+    if (!data) return;
     if (data.transactions.length > 0 && !data.aiInsight && !briefRefreshTriggered.current) {
       briefRefreshTriggered.current = true;
       fetch("/api/dashboard/refresh-brief", { method: "POST" })
         .then(() => queryClient.invalidateQueries({ queryKey: ["dashboard"] }))
         .catch(() => {});
     }
-  }, [data, status, queryClient]);
+  }, [data, queryClient]);
 
   // Load Balance cooldown / usage meta without triggering a paid refresh.
   useEffect(() => {
-    if (status !== "authenticated" || activeTab !== "accounts") return;
+    if (activeTab !== "accounts") return;
     let cancelled = false;
     fetch("/api/plaid/accounts")
       .then((res) => res.json())
@@ -408,7 +403,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, status]);
+  }, [activeTab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -522,7 +517,7 @@ export function Dashboard() {
     }
   };
 
-  if (status === "loading") {
+  if (isLoading) {
     return (
       <div className="flex h-screen app-page overflow-hidden">
         <aside className="hidden md:flex w-64 bg-white border-r border-slate-200/80 flex-col" />
@@ -533,7 +528,7 @@ export function Dashboard() {
     );
   }
 
-  if (status === "unauthenticated") {
+  if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 app-page">
         <div className="app-card-elevated p-8 max-w-sm w-full text-center">
@@ -542,13 +537,13 @@ export function Dashboard() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Life OS</h1>
           <p className="text-slate-500 mb-8 leading-relaxed">
-            Keep the main thing clear, execute today&apos;s highest-value actions, and let the system track the results.
+            {error instanceof Error ? error.message : "The app could not load."}
           </p>
           <button
-            onClick={() => router.push("/login")}
+            onClick={() => void refetch()}
             className="app-btn-primary px-6 py-3 w-full"
           >
-            Sign in
+            Try again
           </button>
           <AppVersion className="mt-6" />
         </div>
@@ -577,14 +572,7 @@ export function Dashboard() {
         <Settings size={16} />
         Settings
       </button>
-      <div className="flex items-center justify-between px-2">
-        <span className="truncate pr-2 text-sm font-medium text-slate-700">
-          {session?.user?.name || "User"}
-        </span>
-        <button onClick={() => signOut()} className="text-xs text-slate-400 transition hover:text-slate-700">
-          Sign out
-        </button>
-      </div>
+      <p className="px-2 text-center text-sm font-medium text-slate-700">Life OS</p>
       <AppVersion className="mt-2 px-2 text-center" />
     </>
   );
@@ -714,8 +702,6 @@ export function Dashboard() {
           >
             {settingsOpen ? (
               <SettingsView
-                userName={session?.user?.name}
-                userEmail={session?.user?.email}
                 accountsCount={accounts.length}
                 syncStatus={syncStatus}
                 syncFeedback={syncFeedback}
@@ -723,7 +709,6 @@ export function Dashboard() {
                 onSync={() => {
                   void handleSyncTransactions({ bypassCooldown: true });
                 }}
-                onSignOut={() => signOut()}
                 onClose={() => setSettingsOpen(false)}
               />
             ) : null}

@@ -122,12 +122,12 @@ When suggesting breaks, intentional joy, dating/social spots, errands, or recove
 
 ## Authentication
 
-Sign-in is **email + 6-digit code** (passcode sent to email), **not** email + password.
+Life OS runs in **single-user mode without an in-app login or unlock screen**.
 
-- Login flow: enter email → receive code → verify code → session
-- After sign-in, the app may require a passcode unlock (`PasscodeLock`) for sensitive financial data
-- Do **not** build or assume email/password registration flows unless explicitly requested
-- Existing passcode APIs: `/api/auth/passcode/send`, `/api/auth/passcode/verify`
+- The app resolves its owner from `APP_USER_ID` when configured, otherwise from the oldest user record
+- Do not add sign-in, registration, password, or emailed passcode flows unless explicitly requested
+- Bank and calendar credentials remain encrypted and server-side
+- Because there is no app-level access gate, deployment access must be restricted outside the app if privacy is required
 
 ## Accounts & Money Flow
 
@@ -210,6 +210,6 @@ The CFO should treat money as a **tool being hardened and assembled** — not ju
 ## What Not to Assume
 
 - Multi-user auth, admin panels, or "sign up for anyone"
-- Email/password as the primary login method
+- In-app login, password, or emailed passcode flows
 - A single undifferentiated bank account — Chase vs Capital One matters
 - Lyft / Hertz rental income or weekly program fee math (owned car now)

@@ -8,92 +8,51 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// NextAuth Models
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-}
-
 // Core App Models
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  password      String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  name      String?
+  email     String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  accounts                Account[]
-  sessions                Session[]
-  plaidItems              PlaidItem[]
+  plaidItems               PlaidItem[]
   googleCalendarConnection GoogleCalendarConnection?
-  financialAccounts       FinancialAccount[]
-  transactions            Transaction[]
-  recurringPatterns       RecurringPattern[]
-  financialMemories       FinancialMemory[]
-  dailyFinancialSnapshots DailyFinancialSnapshot[]
-  financialGoals          FinancialGoal[]
-  goalContributions       GoalContribution[]
-  plaidApiLogs            PlaidApiLog[]
-  growthActivities        GrowthActivity[]
-  growthContacts          GrowthContact[]
-  growthContactNotes      GrowthContactNote[]
-  growthSnapshots         GrowthSnapshot[]
-  growthRecommendations   GrowthRecommendation[]
-  weeklyGrowthReviews     WeeklyGrowthReview[]
-  growthOpportunities     GrowthOpportunity[]
-  lifeLeverageProfile     LifeLeverageProfile?
-  plannerDayLayouts       PlannerDayLayout[]
-  carProfile              CarProfile?
-  carMaintenanceLogs      CarMaintenanceLog[]
-  homeProfile             HomeProfile?
-  homeTenants             HomeTenant[]
-  homeRentPayments        HomeRentPayment[]
-  homeMaintenanceLogs     HomeMaintenanceLog[]
-  calorieExperiments      CalorieExperiment[]
-  calorieDayLogs          CalorieDayLog[]
-  trendDigests            TrendDigest[]
-  learningPlanSettings    LearningPlanSettings?
-  learningContentItems    LearningContentItem[]
-  learningYoutubeDigests  LearningYoutubeDigest[]
-  learningWatchedVideos   LearningWatchedVideo[]
-  localEventDigests       LocalEventDigest[]
-  coachSessions           CoachSession[]
-  coachMessages           CoachMessage[]
-  financialEvents         FinancialEvent[]
-  financialTrendsSettings FinancialTrendsSettings?
+  financialAccounts        FinancialAccount[]
+  transactions             Transaction[]
+  recurringPatterns        RecurringPattern[]
+  financialMemories        FinancialMemory[]
+  dailyFinancialSnapshots  DailyFinancialSnapshot[]
+  financialGoals           FinancialGoal[]
+  goalContributions        GoalContribution[]
+  plaidApiLogs             PlaidApiLog[]
+  growthActivities         GrowthActivity[]
+  growthContacts           GrowthContact[]
+  growthContactNotes       GrowthContactNote[]
+  growthSnapshots          GrowthSnapshot[]
+  growthRecommendations    GrowthRecommendation[]
+  weeklyGrowthReviews      WeeklyGrowthReview[]
+  growthOpportunities      GrowthOpportunity[]
+  lifeLeverageProfile      LifeLeverageProfile?
+  plannerDayLayouts        PlannerDayLayout[]
+  carProfile               CarProfile?
+  carMaintenanceLogs       CarMaintenanceLog[]
+  homeProfile              HomeProfile?
+  homeTenants              HomeTenant[]
+  homeRentPayments         HomeRentPayment[]
+  homeMaintenanceLogs      HomeMaintenanceLog[]
+  calorieExperiments       CalorieExperiment[]
+  calorieDayLogs           CalorieDayLog[]
+  trendDigests             TrendDigest[]
+  learningPlanSettings     LearningPlanSettings?
+  learningContentItems     LearningContentItem[]
+  learningYoutubeDigests   LearningYoutubeDigest[]
+  learningWatchedVideos    LearningWatchedVideo[]
+  localEventDigests        LocalEventDigest[]
+  coachSessions            CoachSession[]
+  coachMessages            CoachMessage[]
+  financialEvents          FinancialEvent[]
+  financialTrendsSettings  FinancialTrendsSettings?
 }
 
 model PlaidItem {
@@ -157,8 +116,8 @@ model FinancialAccount {
   creditLimit      Float?
   aprPercent       Float?
   minimumPayment   Float?
-  dueDay           Int?     // 1-31 day of month payment is due
-  statementDay     Int?     // 1-31 statement close day
+  dueDay           Int? // 1-31 day of month payment is due
+  statementDay     Int? // 1-31 statement close day
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -166,30 +125,30 @@ model FinancialAccount {
 }
 
 model Transaction {
-  id                          String    @id @default(cuid())
-  userId                      String
-  plaidTransactionId          String    @unique
-  accountId                   String
-  date                        String    // YYYY-MM-DD
-  authorizedDate              String?
-  name                        String
-  merchantName                String?
-  amount                      Float
-  isoCurrencyCode             String?
-  pending                     Boolean   @default(false)
-  categoryPrimary             String?
-  categoryDetailed            String?
-  customCategory              String?
-  paymentChannel              String?
-  isRecurringCandidate        Boolean   @default(false)
-  isTenantPaymentCandidate    Boolean   @default(false)
-  isUtilityCandidate          Boolean   @default(false)
-  isFoodCandidate             Boolean   @default(false)
-  isTransportationCandidate   Boolean   @default(false)
-  isFlagged                   Boolean   @default(false)
-  note                        String?   @db.Text
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  id                        String   @id @default(cuid())
+  userId                    String
+  plaidTransactionId        String   @unique
+  accountId                 String
+  date                      String // YYYY-MM-DD
+  authorizedDate            String?
+  name                      String
+  merchantName              String?
+  amount                    Float
+  isoCurrencyCode           String?
+  pending                   Boolean  @default(false)
+  categoryPrimary           String?
+  categoryDetailed          String?
+  customCategory            String?
+  paymentChannel            String?
+  isRecurringCandidate      Boolean  @default(false)
+  isTenantPaymentCandidate  Boolean  @default(false)
+  isUtilityCandidate        Boolean  @default(false)
+  isFoodCandidate           Boolean  @default(false)
+  isTransportationCandidate Boolean  @default(false)
+  isFlagged                 Boolean  @default(false)
+  note                      String?  @db.Text
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -205,7 +164,7 @@ model RecurringPattern {
   firstSeen             String
   lastSeen              String
   confidenceScore       Float
-  direction             String   // "income" or "expense"
+  direction             String // "income" or "expense"
   exampleTransactionIds String[] // Array of transaction IDs
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -231,7 +190,7 @@ model FinancialMemory {
 model DailyFinancialSnapshot {
   id                  String   @id @default(cuid())
   userId              String
-  date                String   // YYYY-MM-DD
+  date                String // YYYY-MM-DD
   totalSpent          Float
   totalIncome         Float
   foodSpend           Float
@@ -254,9 +213,9 @@ model DailyFinancialSnapshot {
 model FinancialEvent {
   id        String   @id @default(cuid())
   userId    String
-  date      String   // YYYY-MM-DD
+  date      String // YYYY-MM-DD
   title     String
-  category  String   // vehicle | refund | repair | vacation | tax | tenant | maintenance | other
+  category  String // vehicle | refund | repair | vacation | tax | tenant | maintenance | other
   amount    Float?
   note      String?  @db.Text
   createdAt DateTime @default(now())
@@ -280,19 +239,19 @@ model FinancialTrendsSettings {
 }
 
 model FinancialGoal {
-  id            String    @id @default(cuid())
-  userId        String
-  name          String
-  targetAmount  Float
-  currentAmount Float
+  id                  String   @id @default(cuid())
+  userId              String
+  name                String
+  targetAmount        Float
+  currentAmount       Float
   /// Planned recurring contribution (e.g. $15/mo from a canceled sub)
   monthlyContribution Float?
-  targetDate    String?   // YYYY-MM-DD
-  category      String?
-  priority      Int       @default(3) // 1=High, 2=Medium, 3=Low
-  status        String    @default("active") // "active", "completed", "abandoned"
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  targetDate          String? // YYYY-MM-DD
+  category            String?
+  priority            Int      @default(3) // 1=High, 2=Medium, 3=Low
+  status              String   @default("active") // "active", "completed", "abandoned"
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   contributions GoalContribution[]
@@ -381,7 +340,7 @@ model GrowthContact {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   noteEntries GrowthContactNote[]
 
   @@index([userId, status])
@@ -492,22 +451,22 @@ model GrowthOpportunity {
 }
 
 model LifeLeverageProfile {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  promotionTarget       String?
-  promotionDeadline     String?
-  promotionUpsideAnnual Float?
-  currentWeight         Float?
-  targetWeight          Float?
-  fitnessGoal           String?
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  promotionTarget         String?
+  promotionDeadline       String?
+  promotionUpsideAnnual   Float?
+  currentWeight           Float?
+  targetWeight            Float?
+  fitnessGoal             String?
   /// Deprecated — Lyft removed; kept so db push does not drop existing data.
-  lyftHourlyNet         Float?
+  lyftHourlyNet           Float?
   lyftWeeklyProfitTarget  Float?
   lyftMonthlyProfitTarget Float?
-  joyOptions            String[]
-  notes                 String?  @db.Text
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  joyOptions              String[]
+  notes                   String?  @db.Text
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -515,31 +474,31 @@ model LifeLeverageProfile {
 /// Owned-car obligations funded from Capital One (payment + insurance).
 /// Also tracks loan payoff pace, odometer, and health/maintenance context.
 model CarProfile {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
-  paymentMonthly       Float    @default(513)
-  paymentNextDue       String // YYYY-MM-DD
-  insuranceMonthly     Float    @default(352)
-  insuranceNextDue     String // YYYY-MM-DD
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  paymentMonthly      Float    @default(513)
+  paymentNextDue      String // YYYY-MM-DD
+  insuranceMonthly    Float    @default(352)
+  insuranceNextDue    String // YYYY-MM-DD
   /// Original financed amount on the retail installment contract.
-  loanAmount           Float    @default(26436)
+  loanAmount          Float    @default(26436)
   /// Remaining principal (editable as payments land).
-  loanBalance          Float    @default(26436)
+  loanBalance         Float    @default(26436)
   /// Target payoff horizon in months (3.5 years = 42).
-  loanTermMonths       Int      @default(42)
+  loanTermMonths      Int      @default(42)
   /// When the loan / ownership clock started (YYYY-MM-DD).
-  loanStartDate        String   @default("2026-07-01")
+  loanStartDate       String   @default("2026-07-01")
   /// Monthly amount Trell aims to put toward the loan (contract + extras).
-  payoffTargetMonthly  Float    @default(800)
+  payoffTargetMonthly Float    @default(800)
   /// Odometer at ownership / tracking start (lifespan baseline).
-  startOdometerMiles   Float    @default(20323)
+  startOdometerMiles  Float    @default(20323)
   /// Current odometer reading.
-  odometerMiles        Float    @default(20323)
+  odometerMiles       Float    @default(20323)
   /// When the odometer was last confirmed (YYYY-MM-DD).
-  odometerAsOf         String   @default("2026-07-18")
-  notes                String?  @db.Text
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  odometerAsOf        String   @default("2026-07-18")
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   maintenanceLogs CarMaintenanceLog[]
@@ -547,17 +506,17 @@ model CarProfile {
 
 /// Service / neatness logs so the financed car stays healthy through payoff.
 model CarMaintenanceLog {
-  id             String   @id @default(cuid())
-  userId         String
-  carProfileId   String
+  id            String   @id @default(cuid())
+  userId        String
+  carProfileId  String
   /// oil_change | tires | brakes | inspection | fluids | wash | other
-  serviceType    String
-  serviceDate    String // YYYY-MM-DD
-  odometerMiles  Float?
-  cost           Float?
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  serviceType   String
+  serviceDate   String // YYYY-MM-DD
+  odometerMiles Float?
+  cost          Float?
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   carProfile CarProfile @relation(fields: [carProfileId], references: [id], onDelete: Cascade)
@@ -568,16 +527,16 @@ model CarMaintenanceLog {
 
 /// Oxon Hill house-hack: mortgage floor, tenants, rent collected, and repair/issues.
 model HomeProfile {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
+  id              String   @id @default(cuid())
+  userId          String   @unique
   /// Monthly mortgage payment (principal + escrow as paid).
-  mortgageMonthly    Float    @default(2659)
+  mortgageMonthly Float    @default(2659)
   /// Next mortgage due date (YYYY-MM-DD) — typically the 1st.
-  mortgageNextDue    String
-  propertyLabel      String   @default("Oxon Hill row home")
-  notes              String?  @db.Text
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  mortgageNextDue String
+  propertyLabel   String   @default("Oxon Hill row home")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenants         HomeTenant[]
@@ -587,20 +546,20 @@ model HomeProfile {
 
 /// A rented room / unit in the house (upstairs rooms, basement, etc.).
 model HomeTenant {
-  id              String   @id @default(cuid())
-  userId          String
-  homeProfileId   String
+  id            String   @id @default(cuid())
+  userId        String
+  homeProfileId String
   /// Display name (tenant or room nickname).
-  name            String   @default("")
+  name          String   @default("")
   /// e.g. Upstairs room A, Basement
-  unitLabel       String
-  expectedRent    Float
+  unitLabel     String
+  expectedRent  Float
   /// active | moved_out
-  status          String   @default("active")
-  moveInDate      String? // YYYY-MM-DD
-  notes           String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status        String   @default("active")
+  moveInDate    String? // YYYY-MM-DD
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   homeProfile  HomeProfile       @relation(fields: [homeProfileId], references: [id], onDelete: Cascade)
@@ -625,9 +584,9 @@ model HomeRentPayment {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  homeProfile HomeProfile  @relation(fields: [homeProfileId], references: [id], onDelete: Cascade)
-  tenant      HomeTenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeProfile HomeProfile @relation(fields: [homeProfileId], references: [id], onDelete: Cascade)
+  tenant      HomeTenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([userId, paidOn])
   @@index([homeProfileId, paidOn])
@@ -709,22 +668,22 @@ model CalorieDayLog {
 
 /// Daily curated tech/AI signal digest — not a news firehose
 model TrendDigest {
-  id              String   @id @default(cuid())
-  userId          String
-  date            String // YYYY-MM-DD
+  id             String   @id @default(cuid())
+  userId         String
+  date           String // YYYY-MM-DD
   /// Legacy / overall focus (prefer tech when building)
-  mainTitle       String
-  mainWhy         String   @db.Text
-  mainAction      String
-  focusGuardrail  String   @db.Text
-  techMainTitle   String?
-  techMainWhy     String?  @db.Text
-  techMainAction  String?
-  dmvMainTitle    String?
-  dmvMainWhy      String?  @db.Text
-  dmvMainAction   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  mainTitle      String
+  mainWhy        String   @db.Text
+  mainAction     String
+  focusGuardrail String   @db.Text
+  techMainTitle  String?
+  techMainWhy    String?  @db.Text
+  techMainAction String?
+  dmvMainTitle   String?
+  dmvMainWhy     String?  @db.Text
+  dmvMainAction  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items TrendItem[]
@@ -755,25 +714,25 @@ model TrendItem {
 
 /// Drive-time learning mix + weekly hours (one row per user).
 model LearningPlanSettings {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
+  id                  String   @id @default(cuid())
+  userId              String   @unique
   /// Available learning / drive hours this week.
-  weeklyHours          Float    @default(10)
+  weeklyHours         Float    @default(10)
   /// JSON map of category id → percentage (0–100). Must sum to 100 when valid.
-  categoryPercentages  Json
+  categoryPercentages Json
   /// When true, daily YouTube picks are auto-added to the content queue.
-  autoQueueYoutube     Boolean  @default(true)
+  autoQueueYoutube    Boolean  @default(true)
   /// When true, Learning auto-starts the drive queue and keeps going without Next taps.
-  autoStartYoutube     Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  autoStartYoutube    Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// Queued learning content (podcasts, YouTube, articles) for drive time.
 model LearningContentItem {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
   title           String
   url             String
@@ -781,16 +740,16 @@ model LearningContentItem {
   category        String
   durationMinutes Int
   /// high | medium | low
-  priority        String   @default("medium")
+  priority        String    @default("medium")
   /// saved | in_progress | completed | skipped
-  status          String   @default("saved")
+  status          String    @default("saved")
   /// manual | youtube_daily
-  source          String   @default("manual")
+  source          String    @default("manual")
   /// YouTube video id (or other external id) for dedupe.
   externalId      String?
   completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -813,7 +772,7 @@ model LearningYoutubeDigest {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   picks LearningYoutubePick[]
 
   @@unique([userId, date])
@@ -821,21 +780,21 @@ model LearningYoutubeDigest {
 }
 
 model LearningYoutubePick {
-  id               String   @id @default(cuid())
-  digestId         String
-  videoId          String
-  title            String
-  url              String
-  channelLabel     String
-  category         String
-  durationMinutes  Int
-  summary          String?  @db.Text
-  relevanceScore   Float    @default(5)
+  id              String   @id @default(cuid())
+  digestId        String
+  videoId         String
+  title           String
+  url             String
+  channelLabel    String
+  category        String
+  durationMinutes Int
+  summary         String?  @db.Text
+  relevanceScore  Float    @default(5)
   /// suggested | queued | skipped | played
-  status           String   @default("suggested")
-  queuedItemId     String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  status          String   @default("suggested")
+  queuedItemId    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   digest LearningYoutubeDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
 
@@ -888,7 +847,7 @@ model LocalEventItem {
   /// dmv | baltimore | richmond | virginia_beach
   region           String
   /// nearby | regional | stretch
-  distanceTier    String
+  distanceTier     String
   city             String?
   venue            String?
   /// YYYY-MM-DD when known

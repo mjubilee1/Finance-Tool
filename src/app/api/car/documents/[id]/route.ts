@@ -1,7 +1,6 @@
+import { getAppUser } from "@/lib/app-user";
 import { createReadStream } from "fs";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getCarDocument } from "@/lib/car";
 import { resolveCarDocumentFile } from "@/lib/car-documents-path";
 import { Readable } from "stream";
@@ -11,9 +10,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { id } = await context.params;

@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { syncTransactionsForItem } from "@/lib/plaid-sync";
 import {
@@ -16,9 +15,9 @@ type SyncRequestBody = {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     let bypassCooldown = false;
@@ -30,18 +29,18 @@ export async function POST(req: Request) {
     }
 
     // One Item per institution — drops reconnect duplicates from the DB.
-    const cleanup = await dedupePlaidItemsByInstitution(session.user.id);
+    const cleanup = await dedupePlaidItemsByInstitution(user.id);
     if (cleanup.removedInstitutions > 0 || cleanup.removedAccounts > 0) {
       console.log(
-        `[PLAID SYNC] cleaned institutions=${cleanup.removedInstitutions} accounts=${cleanup.removedAccounts} for user ${session.user.id}`,
+        `[PLAID SYNC] cleaned institutions=${cleanup.removedInstitutions} accounts=${cleanup.removedAccounts} for user ${user.id}`,
       );
     }
 
     // Drop doubled spends left from reconnect remaps + re-sync.
-    const txCleanup = await dedupeDuplicateTransactions(session.user.id);
+    const txCleanup = await dedupeDuplicateTransactions(user.id);
 
     const items = await prisma.plaidItem.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
     });
 
     let addedCount = 0;
@@ -65,7 +64,7 @@ export async function POST(req: Request) {
     }
 
     console.log(
-      `[PLAID SYNC] start user=${session.user.id} items=${items.length} bypassCooldown=${bypassCooldown} crypto=${JSON.stringify(getEncryptionDiagnostics())}`,
+      `[PLAID SYNC] start user=${user.id} items=${items.length} bypassCooldown=${bypassCooldown} crypto=${JSON.stringify(getEncryptionDiagnostics())}`,
     );
 
     for (const item of items) {

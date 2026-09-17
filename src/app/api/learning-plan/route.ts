@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import {
   computeCategoryHours,
   computeLearningProgress,
@@ -65,12 +64,12 @@ async function loadBundle(userId: string) {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const bundle = await loadBundle(session.user.id);
+    const bundle = await loadBundle(user.id);
     return NextResponse.json(bundle);
   } catch (error) {
     console.error("Failed to load learning plan:", error);
@@ -80,9 +79,9 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => null);
@@ -91,7 +90,7 @@ export async function PATCH(request: Request) {
     }
 
     const existing = await prisma.learningPlanSettings.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
     });
 
     const data: {
@@ -150,7 +149,7 @@ export async function PATCH(request: Request) {
 
     if (existing) {
       await prisma.learningPlanSettings.update({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         data: {
           ...(data.weeklyHours != null ? { weeklyHours: data.weeklyHours } : {}),
           ...(data.categoryPercentages != null
@@ -167,7 +166,7 @@ export async function PATCH(request: Request) {
     } else {
       await prisma.learningPlanSettings.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           weeklyHours: data.weeklyHours ?? DEFAULT_WEEKLY_HOURS,
           categoryPercentages: data.categoryPercentages ?? DEFAULT_CATEGORY_PERCENTAGES,
           autoQueueYoutube: data.autoQueueYoutube ?? true,
@@ -176,7 +175,7 @@ export async function PATCH(request: Request) {
       });
     }
 
-    const bundle = await loadBundle(session.user.id);
+    const bundle = await loadBundle(user.id);
     return NextResponse.json(bundle);
   } catch (error) {
     console.error("Failed to update learning plan:", error);

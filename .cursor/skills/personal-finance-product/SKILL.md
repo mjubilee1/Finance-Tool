@@ -2,7 +2,7 @@
 name: personal-finance-product
 description: >-
   Guides development of this personal finance tracker for a single user. Covers
-  email+code auth (not password), Chase/Capital One account model, goals/plans,
+  single-user access, Chase/Capital One account model, goals/plans,
   and coaching tone. Use when building features, auth, dashboard, AI coach,
   goals, alerts, spending feedback, or any product behavior in this repo.
 ---
@@ -17,16 +17,13 @@ Full context: [context.md](../../context.md)
 
 Single-user app to improve **long-term financial goals**. Connect daily spending to the bigger picture. Good weeks deserve recognition; drift deserves alerts.
 
-## Auth (critical)
+## Access (critical)
 
-| Correct | Wrong |
-|---------|-------|
-| Email → send 6-digit code → verify → session | Email + password login |
-| `PasscodeLock` after session for sensitive data | Generic signup / multi-user auth |
-
-Relevant code: `src/components/passcode-lock.tsx`, `/api/auth/passcode/*`
-
-When touching login UI or auth, match email+code patterns. Never default to password fields.
+- Life OS has no in-app sign-in, registration, password, or emailed passcode gate.
+- API routes resolve the owner through `src/lib/app-user.ts`.
+- `APP_USER_ID` may select the owner; existing installs fall back to the oldest user.
+- Keep bank and calendar credentials encrypted and server-side.
+- Do not add multi-user access or a login flow unless explicitly requested.
 
 ## Money model
 
@@ -84,7 +81,7 @@ Trell uses this on his **phone ~95% of the time** (mobile browser). Design and v
 
 When adding a feature, ask:
 
-1. Does this assume multi-user or password auth? → Fix scope
+1. Does this add multi-user access or an in-app login? → Fix scope
 2. Does income/account routing match Chase vs Capital One (including car bills)?
 3. Does copy coach toward long-term goals, not just budgets?
 4. Does it celebrate wins or warn on drift when appropriate?

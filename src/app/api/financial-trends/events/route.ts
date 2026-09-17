@@ -1,15 +1,14 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { DateTime } from "luxon";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isFinancialEventCategory } from "@/lib/financial-trends";
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = (await request.json()) as {
@@ -46,7 +45,7 @@ export async function POST(request: Request) {
 
     const event = await prisma.financialEvent.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         date,
         title,
         category,
@@ -64,9 +63,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -76,7 +75,7 @@ export async function DELETE(request: Request) {
     }
 
     const existing = await prisma.financialEvent.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Event not found." }, { status: 404 });
