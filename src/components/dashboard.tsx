@@ -643,11 +643,6 @@ export function Dashboard() {
           )}
 
           <div className="flex items-center gap-2 ml-auto">
-            {error ? (
-              <span className="hidden sm:inline text-xs text-rose-600 max-w-[12rem] truncate">
-                {error instanceof Error ? error.message : "Failed to load"}
-              </span>
-            ) : null}
             <button
               type="button"
               onClick={() => setSettingsOpen((open) => !open)}
