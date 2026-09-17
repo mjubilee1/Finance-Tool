@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 **Read [context.md](context.md) before building features or changing auth.**
 
 - **Single-user personal finance app** — not multi-tenant or public signup
-- **Auth**: email + 6-digit code (passcode), **not** email + password
+- **Access**: single-user mode with no in-app login, registration, or passcode gate
 - **Chase (primary)**: direct-deposit paychecks
 - **Capital One (secondary)**: car payment + insurance; goals/plans bucket
 - **Purpose**: long-term financial goals, weekly wins/alerts, micro→macro awareness

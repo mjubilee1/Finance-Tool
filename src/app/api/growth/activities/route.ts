@@ -1,19 +1,18 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { GROWTH_DOMAINS } from "@/lib/growth-agent";
 import { applyMentionsToActivityText } from "@/lib/growth-calendar-sync";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const activities = await prisma.growthActivity.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: { date: "desc" },
       take: 50,
     });
@@ -27,9 +26,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -53,7 +52,7 @@ export async function POST(request: Request) {
 
     const activity = await prisma.growthActivity.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         date,
         domain,
         category,
@@ -68,7 +67,7 @@ export async function POST(request: Request) {
 
     const mentionText = `${title} ${notes ?? ""}`;
     const linkedPeople = await applyMentionsToActivityText(
-      session.user.id,
+      user.id,
       mentionText,
       date,
       title,
@@ -86,9 +85,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -98,7 +97,7 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.growthActivity.deleteMany({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
 
     return NextResponse.json({ success: true });

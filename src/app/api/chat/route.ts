@@ -1,4 +1,4 @@
-import { authOptions } from "@/lib/auth";
+import { getAppUser } from "@/lib/app-user";
 import { getOrCreateCarProfile } from "@/lib/car-profile";
 import { buildKnownCashScheduleContext } from "@/lib/cfo-agent";
 import { buildHomePropertyContext } from "@/lib/home";
@@ -38,7 +38,6 @@ import {
 } from "@/lib/today-brief";
 import { calendarDateTime, USER_TIME_ZONE, userNow, userToday } from "@/lib/user-timezone";
 import { DateTime } from "luxon";
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import type { ChatCompletion } from "openai/resources/chat/completions";
 
@@ -565,14 +564,14 @@ function toOpenAiMessages(messages: ChatMessage[]): OpenAiChatMessage[] {
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const requestedSessionId = new URL(req.url).searchParams.get("sessionId");
     const sessions = await prisma.coachSession.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
       take: 25,
       include: {
@@ -587,7 +586,7 @@ export async function GET(req: Request) {
 
     const coachSession = requestedSessionId
       ? await prisma.coachSession.findFirst({
-          where: { id: requestedSessionId, userId: session.user.id },
+          where: { id: requestedSessionId, userId: user.id },
         })
       : (sessions[0] ?? null);
 
@@ -610,7 +609,7 @@ export async function GET(req: Request) {
     }
 
     const messages = await prisma.coachMessage.findMany({
-      where: { sessionId: coachSession.id, userId: session.user.id },
+      where: { sessionId: coachSession.id, userId: user.id },
       orderBy: { createdAt: "desc" },
       take: MAX_HISTORY_MESSAGES,
     });
@@ -641,13 +640,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { aiChatDailyLimit } = getCostControlConfig();
-    if (!incrementChatUsage(session.user.id, aiChatDailyLimit)) {
+    if (!incrementChatUsage(user.id, aiChatDailyLimit)) {
       return NextResponse.json(
         { error: "Daily chat limit reached. Please try again tomorrow." },
         { status: 429 },
@@ -665,19 +664,19 @@ export async function POST(req: Request) {
     const requestedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
     let coachSession = requestedSessionId
       ? await prisma.coachSession.findFirst({
-          where: { id: requestedSessionId, userId: session.user.id },
+          where: { id: requestedSessionId, userId: user.id },
         })
       : null;
 
     coachSession ??= await prisma.coachSession.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         title: buildCoachSessionTitle(latestUserMessage),
       },
     });
 
     const persistedContext = await prisma.coachMessage.findMany({
-      where: { sessionId: coachSession.id, userId: session.user.id },
+      where: { sessionId: coachSession.id, userId: user.id },
       orderBy: { createdAt: "desc" },
       take: MAX_CONTEXT_MESSAGES,
     });
@@ -718,28 +717,28 @@ export async function POST(req: Request) {
       localEventDigest,
     ] = await Promise.all([
       prisma.financialAccount.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
       }),
-      loadCoachGoals(session.user.id),
+      loadCoachGoals(user.id),
       prisma.transaction.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         orderBy: { date: "desc" },
         take: 20,
       }),
       prisma.transaction.findMany({
         where: {
-          userId: session.user.id,
+          userId: user.id,
           date: { gte: twoYearsAgo || undefined },
         },
         orderBy: { date: "asc" },
       }),
       prisma.recurringPattern.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         take: 25,
       }),
-      getOrCreateCarProfile(session.user.id),
-      getOrCreateHomeProfile(session.user.id),
-      buildLifePulse(session.user.id, {
+      getOrCreateCarProfile(user.id),
+      getOrCreateHomeProfile(user.id),
+      buildLifePulse(user.id, {
         query: memoryQuery,
         includeNetwork: true,
         ensureEntrepreneurship: true,
@@ -747,22 +746,22 @@ export async function POST(req: Request) {
         calendarDaysAhead: 21,
         memoryLimit: 8,
       }),
-      getLocalEventDigestForDate(session.user.id, todayIso),
+      getLocalEventDigestForDate(user.id, todayIso),
     ]);
 
     const [homeTenants, homeRentPayments, homeOpenIssues] = await Promise.all([
       prisma.homeTenant.findMany({
-        where: { userId: session.user.id, homeProfileId: homeProfile.id },
+        where: { userId: user.id, homeProfileId: homeProfile.id },
         orderBy: [{ status: "asc" }, { unitLabel: "asc" }],
       }),
       prisma.homeRentPayment.findMany({
-        where: { userId: session.user.id, homeProfileId: homeProfile.id },
+        where: { userId: user.id, homeProfileId: homeProfile.id },
         orderBy: { paidOn: "desc" },
         take: 40,
       }),
       prisma.homeMaintenanceLog.count({
         where: {
-          userId: session.user.id,
+          userId: user.id,
           homeProfileId: homeProfile.id,
           status: { not: "resolved" },
         },
@@ -793,7 +792,7 @@ export async function POST(req: Request) {
 
     const systemPrompt = buildCoachSystemPrompt({
       intent: coachIntent,
-      userName: session.user.name ?? null,
+      userName: user.name ?? null,
       lifePulse,
       localEventsPack,
       calendarContext: {
@@ -826,7 +825,7 @@ export async function POST(req: Request) {
               ? Math.round(((a.currentBalance ?? 0) / a.creditLimit) * 1000) / 10
               : null,
         })),
-        goals: (await attachGoalMonthPaid(session.user.id, goals)).map((g) => ({
+        goals: (await attachGoalMonthPaid(user.id, goals)).map((g) => ({
           name: g.name,
           target: g.targetAmount,
           current: g.currentAmount,
@@ -916,7 +915,7 @@ export async function POST(req: Request) {
     }
 
     const savedMemoryTitles = chatResponse.memoriesToStore.length > 0
-      ? await storeFinancialMemories(session.user.id, chatResponse.memoriesToStore, {
+      ? await storeFinancialMemories(user.id, chatResponse.memoriesToStore, {
           source: "Life OS Coach",
           type: "USER_INPUT",
           minImportance: 7,
@@ -925,7 +924,7 @@ export async function POST(req: Request) {
       : [];
 
     const contactNotesResult = await applyCoachContactNotes(
-      session.user.id,
+      user.id,
       chatResponse.contactNotesToStore ?? [],
     );
     const contactNotesSaved = [
@@ -937,7 +936,7 @@ export async function POST(req: Request) {
     let briefRefreshed = false;
     if (savedMemoryTitles.length > 0 && chatResponse.shouldRefreshBrief) {
       try {
-        await ensureFreshDailySnapshot(session.user.id, { force: true });
+        await ensureFreshDailySnapshot(user.id, { force: true });
         briefRefreshed = true;
       } catch (refreshError) {
         console.error("Failed to refresh daily brief after chat memory update:", refreshError);
@@ -956,7 +955,7 @@ export async function POST(req: Request) {
     let todayApplied: string[] = [];
     let refreshedMoveAction: string | null = null;
     if (hasTodayChanges && todayUpdates) {
-      const result = await applyTodayUpdates(session.user.id, todayUpdates, todayBrief);
+      const result = await applyTodayUpdates(user.id, todayUpdates, todayBrief);
       todayApplied = result.applied;
       refreshedMoveAction = result.refreshedMove?.action ?? null;
     }
@@ -976,7 +975,7 @@ export async function POST(req: Request) {
           ];
           const uniqueIds = [...new Set(ids)];
           for (const id of uniqueIds) {
-            await deleteGoogleCalendarEvent(session.user.id, id);
+            await deleteGoogleCalendarEvent(user.id, id);
             calendarEventDeletedIds.push(id);
           }
           calendarEventAction = "delete";
@@ -986,19 +985,19 @@ export async function POST(req: Request) {
             calendarEventError =
               "I need a clear title, date, and start time before I can change that calendar event.";
           } else if (request.action === "update" && request.eventId) {
-            calendarEventUpdated = await updateGoogleCalendarEvent(session.user.id, {
+            calendarEventUpdated = await updateGoogleCalendarEvent(user.id, {
               ...eventInput,
               eventId: request.eventId,
             });
             calendarEventAction = "update";
             for (const duplicateId of request.deleteDuplicateEventIds) {
               if (duplicateId === request.eventId) continue;
-              await deleteGoogleCalendarEvent(session.user.id, duplicateId);
+              await deleteGoogleCalendarEvent(user.id, duplicateId);
               calendarEventDeletedIds.push(duplicateId);
             }
           } else {
             const result = await createOrUpdateGoogleCalendarEvent(
-              session.user.id,
+              user.id,
               eventInput,
               { existingEvents: weekCalendarEvents },
             );
@@ -1013,13 +1012,13 @@ export async function POST(req: Request) {
             }
             for (const duplicateId of request.deleteDuplicateEventIds) {
               if (result.event?.id && duplicateId === result.event.id) continue;
-              await deleteGoogleCalendarEvent(session.user.id, duplicateId);
+              await deleteGoogleCalendarEvent(user.id, duplicateId);
               calendarEventDeletedIds.push(duplicateId);
             }
           }
 
           if (calendarEventCreated || calendarEventUpdated) {
-            await syncCalendarEventsToGrowth(session.user.id, { daysBack: 14 }).catch((syncError) => {
+            await syncCalendarEventsToGrowth(user.id, { daysBack: 14 }).catch((syncError) => {
               console.error("Calendar → Growth sync after write failed:", syncError);
             });
           }
@@ -1079,7 +1078,7 @@ export async function POST(req: Request) {
       prisma.coachMessage.create({
         data: {
           sessionId: coachSession.id,
-          userId: session.user.id,
+          userId: user.id,
           role: "user",
           content: latestUserMessage.content,
           images: latestUserMessage.images ?? [],
@@ -1088,7 +1087,7 @@ export async function POST(req: Request) {
       prisma.coachMessage.create({
         data: {
           sessionId: coachSession.id,
-          userId: session.user.id,
+          userId: user.id,
           role: "assistant",
           content: assistantHistoryMessage,
           spotlightJson: stringifyStoredJson(chatResponse.spotlight),

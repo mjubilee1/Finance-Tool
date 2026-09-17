@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TREND_ITEM_STATUSES, type TrendItemStatus } from "@/lib/trends-shared";
 import { userToday } from "@/lib/user-timezone";
@@ -14,9 +13,9 @@ function themeToDomain(theme: string): "startup" | "career" | "personal" | "fina
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -31,7 +30,7 @@ export async function PATCH(request: Request) {
     }
 
     const item = await prisma.trendItem.findFirst({
-      where: { id, digest: { userId: session.user.id } },
+      where: { id, digest: { userId: user.id } },
       include: { digest: true },
     });
     if (!item) {
@@ -56,7 +55,7 @@ export async function PATCH(request: Request) {
       const today = userToday();
       const activity = await prisma.growthActivity.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           date: today,
           domain: themeToDomain(item.theme),
           category: "learning",

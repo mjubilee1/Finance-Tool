@@ -1,18 +1,17 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { parseIsoDate, serializeLog } from "@/lib/calories";
 import { prisma } from "@/lib/prisma";
 
 export async function PUT(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const experiment = await prisma.calorieExperiment.findFirst({
-      where: { userId: session.user.id, status: "active" },
+      where: { userId: user.id, status: "active" },
       orderBy: { createdAt: "desc" },
     });
     if (!experiment) {
@@ -38,10 +37,10 @@ export async function PUT(request: Request) {
 
     const log = await prisma.calorieDayLog.upsert({
       where: {
-        userId_date: { userId: session.user.id, date },
+        userId_date: { userId: user.id, date },
       },
       create: {
-        userId: session.user.id,
+        userId: user.id,
         experimentId: experiment.id,
         date,
         calories,
@@ -63,9 +62,9 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -78,8 +77,8 @@ export async function DELETE(request: Request) {
 
     const existing = await prisma.calorieDayLog.findFirst({
       where: id
-        ? { id, userId: session.user.id }
-        : { userId: session.user.id, date: date! },
+        ? { id, userId: user.id }
+        : { userId: user.id, date: date! },
     });
     if (!existing) {
       return NextResponse.json({ error: "Log not found." }, { status: 404 });

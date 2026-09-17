@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_EXPECTED_MONTHLY_RENT,
@@ -13,12 +12,12 @@ import { userNow, userToday } from "@/lib/user-timezone";
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
     const { searchParams } = new URL(request.url);
     const monthsParam = Number(searchParams.get("months") ?? "12");
     const months = Number.isFinite(monthsParam)
@@ -133,9 +132,9 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = (await request.json()) as { expectedMonthlyRent?: number };
@@ -145,9 +144,9 @@ export async function PATCH(request: Request) {
     }
 
     const settings = await prisma.financialTrendsSettings.upsert({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       create: {
-        userId: session.user.id,
+        userId: user.id,
         expectedMonthlyRent,
       },
       update: { expectedMonthlyRent },

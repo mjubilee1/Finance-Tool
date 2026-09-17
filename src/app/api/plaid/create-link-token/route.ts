@@ -1,19 +1,18 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { plaidClient, plaidCountryCodes, plaidProducts } from "@/lib/plaid";
 import { withPlaidTracking } from "@/lib/plaid-tracker";
 
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const response = await withPlaidTracking("linkTokenCreate", session.user.id, () => 
+    const response = await withPlaidTracking("linkTokenCreate", user.id, () =>
       plaidClient.linkTokenCreate({
-        user: { client_user_id: session.user.id },
+        user: { client_user_id: user.id },
         client_name: "Daily Financial Coach",
         products: plaidProducts,
         country_codes: plaidCountryCodes,

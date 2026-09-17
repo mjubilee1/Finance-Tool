@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { plaidClient } from "@/lib/plaid";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
@@ -11,9 +10,9 @@ import { retireStaleItemsForInstitution } from "@/lib/plaid-reconnect";
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { public_token, institution } = await request.json();
@@ -22,19 +21,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing public_token" }, { status: 400 });
     }
 
-    const exchange = await withPlaidTracking("itemPublicTokenExchange", session.user.id, () =>
+    const exchange = await withPlaidTracking("itemPublicTokenExchange", user.id, () =>
       plaidClient.itemPublicTokenExchange({ public_token }),
     );
     const { access_token, item_id } = exchange.data;
 
-    const itemResponse = await withPlaidTracking("itemGet", session.user.id, () =>
+    const itemResponse = await withPlaidTracking("itemGet", user.id, () =>
       plaidClient.itemGet({ access_token }),
     );
     const institutionId = itemResponse.data.item.institution_id ?? null;
 
     let institutionName = institution?.name ?? null;
     if (institutionId && !institutionName) {
-      const institutionResponse = await withPlaidTracking("institutionsGetById", session.user.id, () =>
+      const institutionResponse = await withPlaidTracking("institutionsGetById", user.id, () =>
         plaidClient.institutionsGetById({
           institution_id: institutionId,
           country_codes: [CountryCode.Us],
@@ -49,7 +48,7 @@ export async function POST(request: Request) {
         encryptedAccessToken: encrypt(access_token),
         institutionName,
         institutionId,
-        userId: session.user.id,
+        userId: user.id,
         cursor: null,
         status: "active",
       },
@@ -58,19 +57,19 @@ export async function POST(request: Request) {
         encryptedAccessToken: encrypt(access_token),
         institutionName,
         institutionId,
-        userId: session.user.id,
+        userId: user.id,
       },
     });
 
     try {
-      await syncCachedAccountsForItem(saved.id, session.user.id);
+      await syncCachedAccountsForItem(saved.id, user.id);
     } catch (accountErr) {
       console.error("Failed to seed cached accounts after link:", accountErr);
     }
 
     // Re-linking the same bank creates a new Plaid item_id — drop the old one + duplicates.
     const retired = await retireStaleItemsForInstitution({
-      userId: session.user.id,
+      userId: user.id,
       keepPlaidItemId: saved.plaidItemId,
       institutionId,
       institutionName,

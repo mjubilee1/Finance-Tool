@@ -1,14 +1,13 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { queueYoutubePicks, recordLearningVideoWatched } from "@/lib/learning-youtube";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -16,7 +15,7 @@ export async function POST(request: Request) {
       ? body.pickIds.filter((id: unknown): id is string => typeof id === "string")
       : undefined;
 
-    const result = await queueYoutubePicks(session.user.id, pickIds);
+    const result = await queueYoutubePicks(user.id, pickIds);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Failed to queue YouTube picks:", error);
@@ -26,9 +25,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => null);
@@ -42,7 +41,7 @@ export async function PATCH(request: Request) {
     }
 
     const pick = await prisma.learningYoutubePick.findFirst({
-      where: { id, digest: { userId: session.user.id } },
+      where: { id, digest: { userId: user.id } },
     });
     if (!pick) {
       return NextResponse.json({ error: "Pick not found." }, { status: 404 });
@@ -54,7 +53,7 @@ export async function PATCH(request: Request) {
     }
 
     if (status === "played") {
-      await recordLearningVideoWatched(session.user.id, {
+      await recordLearningVideoWatched(user.id, {
         videoId: pick.videoId,
         title: pick.title,
         queueItemId: pick.queuedItemId,

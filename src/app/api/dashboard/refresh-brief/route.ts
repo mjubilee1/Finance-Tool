@@ -1,16 +1,15 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const briefRefresh = await ensureFreshDailySnapshot(session.user.id, { force: false });
+    const briefRefresh = await ensureFreshDailySnapshot(user.id, { force: false });
 
     return NextResponse.json({ success: true, briefRefresh });
   } catch (error) {

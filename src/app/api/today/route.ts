@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getTrendDigestForDate, isTechTrendTheme, serializeTrendDigest } from "@/lib/trends";
 import { cleanupPromotionalProjectBlocks } from "@/lib/cleanup-promotion-blocks";
 import { buildLifePulse } from "@/lib/life-pulse";
@@ -8,26 +7,26 @@ import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const now = userNow();
     const today = now.toISODate()!;
     // Strip leftover auto-injected promotion rails from the DB before building Today.
-    await cleanupPromotionalProjectBlocks(session.user.id).catch((error) => {
+    await cleanupPromotionalProjectBlocks(user.id).catch((error) => {
       console.error("Promotion-block cleanup failed:", error);
     });
     const [pulse, digest] = await Promise.all([
-      buildLifePulse(session.user.id, {
+      buildLifePulse(user.id, {
         query: "today priorities goals commitments growth entrepreneurship schedule",
         includeNetwork: false,
         ensureEntrepreneurship: false,
         calendarDaysAhead: 7,
         memoryLimit: 6,
       }),
-      getTrendDigestForDate(session.user.id, today).catch((error) => {
+      getTrendDigestForDate(user.id, today).catch((error) => {
         console.error("Trend digest failed while loading today overview:", error);
         return null;
       }),
