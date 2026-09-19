@@ -3,12 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { getCostControlConfig } from "@/lib/env";
 import { ensureFreshDailySnapshot } from "@/lib/daily-snapshot";
 import {
+  calculateGrowthMetrics,
   generateHighLeverageRecommendation,
   generateWeeklyGrowthReview,
+  persistGrowthSnapshot,
 } from "@/lib/growth-agent";
+import { maybeSendHeartbeatEmail } from "@/lib/growth-heartbeat";
 import { userWeekday } from "@/lib/user-timezone";
 
-export async function POST(req: Request) {
+export const dynamic = "force-dynamic";
+
+async function runDailyCron(req: Request) {
   const { cronSecret, aiBriefRefreshHours } = getCostControlConfig();
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET is not configured." }, { status: 500 });
@@ -26,6 +31,7 @@ export async function POST(req: Request) {
     let skipped = 0;
     let growthRecommendations = 0;
     let weeklyReviews = 0;
+    let heartbeatEmails = 0;
     const isSunday = userWeekday() === 7;
 
     for (const user of users) {
@@ -40,6 +46,11 @@ export async function POST(req: Request) {
         }
 
         try {
+          const metrics = await calculateGrowthMetrics(user.id);
+          await persistGrowthSnapshot(user.id, metrics);
+          const heartbeat = await maybeSendHeartbeatEmail(metrics);
+          if (heartbeat.sent) heartbeatEmails++;
+
           await generateHighLeverageRecommendation(user.id);
           growthRecommendations++;
           if (isSunday) {
@@ -62,9 +73,18 @@ export async function POST(req: Request) {
       skipped,
       growthRecommendations,
       weeklyReviews,
+      heartbeatEmails,
     });
   } catch (error) {
     console.error("Cron failed:", error);
     return NextResponse.json({ error: "Failed to run cron." }, { status: 500 });
   }
+}
+
+export async function GET(req: Request) {
+  return runDailyCron(req);
+}
+
+export async function POST(req: Request) {
+  return runDailyCron(req);
 }

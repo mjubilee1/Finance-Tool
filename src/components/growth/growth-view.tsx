@@ -12,9 +12,7 @@ import {
   Users,
   AlertTriangle,
   CheckCircle2,
-  ImagePlus,
   X,
-  Search,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -28,11 +26,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
-import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { ActivityTitleInput } from "@/components/growth/activity-title-input";
-import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
-import { MEDIA_IMAGE_ACCEPT } from "@/lib/media-permissions";
-import { MAX_NOTE_IMAGES } from "@/lib/growth-contact-shared";
 import { GOOD_WEEK_CHECKLIST } from "@/lib/life-os-north-star";
 
 type DomainScores = {
@@ -63,6 +57,12 @@ type GrowthDashboard = {
       daysSinceContact: number | null;
       status: string;
     }>;
+    heartbeat?: {
+      daysInactive: number;
+      lastUserTouchDate: string | null;
+      decaying: boolean;
+      scoreMultiplier: number;
+    };
     goalsBehind: Array<{ name: string; progressPct: number; targetDate: string | null }>;
     financialSignals: {
       cashAvailable: number;
@@ -170,20 +170,6 @@ function categoriesForDomain(domain: string) {
   return ACTIVITY_CATEGORIES_BY_DOMAIN.personal;
 }
 
-const CONTACT_TYPE_OPTIONS = [
-  "unlabeled",
-  "family",
-  "peer",
-  "social",
-  "dating",
-  "mentor",
-  "founder",
-  "investor",
-  "colleague",
-  "tenant",
-  "other",
-] as const;
-
 function expandReviewBullets(items: string[], max = 5): string[] {
   const out: string[] = [];
   for (const item of items) {
@@ -257,18 +243,16 @@ function domainChipClass(domain: string): string {
 
 const ACTIVITY_PREVIEW_CHARS = 120;
 
-export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
+export function GrowthView({
+  onOpenTrends,
+  onOpenPeople,
+}: {
+  onOpenTrends?: () => void;
+  onOpenPeople?: () => void;
+}) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [showActivityForm, setShowActivityForm] = useState(false);
-  const [showContactForm, setShowContactForm] = useState(false);
-  const [editingContactId, setEditingContactId] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState("");
-  const [pendingNoteImages, setPendingNoteImages] = useState<string[]>([]);
-  const [noteError, setNoteError] = useState<string | null>(null);
-  const [contactQuery, setContactQuery] = useState("");
-  const [contactTypeFilter, setContactTypeFilter] = useState("all");
-  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [showWeeklyDetails, setShowWeeklyDetails] = useState(false);
   const [showGoodWeekChecklist, setShowGoodWeekChecklist] = useState(false);
   const [showMoreInsights, setShowMoreInsights] = useState(false);
@@ -284,15 +268,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     impactScore: "7",
     notes: "",
     lyftGrossEarnings: "",
-  });
-  const [contactForm, setContactForm] = useState({
-    name: "",
-    relationshipType: "peer",
-    trustLevel: "3",
-    lastContactDate: userNow().toISODate() ?? "",
-    notes: "",
-    suggestedNextAction: "",
-    status: "active",
   });
   const [profileForm, setProfileForm] = useState({
     promotionTarget: "",
@@ -320,38 +295,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
   };
 
   const contacts = useMemo(() => data?.contacts ?? [], [data?.contacts]);
-
-  const contactTypes = useMemo(() => {
-    const types = new Set<string>();
-    for (const c of contacts) {
-      if (c.relationshipType?.trim()) types.add(c.relationshipType.trim().toLowerCase());
-    }
-    return Array.from(types).sort();
-  }, [contacts]);
-
-  const filteredContacts = useMemo(() => {
-    const q = contactQuery.trim().toLowerCase();
-    return contacts
-      .filter((c) => {
-        if (contactTypeFilter !== "all") {
-          const type = (c.relationshipType ?? "contact").toLowerCase();
-          if (type !== contactTypeFilter) return false;
-        }
-        if (!q) return true;
-        const haystack = [
-          c.name,
-          c.relationshipType ?? "",
-          c.status,
-          c.notes ?? "",
-          c.suggestedNextAction ?? "",
-          ...(c.noteEntries ?? []).map((e) => e.body ?? ""),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(q);
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [contacts, contactQuery, contactTypeFilter]);
 
   const openProfileForm = () => {
     const profile = data?.lifeLeverageProfile;
@@ -411,20 +354,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
     invalidate();
   };
 
-  const updateContactType = async (id: string, relationshipType: string) => {
-    setBusy(`contact-type-${id}`);
-    try {
-      const res = await fetch("/api/growth/contacts", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, relationshipType }),
-      });
-      if (res.ok) invalidate();
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const submitActivity = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy("activity");
@@ -452,105 +381,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         method: "DELETE",
       });
       if (res.ok) invalidate();
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const submitContact = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy("contact");
-    try {
-      const res = await fetch("/api/growth/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(contactForm),
-      });
-      if (res.ok) {
-        setShowContactForm(false);
-        setContactForm((prev) => ({ ...prev, name: "", notes: "", suggestedNextAction: "" }));
-        invalidate();
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const openContactNotes = (contact: GrowthDashboard["contacts"][number]) => {
-    setEditingContactId(contact.id);
-    setExpandedContactId(contact.id);
-    setEditingNotes("");
-    setPendingNoteImages([]);
-    setNoteError(null);
-    setShowContactForm(false);
-  };
-
-  const closeContactNotes = () => {
-    setEditingContactId(null);
-    setEditingNotes("");
-    setPendingNoteImages([]);
-    setNoteError(null);
-  };
-
-  const toggleContactExpanded = (contactId: string) => {
-    setExpandedContactId((prev) => {
-      if (prev === contactId) {
-        if (editingContactId === contactId) closeContactNotes();
-        return null;
-      }
-      return contactId;
-    });
-  };
-
-  const pickNoteImages = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setNoteError(null);
-    try {
-      const next = [...pendingNoteImages];
-      for (const file of Array.from(files)) {
-        if (next.length >= MAX_NOTE_IMAGES) {
-          setNoteError(`Up to ${MAX_NOTE_IMAGES} screenshots per note.`);
-          break;
-        }
-        if (!isAcceptedChatImage(file)) {
-          setNoteError("Use a JPG, PNG, WebP, or GIF screenshot.");
-          continue;
-        }
-        next.push(await readImageAsDataUrl(file));
-      }
-      setPendingNoteImages(next);
-    } catch (error) {
-      setNoteError(error instanceof Error ? error.message : "Could not attach screenshot.");
-    }
-  };
-
-  const saveContactNotes = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingContactId) return;
-    if (!editingNotes.trim() && pendingNoteImages.length === 0) {
-      setNoteError("Add some text or a screenshot.");
-      return;
-    }
-    setBusy("contact-notes");
-    setNoteError(null);
-    try {
-      const res = await fetch("/api/growth/contacts/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contactId: editingContactId,
-          body: editingNotes,
-          images: pendingNoteImages,
-        }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        setNoteError(data?.error ?? "Could not save note.");
-        return;
-      }
-      setEditingNotes("");
-      setPendingNoteImages([]);
-      invalidate();
     } finally {
       setBusy(null);
     }
@@ -601,6 +431,15 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onOpenPeople ? (
+            <button
+              type="button"
+              onClick={onOpenPeople}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200/70 hover:bg-slate-50"
+            >
+              People →
+            </button>
+          ) : null}
           {onOpenTrends ? (
             <button
               type="button"
@@ -646,7 +485,11 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
             </div>
           </div>
           <p className="text-xs text-slate-600 text-right leading-snug max-w-[9rem]">
-            {metrics.improving ? "Improving vs recent history" : "Needs attention"}
+            {metrics.heartbeat?.decaying
+              ? `Heartbeat weak · ${metrics.heartbeat.daysInactive}d quiet`
+              : metrics.improving
+                ? "Improving vs recent history"
+                : "Needs attention"}
           </p>
         </div>
       </div>
@@ -659,10 +502,16 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           </div>
           <p className="text-3xl font-bold text-slate-900">{Math.round(metrics.compoundingScore)}</p>
           <p className="text-xs text-slate-600 mt-1">
-            {metrics.improving ? "Improving vs recent history" : "Needs attention"}
+            {metrics.heartbeat?.decaying
+              ? `Heartbeat weak · quiet ${metrics.heartbeat.daysInactive} days`
+              : metrics.improving
+                ? "Improving vs recent history"
+                : "Needs attention"}
           </p>
           <p className="text-[11px] text-slate-500 mt-2 leading-snug">
-            Mastery scale — 100 ≈ years of quality hours, not a strong week.
+            {metrics.heartbeat?.decaying
+              ? "Unused systems decay — log a move or send one follow-up."
+              : "Mastery scale — 100 ≈ years of quality hours, not a strong week."}
           </p>
         </div>
         <div className="app-card p-4 min-w-0">
@@ -685,12 +534,109 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
         </div>
       </div>
 
+      <div className="order-3 grid lg:grid-cols-2 gap-4">
+        <div className="app-card p-4 min-w-0 overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="app-label">Opportunity engine</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Top 3 focused moves — reach out, don’t drown in backlog
+              </p>
+            </div>
+          </div>
+          {opportunities.length === 0 ? (
+            <p className="text-sm text-slate-500">No open opportunities. Log contacts and activities to surface more.</p>
+          ) : (
+            <ul className="space-y-3">
+              {opportunities.map((opp) => (
+                <li key={opp.id} className="border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                  <div className="flex items-start justify-between gap-2 min-w-0">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900 text-sm break-words">{opp.title}</p>
+                      <p className="text-xs text-slate-600 mt-0.5 leading-relaxed break-words">{opp.description}</p>
+                      <p className="text-[11px] text-slate-400 mt-1 capitalize">
+                        {opp.urgency} urgency
+                        {opp.domain ? ` · ${opp.domain}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => dismissOpportunity(opp.id)}
+                      className="text-[11px] text-slate-400 hover:text-slate-700 shrink-0"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="app-card p-4 min-w-0 overflow-hidden">
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Users size={14} className="text-slate-500 shrink-0" />
+              <div className="min-w-0">
+                <p className="app-label">Follow-ups</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  People live in their own tab — easier to add and stay in touch
+                </p>
+              </div>
+            </div>
+            {onOpenPeople ? (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem("life-os-people-add", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  onOpenPeople();
+                }}
+                className="inline-flex min-h-11 shrink-0 items-center gap-1 text-xs font-semibold text-teal-700"
+              >
+                <Plus size={12} /> Add
+              </button>
+            ) : null}
+          </div>
+          {metrics.contactsNeedingAttention.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No stale follow-ups. Open People when you meet someone new.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {metrics.contactsNeedingAttention.slice(0, 5).map((contact) => (
+                <li key={contact.id} className="text-sm text-slate-800">
+                  <span className="font-medium">{contact.name}</span>
+                  <span className="text-xs text-slate-500">
+                    {contact.daysSinceContact != null
+                      ? ` · ${contact.daysSinceContact}d since last contact`
+                      : ` · ${contact.status}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {onOpenPeople ? (
+            <button
+              type="button"
+              onClick={onOpenPeople}
+              className="mt-3 min-h-11 w-full rounded-xl px-3 text-sm font-semibold text-teal-800 ring-1 ring-teal-200/80 hover:bg-teal-50"
+            >
+              Open People
+            </button>
+          ) : null}
+        </div>
+      </div>
+
       <button
         type="button"
         onClick={() => setShowMoreInsights((v) => !v)}
         className="order-7 md:hidden flex items-center justify-between w-full app-card px-4 py-3 text-sm font-semibold text-slate-700"
       >
-        <span>{showMoreInsights ? "Hide charts & contacts" : "Charts, contacts & profile"}</span>
+        <span>{showMoreInsights ? "Hide charts & profile" : "Charts & profile"}</span>
         {showMoreInsights ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
 
@@ -907,418 +853,6 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
           </ul>
         </div>
       ) : null}
-
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="app-card p-4 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="app-label">Opportunity engine</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Top 3 focused moves — reach out, don’t drown in backlog
-              </p>
-            </div>
-          </div>
-          {opportunities.length === 0 ? (
-            <p className="text-sm text-slate-500">No open opportunities. Log contacts and activities to surface more.</p>
-          ) : (
-            <ul className="space-y-3">
-              {opportunities.map((opp) => (
-                <li key={opp.id} className="border-b border-slate-100 last:border-0 pb-3 last:pb-0">
-                  <div className="flex items-start justify-between gap-2 min-w-0">
-                    <div className="min-w-0">
-                      <p className="font-medium text-slate-900 text-sm break-words">{opp.title}</p>
-                      <p className="text-xs text-slate-600 mt-0.5 leading-relaxed break-words">{opp.description}</p>
-                      <p className="text-[11px] text-slate-400 mt-1 capitalize">
-                        {opp.urgency} urgency
-                        {opp.domain ? ` · ${opp.domain}` : ""}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => dismissOpportunity(opp.id)}
-                      className="text-[11px] text-slate-400 hover:text-slate-700 shrink-0"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="app-card p-4 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <Users size={14} className="text-slate-500 shrink-0" />
-              <p className="app-label">Relationships</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowContactForm((v) => !v)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700"
-            >
-              <Plus size={12} /> Add
-            </button>
-          </div>
-          {showContactForm ? (
-            <form onSubmit={submitContact} className="space-y-2 mb-4 p-3 rounded-xl bg-slate-50">
-              <input
-                required
-                className="app-input w-full px-3 py-1.5 text-sm"
-                placeholder="Name"
-                value={contactForm.name}
-                onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-              />
-              <div className="grid grid-cols-2 gap-2 min-w-0">
-                <select
-                  className="app-input w-full min-w-0 px-3 py-1.5 text-sm capitalize"
-                  value={contactForm.relationshipType}
-                  onChange={(e) =>
-                    setContactForm({ ...contactForm, relationshipType: e.target.value })
-                  }
-                  aria-label="Relationship type"
-                >
-                  {CONTACT_TYPE_OPTIONS.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="date"
-                  className="app-input w-full min-w-0 px-3 py-1.5 text-sm"
-                  value={contactForm.lastContactDate}
-                  onChange={(e) =>
-                    setContactForm({ ...contactForm, lastContactDate: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-1.5 min-w-0">
-                <div className="flex items-start gap-2 min-w-0">
-                  <textarea
-                    className="app-input min-w-0 flex-1 px-3 py-2 text-sm min-h-[72px] resize-y"
-                    placeholder="Notes about this person (who they are, last chat, what you owe them…)"
-                    value={contactForm.notes}
-                    onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
-                  />
-                  <VoiceToTextButton
-                    value={contactForm.notes}
-                    onChange={(notes) => setContactForm((prev) => ({ ...prev, notes }))}
-                    disabled={busy === "contact"}
-                    aria-label="Speak contact notes"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Tap the mic, speak, tap again to stop — leave next action blank for now.
-                </p>
-              </div>
-              <button type="submit" disabled={busy === "contact"} className="app-btn-primary px-3 py-1.5 text-xs">
-                Save contact
-              </button>
-            </form>
-          ) : null}
-          {contacts.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Add people so the system can track follow-ups and relationship compounding.
-            </p>
-          ) : (
-            <div className="space-y-2.5">
-              <div className="relative">
-                <Search
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-                <input
-                  type="search"
-                  value={contactQuery}
-                  onChange={(e) => setContactQuery(e.target.value)}
-                  placeholder="Search name, notes, type…"
-                  className="app-input w-full pl-9 pr-3 py-2 text-sm"
-                  aria-label="Search relationships"
-                />
-              </div>
-              {contactTypes.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setContactTypeFilter("all")}
-                    className={`text-[11px] font-semibold rounded-full px-2.5 py-1 ring-1 ${
-                      contactTypeFilter === "all"
-                        ? "bg-teal-600 text-white ring-teal-600"
-                        : "bg-white text-slate-600 ring-slate-200"
-                    }`}
-                  >
-                    All ({contacts.length})
-                  </button>
-                  {contactTypes.map((type) => {
-                    const count = contacts.filter(
-                      (c) => (c.relationshipType ?? "").toLowerCase() === type,
-                    ).length;
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => setContactTypeFilter(type)}
-                        className={`text-[11px] font-semibold rounded-full px-2.5 py-1 ring-1 capitalize ${
-                          contactTypeFilter === type
-                            ? "bg-teal-600 text-white ring-teal-600"
-                            : "bg-white text-slate-600 ring-slate-200"
-                        }`}
-                      >
-                        {type} ({count})
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {filteredContacts.length === 0 ? (
-                <p className="text-sm text-slate-500 py-2">No matches — try another search.</p>
-              ) : (
-                <ul className="space-y-1.5 max-h-[28rem] overflow-y-auto overflow-x-hidden pr-0.5">
-                  {filteredContacts.map((c) => {
-                    const entries = c.noteEntries ?? [];
-                    const hasNotes = entries.length > 0 || Boolean(c.notes?.trim());
-                    const expanded = expandedContactId === c.id;
-                    const latest =
-                      entries[0]?.body?.trim() ||
-                      (c.notes?.trim() ? firstSentence(c.notes, 90) : null);
-                    const noteCount = entries.length > 0 ? entries.length : hasNotes ? 1 : 0;
-
-                    return (
-                      <li
-                        key={c.id}
-                        className="text-sm rounded-xl ring-1 ring-slate-100 min-w-0 overflow-hidden"
-                      >
-                        <div className="flex flex-col gap-2 p-2.5 sm:flex-row sm:items-start">
-                          <button
-                            type="button"
-                            onClick={() => toggleContactExpanded(c.id)}
-                            className="min-w-0 flex-1 text-left"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-medium text-slate-900 truncate">{c.name}</p>
-                              {noteCount > 0 ? (
-                                <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5 shrink-0">
-                                  {noteCount}
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="text-xs text-slate-500 truncate">
-                              {c.status}
-                              {c.lastContactDate ? ` · ${formatActivityDate(c.lastContactDate)}` : ""}
-                              {!latest &&
-                              (c.relationshipType ?? "unlabeled") === "family"
-                                ? " · notes optional"
-                                : !latest
-                                  ? " · no notes yet"
-                                  : ""}
-                            </p>
-                            {!expanded && latest ? (
-                              <p className="text-xs text-slate-600 mt-1 line-clamp-1">{latest}</p>
-                            ) : null}
-                          </button>
-                          <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:shrink-0">
-                            <select
-                              className="app-input text-[11px] font-semibold capitalize px-2 py-1.5 w-full sm:w-auto sm:max-w-[7.5rem]"
-                              value={(c.relationshipType ?? "unlabeled").toLowerCase()}
-                              disabled={busy === `contact-type-${c.id}`}
-                              onChange={(e) => void updateContactType(c.id, e.target.value)}
-                              aria-label={`Label for ${c.name}`}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {CONTACT_TYPE_OPTIONS.map((type) => (
-                                <option key={type} value={type}>
-                                  {type}
-                                </option>
-                              ))}
-                              {!CONTACT_TYPE_OPTIONS.includes(
-                                (c.relationshipType ?? "unlabeled").toLowerCase() as (typeof CONTACT_TYPE_OPTIONS)[number],
-                              ) && c.relationshipType ? (
-                                <option value={c.relationshipType.toLowerCase()}>
-                                  {c.relationshipType}
-                                </option>
-                              ) : null}
-                            </select>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  editingContactId === c.id
-                                    ? closeContactNotes()
-                                    : openContactNotes(c)
-                                }
-                                className="text-xs font-semibold text-teal-700 px-1.5 py-1"
-                              >
-                                {editingContactId === c.id ? "Close" : "Note"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => toggleContactExpanded(c.id)}
-                                className="p-1 text-slate-400 hover:text-slate-700"
-                                aria-label={expanded ? "Collapse" : "Expand"}
-                              >
-                                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {expanded ? (
-                          <div className="px-2.5 pb-2.5 space-y-2 border-t border-slate-100 pt-2">
-                            {entries.length > 0 ? (
-                              <ul className="space-y-2 max-h-40 overflow-y-auto overflow-x-hidden">
-                                {entries.map((entry) => {
-                                  const when = DateTime.fromISO(entry.createdAt).isValid
-                                    ? DateTime.fromISO(entry.createdAt)
-                                    : DateTime.fromJSDate(new Date(entry.createdAt));
-                                  return (
-                                    <li
-                                      key={entry.id}
-                                      className="rounded-lg bg-slate-50/80 px-2.5 py-2 ring-1 ring-slate-100 min-w-0"
-                                    >
-                                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                                        {when.isValid
-                                          ? when.toFormat("LLL d, yyyy · h:mm a")
-                                          : "Saved note"}
-                                      </p>
-                                      {entry.body?.trim() ? (
-                                        <p className="text-xs text-slate-700 mt-1 whitespace-pre-wrap break-words">
-                                          {entry.body}
-                                        </p>
-                                      ) : null}
-                                      {entry.images.length > 0 ? (
-                                        <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                          {entry.images.map((image, imageIndex) => (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                              key={`${entry.id}-${imageIndex}`}
-                                              src={image}
-                                              alt={`Screenshot ${imageIndex + 1}`}
-                                              className="h-16 w-16 rounded-md object-cover ring-1 ring-slate-200"
-                                            />
-                                          ))}
-                                        </div>
-                                      ) : null}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            ) : c.notes ? (
-                              <p className="text-xs text-slate-600 whitespace-pre-wrap break-words">
-                                {c.notes}
-                              </p>
-                            ) : editingContactId !== c.id ? (
-                              <p className="text-xs text-slate-400">
-                                Nothing saved yet — tap Note to add one.
-                              </p>
-                            ) : null}
-
-                            {editingContactId === c.id ? (
-                              <form onSubmit={saveContactNotes} className="space-y-2 min-w-0">
-                                <div className="flex items-start gap-2 min-w-0">
-                                  <textarea
-                                    className="app-input min-w-0 flex-1 px-3 py-2 text-sm min-h-[80px] resize-y"
-                                    placeholder="New note — who they are, last chat, what you learned…"
-                                    value={editingNotes}
-                                    onChange={(e) => setEditingNotes(e.target.value)}
-                                    autoFocus
-                                  />
-                                  <div className="flex flex-col gap-1.5 shrink-0">
-                                    <VoiceToTextButton
-                                      value={editingNotes}
-                                      onChange={setEditingNotes}
-                                      disabled={busy === "contact-notes"}
-                                      aria-label={`Speak notes for ${c.name}`}
-                                    />
-                                    <label
-                                      className={`inline-flex h-10 w-10 items-center justify-center rounded-full ring-1 ring-slate-200 bg-white text-slate-600 cursor-pointer hover:bg-slate-50 ${
-                                        busy === "contact-notes"
-                                          ? "opacity-50 pointer-events-none"
-                                          : ""
-                                      }`}
-                                      title="Attach screenshot"
-                                    >
-                                      <ImagePlus className="h-4 w-4" />
-                                      <input
-                                        type="file"
-                                        accept={MEDIA_IMAGE_ACCEPT}
-                                        multiple
-                                        className="sr-only"
-                                        disabled={busy === "contact-notes"}
-                                        onChange={(e) => {
-                                          void pickNoteImages(e.target.files);
-                                          e.target.value = "";
-                                        }}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                                {pendingNoteImages.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {pendingNoteImages.map((image, index) => (
-                                      <div key={`pending-${index}`} className="relative">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                          src={image}
-                                          alt={`Pending screenshot ${index + 1}`}
-                                          className="h-14 w-14 rounded-md object-cover ring-1 ring-slate-200"
-                                        />
-                                        <button
-                                          type="button"
-                                          className="absolute -top-1.5 -right-1.5 rounded-full bg-slate-800 text-white p-0.5"
-                                          onClick={() =>
-                                            setPendingNoteImages((prev) =>
-                                              prev.filter((_, i) => i !== index),
-                                            )
-                                          }
-                                          aria-label="Remove screenshot"
-                                        >
-                                          <X className="h-3 w-3" />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : null}
-                                {noteError ? (
-                                  <p className="text-[11px] text-rose-600">{noteError}</p>
-                                ) : null}
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <button
-                                    type="submit"
-                                    disabled={busy === "contact-notes"}
-                                    className="app-btn-primary px-3 py-1.5 text-xs"
-                                  >
-                                    {busy === "contact-notes" ? "Saving…" : "Add note"}
-                                  </button>
-                                  <p className="text-[11px] text-slate-500">
-                                    Each save is dated · text or screenshots
-                                  </p>
-                                </div>
-                              </form>
-                            ) : null}
-
-                            {c.suggestedNextAction && editingContactId !== c.id ? (
-                              <p className="text-xs text-teal-700">Next: {c.suggestedNextAction}</p>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-          {metrics.contactsNeedingAttention.length > 0 ? (
-            <p className="text-xs text-amber-700 mt-3">
-              Needs attention: {metrics.contactsNeedingAttention.map((c) => c.name).join(", ")}
-            </p>
-          ) : null}
-        </div>
-      </div>
-      </div>
 
       <div className="order-5 md:order-9 app-card p-4 min-w-0 overflow-hidden">
         <div className="flex items-center justify-between mb-3 gap-2">
@@ -1709,6 +1243,7 @@ export function GrowthView({ onOpenTrends }: { onOpenTrends?: () => void }) {
                 ) : null}
               </div>
         ) : null}
+      </div>
       </div>
     </div>
   );

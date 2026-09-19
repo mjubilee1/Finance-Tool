@@ -17,6 +17,7 @@ import {
   Sun,
   Target,
   TrendingUp,
+  Users,
   Utensils,
   Wallet,
   X,
@@ -40,7 +41,8 @@ export type TabType =
   | "events"
   | "car"
   | "home"
-  | "calories";
+  | "calories"
+  | "people";
 
 export type NavItem = {
   tab: TabType;
@@ -84,6 +86,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: "life",
     label: "Life",
     items: [
+      { tab: "people", label: "People", Icon: Users },
       { tab: "calories", label: "Calories", Icon: Utensils },
       { tab: "learning", label: "Learning", Icon: BookOpen },
       { tab: "events", label: "Events", Icon: CalendarDays },

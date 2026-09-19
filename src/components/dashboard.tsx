@@ -66,6 +66,10 @@ const CaloriesView = dynamic(
   () => import("./calories/calories-view").then((m) => m.CaloriesView),
   { loading: () => <DashboardSkeleton /> },
 );
+const PeopleView = dynamic(
+  () => import("./people/people-view").then((m) => m.PeopleView),
+  { loading: () => <DashboardSkeleton /> },
+);
 const AccountsView = dynamic(
   () => import("./accounts-view").then((m) => m.AccountsView),
   { loading: () => <DashboardSkeleton /> },
@@ -808,7 +812,10 @@ export function Dashboard() {
 
             {/* View: GROWTH */}
             {!settingsOpen && activeTab === "growth" && (
-              <GrowthView onOpenTrends={() => selectTab("learning")} />
+              <GrowthView
+                onOpenTrends={() => selectTab("learning")}
+                onOpenPeople={() => selectTab("people")}
+              />
             )}
 
             {!settingsOpen && activeTab === "learning" && (
@@ -820,6 +827,7 @@ export function Dashboard() {
             {!settingsOpen && activeTab === "car" && <CarView />}
             {!settingsOpen && activeTab === "home" && <HomeView />}
             {!settingsOpen && activeTab === "calories" && <CaloriesView />}
+            {!settingsOpen && activeTab === "people" && <PeopleView />}
 
             {/* View: ACCOUNTS */}
             {!settingsOpen && activeTab === 'accounts' && (

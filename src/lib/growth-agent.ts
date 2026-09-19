@@ -36,6 +36,11 @@ import {
   parseEntrepreneurshipSlot,
 } from "@/lib/entrepreneurship-routine";
 import { loadRelevantMemories } from "@/lib/relevant-memories";
+import {
+  applyHeartbeatToScore,
+  loadHeartbeatState,
+  type HeartbeatState,
+} from "@/lib/growth-heartbeat";
 
 export const GROWTH_DOMAINS = [
   "career",
@@ -68,6 +73,7 @@ export type GrowthMetrics = {
   domainHours: Record<GrowthDomain, { lifetimeHours: number; recentHours: number; masteryPct: number }>;
   leverageMix: { immediateIncome: number; longTermLeverage: number };
   contactsNeedingAttention: Array<{ id: string; name: string; daysSinceContact: number | null; status: string }>;
+  heartbeat: HeartbeatState;
   goalsBehind: Array<{ name: string; progressPct: number; targetDate: string | null }>;
   financialSignals: {
     cashAvailable: number;
@@ -196,30 +202,32 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
   // Mastery depth needs full history — weeks of logs are not years of compounding.
   const masteryHorizon = userNow().minus({ years: 5 }).toISODate()!;
 
-  const [activities, contacts, goals, accounts, transactions, priorSnapshots] = await Promise.all([
-    prisma.growthActivity.findMany({
-      where: { userId, date: { gte: masteryHorizon } },
-      orderBy: { date: "desc" },
-    }),
-    prisma.growthContact.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-      include: { noteEntries: { select: { id: true }, take: 1 } },
-    }),
-    prisma.financialGoal.findMany({
-      where: { userId, status: "active" },
-    }),
-    prisma.financialAccount.findMany({ where: { userId } }),
-    prisma.transaction.findMany({
-      where: { userId, date: { gte: thirtyDaysAgo } },
-      orderBy: { date: "desc" },
-    }),
-    prisma.growthSnapshot.findMany({
-      where: { userId },
-      orderBy: { date: "desc" },
-      take: 8,
-    }),
-  ]);
+  const [activities, contacts, goals, accounts, transactions, priorSnapshots, heartbeat] =
+    await Promise.all([
+      prisma.growthActivity.findMany({
+        where: { userId, date: { gte: masteryHorizon } },
+        orderBy: { date: "desc" },
+      }),
+      prisma.growthContact.findMany({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+        include: { noteEntries: { select: { id: true }, take: 1 } },
+      }),
+      prisma.financialGoal.findMany({
+        where: { userId, status: "active" },
+      }),
+      prisma.financialAccount.findMany({ where: { userId } }),
+      prisma.transaction.findMany({
+        where: { userId, date: { gte: thirtyDaysAgo } },
+        orderBy: { date: "desc" },
+      }),
+      prisma.growthSnapshot.findMany({
+        where: { userId },
+        orderBy: { date: "desc" },
+        take: 8,
+      }),
+      loadHeartbeatState(userId),
+    ]);
 
   const focusAccounts = getFocusAccounts(accounts);
   const spendingTransactions = filterTransactionsForDailySpend(transactions, accounts);
@@ -340,7 +348,8 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     },
   });
 
-  const compoundingScore = combineCompoundingScore(domains);
+  const rawCompoundingScore = combineCompoundingScore(domains);
+  const compoundingScore = applyHeartbeatToScore(rawCompoundingScore, heartbeat.daysInactive);
   const domainHours = domainHoursSummary(completedActivities, today);
 
   const bottlenecks: string[] = [];
@@ -359,6 +368,13 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
         `${domain} compounding is early (score ${Math.round(score)}${hoursHint})`,
       );
     }
+  }
+  if (heartbeat.decaying) {
+    bottlenecks.unshift(
+      heartbeat.daysInactive >= 7
+        ? `Heartbeat failed — Life OS quiet for ${heartbeat.daysInactive} days (score cut like a paused project)`
+        : `Heartbeat weakening — ${heartbeat.daysInactive} days without an update`,
+    );
   }
   if (contactsNeedingAttention.length >= 1) {
     bottlenecks.push(
@@ -403,6 +419,7 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
     domainHours,
     leverageMix: { immediateIncome, longTermLeverage },
     contactsNeedingAttention,
+    heartbeat,
     goalsBehind,
     financialSignals: {
       cashAvailable: brief.cashAvailable,
