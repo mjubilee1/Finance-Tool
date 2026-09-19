@@ -56,6 +56,7 @@ type GrowthDashboard = {
       name: string;
       daysSinceContact: number | null;
       status: string;
+      relationshipType?: string | null;
     }>;
     heartbeat?: {
       daysInactive: number;
@@ -606,13 +607,14 @@ export function GrowthView({
               No stale follow-ups. Open People when you meet someone new.
             </p>
           ) : (
-            <ul className="space-y-2">
-              {metrics.contactsNeedingAttention.slice(0, 5).map((contact) => (
+            <ul className="max-h-56 space-y-2 overflow-y-auto">
+              {metrics.contactsNeedingAttention.map((contact) => (
                 <li key={contact.id} className="text-sm text-slate-800">
                   <span className="font-medium">{contact.name}</span>
                   <span className="text-xs text-slate-500">
+                    {contact.relationshipType ? ` · ${contact.relationshipType}` : ""}
                     {contact.daysSinceContact != null
-                      ? ` · ${contact.daysSinceContact}d since last contact`
+                      ? ` · ${contact.daysSinceContact}d`
                       : ` · ${contact.status}`}
                   </span>
                 </li>
@@ -625,7 +627,7 @@ export function GrowthView({
               onClick={onOpenPeople}
               className="mt-3 min-h-11 w-full rounded-xl px-3 text-sm font-semibold text-teal-800 ring-1 ring-teal-200/80 hover:bg-teal-50"
             >
-              Open People
+              Decide in People
             </button>
           ) : null}
         </div>

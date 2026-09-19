@@ -72,7 +72,13 @@ export type GrowthMetrics = {
   /** Quality-weighted hours toward mastery (10k hrs ≈ 100 in skill domains). */
   domainHours: Record<GrowthDomain, { lifetimeHours: number; recentHours: number; masteryPct: number }>;
   leverageMix: { immediateIncome: number; longTermLeverage: number };
-  contactsNeedingAttention: Array<{ id: string; name: string; daysSinceContact: number | null; status: string }>;
+  contactsNeedingAttention: Array<{
+    id: string;
+    name: string;
+    daysSinceContact: number | null;
+    status: string;
+    relationshipType: string | null;
+  }>;
   heartbeat: HeartbeatState;
   goalsBehind: Array<{ name: string; progressPct: number; targetDate: string | null }>;
   financialSignals: {
@@ -280,19 +286,20 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
         "colleague",
       ].includes(type);
       const overdue = days !== null && days >= 21;
-      const fadingStatus = c.status === "fading" || c.status === "dormant";
-      const needsAttention = fadingStatus || (leverageType && overdue);
+      const fading = c.status === "fading";
+      // dormant = you already decided not to chase this person
+      const needsAttention = c.status !== "dormant" && (fading || (leverageType && overdue));
       return needsAttention
         ? {
             id: c.id,
             name: c.name,
             daysSinceContact: days,
             status: c.status,
+            relationshipType: c.relationshipType,
           }
         : null;
     })
-    .filter((c): c is NonNullable<typeof c> => Boolean(c))
-    .slice(0, 8);
+    .filter((c): c is NonNullable<typeof c> => Boolean(c));
 
   // Match Goals tab: use full checking/depository cash, not primary-only focus cash.
   const goalFunding = calculateGoalFunding({

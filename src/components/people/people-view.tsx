@@ -5,10 +5,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { userNow } from "@/lib/user-timezone";
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   ImagePlus,
   Loader2,
+  Minus,
   Plus,
   Search,
   Users,
@@ -53,6 +55,28 @@ const LEVERAGE_TYPES = new Set([
   "investor",
   "colleague",
 ]);
+
+const ROLE_ORDER = [
+  "founder",
+  "investor",
+  "mentor",
+  "colleague",
+  "peer",
+  "dating",
+  "social",
+  "tenant",
+  "family",
+  "other",
+  "unlabeled",
+] as const;
+
+function latestSnippet(contact: Person): string | null {
+  const entries = contact.noteEntries ?? [];
+  return (
+    entries[0]?.body?.trim() ||
+    (contact.notes?.trim() ? firstSentence(contact.notes, 90) : null)
+  );
+}
 
 function firstSentence(text: string | null | undefined, max = 140): string | null {
   if (!text?.trim()) return null;
@@ -133,13 +157,35 @@ export function PeopleView() {
   }, [contacts]);
 
   const needsAttention = useMemo(() => {
-    return contacts.filter((contact) => {
-      const type = (contact.relationshipType ?? "").toLowerCase();
-      const days = daysSince(contact.lastContactDate);
-      const fading = contact.status === "fading" || contact.status === "dormant";
-      return fading || (LEVERAGE_TYPES.has(type) && days !== null && days >= 21);
-    });
+    return contacts
+      .filter((contact) => {
+        if (contact.status === "dormant") return false;
+        const type = (contact.relationshipType ?? "").toLowerCase();
+        const days = daysSince(contact.lastContactDate);
+        const fading = contact.status === "fading";
+        return fading || (LEVERAGE_TYPES.has(type) && days !== null && days >= 21);
+      })
+      .sort((a, b) => (daysSince(b.lastContactDate) ?? 0) - (daysSince(a.lastContactDate) ?? 0));
   }, [contacts]);
+
+  const attentionByRole = useMemo(() => {
+    const groups = new Map<string, Person[]>();
+    for (const contact of needsAttention) {
+      const role = (contact.relationshipType ?? "unlabeled").toLowerCase();
+      const list = groups.get(role) ?? [];
+      list.push(contact);
+      groups.set(role, list);
+    }
+    const known = ROLE_ORDER.filter((role) => groups.has(role)).map((role) => ({
+      role,
+      people: groups.get(role)!,
+    }));
+    const extra = Array.from(groups.keys())
+      .filter((role) => !(ROLE_ORDER as readonly string[]).includes(role))
+      .sort()
+      .map((role) => ({ role, people: groups.get(role)! }));
+    return [...known, ...extra];
+  }, [needsAttention]);
 
   const filteredContacts = useMemo(() => {
     const q = contactQuery.trim().toLowerCase();
@@ -178,6 +224,31 @@ export function PeopleView() {
       setBusy(null);
     }
   };
+
+  const patchContact = async (id: string, body: Record<string, string>, busyKey: string) => {
+    setBusy(busyKey);
+    try {
+      const res = await fetch("/api/growth/contacts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...body }),
+      });
+      if (res.ok) invalidate();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const markReachedOut = (id: string) =>
+    patchContact(
+      id,
+      { lastContactDate: userNow().toISODate() ?? "", status: "active" },
+      `reach-${id}`,
+    );
+
+  const skipFollowUp = (id: string) => patchContact(id, { status: "dormant" }, `skip-${id}`);
+
+  const chaseAgain = (id: string) => patchContact(id, { status: "active" }, `chase-${id}`);
 
   const submitContact = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -380,15 +451,93 @@ export function PeopleView() {
       ) : null}
 
       {needsAttention.length > 0 ? (
-        <div className="app-card p-4 ring-1 ring-amber-200/70">
-          <p className="app-label text-amber-800">Needs a touch</p>
-          <p className="mt-1 text-sm leading-relaxed text-slate-700">
-            {needsAttention
-              .slice(0, 6)
-              .map((contact) => contact.name)
-              .join(", ")}
-            {needsAttention.length > 6 ? ` +${needsAttention.length - 6} more` : ""}
-          </p>
+        <div className="app-card space-y-4 p-4 ring-1 ring-amber-200/70">
+          <div>
+            <p className="app-label text-amber-800">Needs a decision · {needsAttention.length}</p>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              Different people play different roles. Decide per person — reach out, or take them off this chase list.
+            </p>
+          </div>
+          <div className="space-y-4">
+            {attentionByRole.map(({ role, people }) => (
+              <div key={role} className="space-y-2">
+                <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                  {role} · {people.length}
+                </p>
+                <ul className="space-y-2">
+                  {people.map((contact) => {
+                    const days = daysSince(contact.lastContactDate);
+                    const snippet = latestSnippet(contact);
+                    const reaching = busy === `reach-${contact.id}`;
+                    const skipping = busy === `skip-${contact.id}`;
+                    return (
+                      <li
+                        key={contact.id}
+                        className="rounded-xl bg-[color-mix(in_srgb,var(--card-solid)_92%,transparent)] p-3 ring-1 ring-slate-100"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleContactExpanded(contact.id)}
+                          className="min-h-11 w-full text-left"
+                        >
+                          <p className="font-semibold text-slate-900">{contact.name}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {days != null ? `${days} days since last contact` : "No last-contact date"}
+                          </p>
+                          {snippet ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-slate-600">{snippet}</p>
+                          ) : (
+                            <p className="mt-1 text-xs text-slate-400">No notes yet — open to remember who they are</p>
+                          )}
+                        </button>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <select
+                            className="app-input min-h-11 min-w-0 flex-1 px-2 py-2 text-[11px] font-semibold capitalize sm:max-w-[8.5rem]"
+                            value={(contact.relationshipType ?? "unlabeled").toLowerCase()}
+                            disabled={busy === `contact-type-${contact.id}`}
+                            onChange={(event) => void updateContactType(contact.id, event.target.value)}
+                            aria-label={`Role for ${contact.name}`}
+                          >
+                            {CONTACT_TYPE_OPTIONS.map((type) => (
+                              <option key={type} value={type}>
+                                {type}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => openContactNotes(contact)}
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-xs font-semibold text-teal-700 ring-1 ring-teal-200/80"
+                          >
+                            Note
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void markReachedOut(contact.id)}
+                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl bg-teal-600 px-3 text-xs font-semibold text-white disabled:opacity-60 sm:flex-none"
+                          >
+                            {reaching ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                            Reached out
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void skipFollowUp(contact.id)}
+                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl px-3 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 disabled:opacity-60 sm:flex-none"
+                          >
+                            {skipping ? <Loader2 size={14} className="animate-spin" /> : <Minus size={14} />}
+                            Not a follow-up
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -525,6 +674,16 @@ export function PeopleView() {
                             ) : null}
                           </select>
                           <div className="flex shrink-0 items-center gap-1">
+                            {contact.status === "dormant" ? (
+                              <button
+                                type="button"
+                                disabled={busy !== null}
+                                onClick={() => void chaseAgain(contact.id)}
+                                className="min-h-11 px-1.5 text-xs font-semibold text-amber-800"
+                              >
+                                {busy === `chase-${contact.id}` ? "…" : "Follow again"}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() =>
