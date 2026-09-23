@@ -202,9 +202,20 @@ function contactCreatedIso(createdAt: Date | string) {
 }
 
 function isLeverageRelationship(type: string) {
-  return ["peer", "social", "dating", "mentor", "founder", "investor", "colleague"].includes(
-    type,
-  );
+  return [
+    "founder",
+    "operator_buyer",
+    "investor",
+    "tech_peer",
+    "connector",
+    "media_events",
+    "candidate",
+    "dating",
+    "peer",
+    "mentor",
+    "colleague",
+    "social",
+  ].includes(type);
 }
 
 function isFamilyOrUnlabeled(type: string) {
@@ -245,7 +256,7 @@ export function contactRelationshipYears(contact: ScorableContact, asOfDate: str
   // Takes years to build — neglect collapses equity fast
   if (status === "dormant") {
     equity *= 0.05;
-  } else if (status === "fading") {
+  } else if (status === "fading" || status === "quiet") {
     equity *= 0.22;
   } else if (daysSince === null) {
     // Never logged a touch — tiny residual if notes exist, else nothing
@@ -293,7 +304,12 @@ export function scoreSocialDomain(
     if (!isLeverageRelationship(type)) return false;
     const days = daysBetween(c.lastContactDate, asOfDate);
     const status = (c.status ?? "").toLowerCase();
-    return status === "fading" || status === "dormant" || (days !== null && days >= 21);
+    return (
+      status === "fading" ||
+      status === "quiet" ||
+      status === "dormant" ||
+      (days !== null && days >= 21)
+    );
   }).length;
   score -= Math.min(18, neglectedLeverage * 3.5);
 

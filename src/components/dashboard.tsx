@@ -759,6 +759,7 @@ export function Dashboard() {
             {!settingsOpen && activeTab === "today" && (
               <TodayView
                 onOpenSettings={openSettings}
+                onOpenPeople={() => selectTab("people")}
               />
             )}
 

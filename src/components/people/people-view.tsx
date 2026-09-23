@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import { userNow } from "@/lib/user-timezone";
@@ -20,9 +20,16 @@ import { VoiceToTextButton } from "@/components/voice-to-text-button";
 import { isAcceptedChatImage, readImageAsDataUrl } from "@/lib/chat-images";
 import { MEDIA_IMAGE_ACCEPT } from "@/lib/media-permissions";
 import {
+  CONTACT_STATUS_OPTIONS,
   CONTACT_TYPE_OPTIONS,
   MAX_NOTE_IMAGES,
+  contactStatusLabel,
+  contactTypeLabel,
+  isBuilderContactType,
+  normalizeContactStatus,
+  normalizeContactType,
 } from "@/lib/growth-contact-shared";
+import { buildWeeklyPeopleLists } from "@/lib/people-lists";
 
 type ContactNote = {
   id: string;
@@ -39,36 +46,15 @@ type Person = {
   status: string;
   notes: string | null;
   suggestedNextAction: string | null;
+  nextActionDate?: string | null;
+  mutualValue?: string | null;
+  asksOffers?: string | null;
   noteEntries?: ContactNote[];
 };
 
 type ContactsResponse = {
   contacts: Person[];
 };
-
-const LEVERAGE_TYPES = new Set([
-  "peer",
-  "social",
-  "dating",
-  "mentor",
-  "founder",
-  "investor",
-  "colleague",
-]);
-
-const ROLE_ORDER = [
-  "founder",
-  "investor",
-  "mentor",
-  "colleague",
-  "peer",
-  "dating",
-  "social",
-  "tenant",
-  "family",
-  "other",
-  "unlabeled",
-] as const;
 
 function latestSnippet(contact: Person): string | null {
   const entries = contact.noteEntries ?? [];
@@ -101,6 +87,136 @@ function daysSince(iso: string | null): number | null {
   return Math.floor(b.diff(a.startOf("day"), "days").days);
 }
 
+function WeeklyPeopleSection({
+  title,
+  hint,
+  people,
+  empty,
+  busy,
+  onOpen,
+  onNote,
+  onReachedOut,
+  onSkip,
+  onRelabel,
+}: {
+  title: string;
+  hint: string;
+  people: Person[];
+  empty: string;
+  busy: string | null;
+  onOpen: (id: string) => void;
+  onNote: (contact: Person) => void;
+  onReachedOut: (id: string) => void;
+  onSkip: (id: string) => void;
+  onRelabel: (id: string, type: string) => void;
+}) {
+  return (
+    <div className="app-card space-y-3 p-4">
+      <div>
+        <p className="app-label">
+          {title} · {people.length}
+        </p>
+        <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>
+      </div>
+      {people.length === 0 ? (
+        <p className="text-sm text-slate-500">{empty}</p>
+      ) : (
+        <ul className="space-y-2">
+          {people.map((contact) => {
+            const days = daysSince(contact.lastContactDate);
+            const snippet =
+              contact.asksOffers?.trim() ||
+              contact.mutualValue?.trim() ||
+              latestSnippet(contact);
+            return (
+              <li key={contact.id} className="rounded-xl p-3 ring-1 ring-slate-100">
+                <button
+                  type="button"
+                  onClick={() => onOpen(contact.id)}
+                  className="min-h-11 w-full text-left"
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="font-semibold text-slate-900">{contact.name}</p>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      {contactTypeLabel(contact.relationshipType)}
+                    </span>
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                      {contactStatusLabel(contact.status)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {days != null ? `Last touch ${days}d` : "No last touch"}
+                    {contact.suggestedNextAction
+                      ? ` · Next: ${contact.suggestedNextAction}`
+                      : ""}
+                    {contact.nextActionDate ? ` (${contact.nextActionDate})` : ""}
+                  </p>
+                  {snippet ? (
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-600">{snippet}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Add stage + what they need so you stay the leverage point.
+                    </p>
+                  )}
+                </button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <select
+                    className="app-input min-h-11 min-w-0 flex-1 px-2 py-2 text-[11px] font-semibold sm:max-w-[10rem]"
+                    value={normalizeContactType(contact.relationshipType)}
+                    disabled={busy === `contact-type-${contact.id}`}
+                    onChange={(event) => onRelabel(contact.id, event.target.value)}
+                    aria-label={`Role for ${contact.name}`}
+                  >
+                    {CONTACT_TYPE_OPTIONS.map((type) => (
+                      <option key={type} value={type}>
+                        {contactTypeLabel(type)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => onNote(contact)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-xs font-semibold text-teal-700 ring-1 ring-teal-200/80"
+                  >
+                    Note
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => onReachedOut(contact.id)}
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl bg-teal-600 px-3 text-xs font-semibold text-white disabled:opacity-60 sm:flex-none"
+                  >
+                    {busy === `reach-${contact.id}` ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Check size={14} />
+                    )}
+                    Reached out
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => onSkip(contact.id)}
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl px-3 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 disabled:opacity-60 sm:flex-none"
+                  >
+                    {busy === `skip-${contact.id}` ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Minus size={14} />
+                    )}
+                    Not a follow-up
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function PeopleView() {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -121,11 +237,31 @@ export function PeopleView() {
   const [contactQuery, setContactQuery] = useState("");
   const [contactTypeFilter, setContactTypeFilter] = useState("all");
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
+  const [reachOutId, setReachOutId] = useState<string | null>(null);
+  const [reachOutDraft, setReachOutDraft] = useState({
+    note: "",
+    suggestedNextAction: "",
+    nextActionDate: userNow().plus({ days: 7 }).toISODate() ?? "",
+    asksOffers: "",
+  });
+  const [reachOutError, setReachOutError] = useState<string | null>(null);
   const [contactForm, setContactForm] = useState({
     name: "",
-    relationshipType: "peer",
+    relationshipType: "founder",
+    status: "active",
     lastContactDate: userNow().toISODate() ?? "",
     notes: "",
+    mutualValue: "",
+    asksOffers: "",
+    suggestedNextAction: "",
+    nextActionDate: userNow().toISODate() ?? "",
+  });
+  const [leverageDraft, setLeverageDraft] = useState({
+    mutualValue: "",
+    asksOffers: "",
+    suggestedNextAction: "",
+    nextActionDate: "",
+    status: "active",
   });
 
   const { data, isLoading, error } = useQuery({
@@ -142,58 +278,51 @@ export function PeopleView() {
     void queryClient.invalidateQueries({ queryKey: ["growth-contacts"] });
     void queryClient.invalidateQueries({ queryKey: ["growth-dashboard"] });
     void queryClient.invalidateQueries({ queryKey: ["growth-overview-preview"] });
+    void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
   };
 
   const contacts = useMemo(() => data?.contacts ?? [], [data?.contacts]);
 
+  useEffect(() => {
+    if (!contacts.length) return;
+    try {
+      const focusId = sessionStorage.getItem("life-os-people-focus");
+      if (!focusId) return;
+      sessionStorage.removeItem("life-os-people-focus");
+      const person = contacts.find((c) => c.id === focusId);
+      if (!person) return;
+      setExpandedContactId(person.id);
+      setLeverageDraft({
+        mutualValue: person.mutualValue ?? "",
+        asksOffers: person.asksOffers ?? "",
+        suggestedNextAction: person.suggestedNextAction ?? "",
+        nextActionDate: person.nextActionDate ?? "",
+        status: normalizeContactStatus(person.status),
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [contacts]);
+
+  const today = userNow().toISODate() ?? "";
+  const weeklyLists = useMemo(
+    () => buildWeeklyPeopleLists(contacts, today),
+    [contacts, today],
+  );
+
   const contactTypes = useMemo(() => {
-    const types = new Set<string>();
-    for (const contact of contacts) {
-      if (contact.relationshipType?.trim()) {
-        types.add(contact.relationshipType.trim().toLowerCase());
-      }
-    }
-    return Array.from(types).sort();
+    const present = new Set(
+      contacts.map((contact) => normalizeContactType(contact.relationshipType)),
+    );
+    return CONTACT_TYPE_OPTIONS.filter((type) => present.has(type));
   }, [contacts]);
-
-  const needsAttention = useMemo(() => {
-    return contacts
-      .filter((contact) => {
-        if (contact.status === "dormant") return false;
-        const type = (contact.relationshipType ?? "").toLowerCase();
-        const days = daysSince(contact.lastContactDate);
-        const fading = contact.status === "fading";
-        return fading || (LEVERAGE_TYPES.has(type) && days !== null && days >= 21);
-      })
-      .sort((a, b) => (daysSince(b.lastContactDate) ?? 0) - (daysSince(a.lastContactDate) ?? 0));
-  }, [contacts]);
-
-  const attentionByRole = useMemo(() => {
-    const groups = new Map<string, Person[]>();
-    for (const contact of needsAttention) {
-      const role = (contact.relationshipType ?? "unlabeled").toLowerCase();
-      const list = groups.get(role) ?? [];
-      list.push(contact);
-      groups.set(role, list);
-    }
-    const known = ROLE_ORDER.filter((role) => groups.has(role)).map((role) => ({
-      role,
-      people: groups.get(role)!,
-    }));
-    const extra = Array.from(groups.keys())
-      .filter((role) => !(ROLE_ORDER as readonly string[]).includes(role))
-      .sort()
-      .map((role) => ({ role, people: groups.get(role)! }));
-    return [...known, ...extra];
-  }, [needsAttention]);
 
   const filteredContacts = useMemo(() => {
     const q = contactQuery.trim().toLowerCase();
     return contacts
       .filter((contact) => {
         if (contactTypeFilter !== "all") {
-          const type = (contact.relationshipType ?? "unlabeled").toLowerCase();
-          if (type !== contactTypeFilter) return false;
+          if (normalizeContactType(contact.relationshipType) !== contactTypeFilter) return false;
         }
         if (!q) return true;
         const haystack = [
@@ -239,12 +368,82 @@ export function PeopleView() {
     }
   };
 
-  const markReachedOut = (id: string) =>
-    patchContact(
-      id,
-      { lastContactDate: userNow().toISODate() ?? "", status: "active" },
-      `reach-${id}`,
-    );
+  const markReachedOut = (id: string) => {
+    const person = contacts.find((c) => c.id === id);
+    setReachOutId(id);
+    setReachOutError(null);
+    setReachOutDraft({
+      note: "",
+      suggestedNextAction: person?.suggestedNextAction ?? "",
+      nextActionDate:
+        person?.nextActionDate && person.nextActionDate > (userNow().toISODate() ?? "")
+          ? person.nextActionDate
+          : userNow().plus({ days: 7 }).toISODate() ?? "",
+      asksOffers: person?.asksOffers ?? "",
+    });
+    setExpandedContactId(id);
+  };
+
+  const submitReachOut = async () => {
+    if (!reachOutId) return;
+    const next = reachOutDraft.suggestedNextAction.trim();
+    const due = reachOutDraft.nextActionDate.trim();
+    if (!next) {
+      setReachOutError("Add the next concrete step.");
+      return;
+    }
+    if (!due) {
+      setReachOutError("Add a due date for that next step.");
+      return;
+    }
+    setBusy(`reach-${reachOutId}`);
+    setReachOutError(null);
+    try {
+      const today = userNow().toISODate() ?? "";
+      const noteBody = reachOutDraft.note.trim();
+      if (noteBody) {
+        const noteRes = await fetch("/api/growth/contacts/notes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contactId: reachOutId,
+            body: noteBody,
+            suggestedNextAction: next,
+            nextActionDate: due,
+            asksOffers: reachOutDraft.asksOffers.trim() || undefined,
+            status: "active",
+            lastContactDate: today,
+          }),
+        });
+        if (!noteRes.ok) {
+          const payload = (await noteRes.json().catch(() => null)) as { error?: string } | null;
+          setReachOutError(payload?.error ?? "Could not save touch.");
+          return;
+        }
+      } else {
+        const res = await fetch("/api/growth/contacts", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: reachOutId,
+            lastContactDate: today,
+            status: "active",
+            suggestedNextAction: next,
+            nextActionDate: due,
+            asksOffers: reachOutDraft.asksOffers.trim(),
+          }),
+        });
+        if (!res.ok) {
+          setReachOutError("Could not save touch.");
+          return;
+        }
+      }
+      setReachOutId(null);
+      invalidate();
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const skipFollowUp = (id: string) => patchContact(id, { status: "dormant" }, `skip-${id}`);
 
@@ -259,14 +458,21 @@ export function PeopleView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...contactForm,
+          relationshipType: normalizeContactType(contactForm.relationshipType),
+          status: normalizeContactStatus(contactForm.status),
           trustLevel: "3",
-          suggestedNextAction: "",
-          status: "active",
         }),
       });
       if (res.ok) {
         setShowContactForm(false);
-        setContactForm((prev) => ({ ...prev, name: "", notes: "" }));
+        setContactForm((prev) => ({
+          ...prev,
+          name: "",
+          notes: "",
+          mutualValue: "",
+          asksOffers: "",
+          suggestedNextAction: "",
+        }));
         invalidate();
       }
     } finally {
@@ -288,6 +494,13 @@ export function PeopleView() {
     setPendingNoteImages([]);
     setNoteError(null);
     setShowContactForm(false);
+    setLeverageDraft({
+      mutualValue: contact.mutualValue ?? "",
+      asksOffers: contact.asksOffers ?? "",
+      suggestedNextAction: contact.suggestedNextAction ?? "",
+      nextActionDate: contact.nextActionDate ?? "",
+      status: normalizeContactStatus(contact.status),
+    });
   };
 
   const toggleContactExpanded = (contactId: string) => {
@@ -296,8 +509,37 @@ export function PeopleView() {
         if (editingContactId === contactId) closeContactNotes();
         return null;
       }
+      const person = contacts.find((contact) => contact.id === contactId);
+      if (person) {
+        setLeverageDraft({
+          mutualValue: person.mutualValue ?? "",
+          asksOffers: person.asksOffers ?? "",
+          suggestedNextAction: person.suggestedNextAction ?? "",
+          nextActionDate: person.nextActionDate ?? "",
+          status: normalizeContactStatus(person.status),
+        });
+      }
       return contactId;
     });
+  };
+
+  const saveLeverage = async (id: string) => {
+    if (!leverageDraft.suggestedNextAction.trim() || !leverageDraft.nextActionDate.trim()) {
+      setNoteError("Leverage needs a next step and a due date.");
+      setEditingContactId(id);
+      return;
+    }
+    await patchContact(
+      id,
+      {
+        mutualValue: leverageDraft.mutualValue,
+        asksOffers: leverageDraft.asksOffers,
+        suggestedNextAction: leverageDraft.suggestedNextAction,
+        nextActionDate: leverageDraft.nextActionDate,
+        status: leverageDraft.status,
+      },
+      `leverage-${id}`,
+    );
   };
 
   const pickNoteImages = async (files: FileList | null) => {
@@ -371,6 +613,10 @@ export function PeopleView() {
     );
   }
 
+  const reachOutPerson = reachOutId
+    ? contacts.find((contact) => contact.id === reachOutId) ?? null
+    : null;
+
   return (
     <div className="flex w-full min-w-0 max-w-full flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
@@ -379,7 +625,7 @@ export function PeopleView() {
             People
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Add people fast. Follow-ups compound — silence does not.
+            Builder leverage first. Capture stage, what they need, and one next step.
           </p>
         </div>
         <button
@@ -391,6 +637,81 @@ export function PeopleView() {
           {showContactForm ? "Close" : "Add"}
         </button>
       </div>
+
+      {reachOutPerson ? (
+        <div className="app-card space-y-3 p-4 ring-2 ring-teal-200/80">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="app-label">Log touch · {reachOutPerson.name}</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Close the loop: next step + due date (ask/offer optional).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setReachOutId(null);
+                setReachOutError(null);
+              }}
+              className="min-h-11 min-w-11 rounded-xl text-slate-400"
+              aria-label="Close reach-out"
+            >
+              <X size={18} className="mx-auto" />
+            </button>
+          </div>
+          <textarea
+            className="app-input min-h-[64px] w-full resize-y px-3 py-2 text-sm"
+            placeholder="What happened? (optional note)"
+            value={reachOutDraft.note}
+            onChange={(event) =>
+              setReachOutDraft((prev) => ({ ...prev, note: event.target.value }))
+            }
+          />
+          <textarea
+            className="app-input min-h-[56px] w-full resize-y px-3 py-2 text-sm"
+            placeholder="Asks / offers (what they need · what you can give)"
+            value={reachOutDraft.asksOffers}
+            onChange={(event) =>
+              setReachOutDraft((prev) => ({ ...prev, asksOffers: event.target.value }))
+            }
+          />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input
+              className="app-input w-full px-3 py-2.5 text-sm"
+              placeholder="Next step (required)"
+              value={reachOutDraft.suggestedNextAction}
+              onChange={(event) =>
+                setReachOutDraft((prev) => ({
+                  ...prev,
+                  suggestedNextAction: event.target.value,
+                }))
+              }
+            />
+            <input
+              type="date"
+              className="app-input w-full px-3 py-2.5 text-sm"
+              value={reachOutDraft.nextActionDate}
+              onChange={(event) =>
+                setReachOutDraft((prev) => ({
+                  ...prev,
+                  nextActionDate: event.target.value,
+                }))
+              }
+            />
+          </div>
+          {reachOutError ? (
+            <p className="text-xs font-medium text-rose-600">{reachOutError}</p>
+          ) : null}
+          <button
+            type="button"
+            disabled={busy === `reach-${reachOutPerson.id}`}
+            onClick={() => void submitReachOut()}
+            className="app-btn-primary min-h-11 w-full px-4 py-2.5 text-sm"
+          >
+            {busy === `reach-${reachOutPerson.id}` ? "Saving…" : "Save touch + next step"}
+          </button>
+        </div>
+      ) : null}
 
       {showContactForm ? (
         <form onSubmit={submitContact} className="app-card space-y-3 p-4">
@@ -413,23 +734,71 @@ export function PeopleView() {
             >
               {CONTACT_TYPE_OPTIONS.map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {contactTypeLabel(type)}
                 </option>
               ))}
             </select>
+            <select
+              className="app-input w-full min-w-0 px-3 py-2.5 text-sm"
+              value={contactForm.status}
+              onChange={(event) => setContactForm({ ...contactForm, status: event.target.value })}
+              aria-label="Heat"
+            >
+              {CONTACT_STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {contactStatusLabel(status)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="date"
+            className="app-input w-full px-3 py-2.5 text-sm"
+            value={contactForm.lastContactDate}
+            onChange={(event) =>
+              setContactForm({ ...contactForm, lastContactDate: event.target.value })
+            }
+            aria-label="Last contact"
+          />
+          <input
+            className="app-input w-full px-3 py-2.5 text-sm"
+            placeholder="Where they are + how you help (stage, what they need)"
+            value={contactForm.mutualValue}
+            onChange={(event) =>
+              setContactForm({ ...contactForm, mutualValue: event.target.value })
+            }
+          />
+          <input
+            className="app-input w-full px-3 py-2.5 text-sm"
+            placeholder="Asks / offers — what they need, what you can give"
+            value={contactForm.asksOffers}
+            onChange={(event) =>
+              setContactForm({ ...contactForm, asksOffers: event.target.value })
+            }
+          />
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <input
+              className="app-input w-full min-w-0 px-3 py-2.5 text-sm"
+              placeholder="Next step (1 line)"
+              value={contactForm.suggestedNextAction}
+              onChange={(event) =>
+                setContactForm({ ...contactForm, suggestedNextAction: event.target.value })
+              }
+            />
             <input
               type="date"
               className="app-input w-full min-w-0 px-3 py-2.5 text-sm"
-              value={contactForm.lastContactDate}
+              value={contactForm.nextActionDate}
               onChange={(event) =>
-                setContactForm({ ...contactForm, lastContactDate: event.target.value })
+                setContactForm({ ...contactForm, nextActionDate: event.target.value })
               }
+              aria-label="Next step date"
             />
           </div>
           <div className="flex min-w-0 items-start gap-2">
             <textarea
               className="app-input min-h-[72px] min-w-0 flex-1 resize-y px-3 py-2 text-sm"
-              placeholder="Who they are, last chat, what you owe them…"
+              placeholder="Note — YC batch, product, what they asked you for…"
               value={contactForm.notes}
               onChange={(event) => setContactForm({ ...contactForm, notes: event.target.value })}
             />
@@ -450,96 +819,44 @@ export function PeopleView() {
         </form>
       ) : null}
 
-      {needsAttention.length > 0 ? (
-        <div className="app-card space-y-4 p-4 ring-1 ring-amber-200/70">
-          <div>
-            <p className="app-label text-amber-800">Needs a decision · {needsAttention.length}</p>
-            <p className="mt-1 text-sm leading-relaxed text-slate-600">
-              Different people play different roles. Decide per person — reach out, or take them off this chase list.
-            </p>
-          </div>
-          <div className="space-y-4">
-            {attentionByRole.map(({ role, people }) => (
-              <div key={role} className="space-y-2">
-                <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-                  {role} · {people.length}
-                </p>
-                <ul className="space-y-2">
-                  {people.map((contact) => {
-                    const days = daysSince(contact.lastContactDate);
-                    const snippet = latestSnippet(contact);
-                    const reaching = busy === `reach-${contact.id}`;
-                    const skipping = busy === `skip-${contact.id}`;
-                    return (
-                      <li
-                        key={contact.id}
-                        className="rounded-xl bg-[color-mix(in_srgb,var(--card-solid)_92%,transparent)] p-3 ring-1 ring-slate-100"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleContactExpanded(contact.id)}
-                          className="min-h-11 w-full text-left"
-                        >
-                          <p className="font-semibold text-slate-900">{contact.name}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            {days != null ? `${days} days since last contact` : "No last-contact date"}
-                          </p>
-                          {snippet ? (
-                            <p className="mt-1 line-clamp-2 text-xs text-slate-600">{snippet}</p>
-                          ) : (
-                            <p className="mt-1 text-xs text-slate-400">No notes yet — open to remember who they are</p>
-                          )}
-                        </button>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <select
-                            className="app-input min-h-11 min-w-0 flex-1 px-2 py-2 text-[11px] font-semibold capitalize sm:max-w-[8.5rem]"
-                            value={(contact.relationshipType ?? "unlabeled").toLowerCase()}
-                            disabled={busy === `contact-type-${contact.id}`}
-                            onChange={(event) => void updateContactType(contact.id, event.target.value)}
-                            aria-label={`Role for ${contact.name}`}
-                          >
-                            {CONTACT_TYPE_OPTIONS.map((type) => (
-                              <option key={type} value={type}>
-                                {type}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => openContactNotes(contact)}
-                            className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-xs font-semibold text-teal-700 ring-1 ring-teal-200/80"
-                          >
-                            Note
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => void markReachedOut(contact.id)}
-                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl bg-teal-600 px-3 text-xs font-semibold text-white disabled:opacity-60 sm:flex-none"
-                          >
-                            {reaching ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                            Reached out
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => void skipFollowUp(contact.id)}
-                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl px-3 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 disabled:opacity-60 sm:flex-none"
-                          >
-                            {skipping ? <Loader2 size={14} className="animate-spin" /> : <Minus size={14} />}
-                            Not a follow-up
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <div className="space-y-3">
+        <WeeklyPeopleSection
+          title="Top 10 active"
+          hint="Founders, operators/buyers, connectors — heat first"
+          people={weeklyLists.top10}
+          empty="No active builder contacts yet. Add a founder you just met."
+          busy={busy}
+          onOpen={toggleContactExpanded}
+          onNote={openContactNotes}
+          onReachedOut={markReachedOut}
+          onSkip={skipFollowUp}
+          onRelabel={updateContactType}
+        />
+        <WeeklyPeopleSection
+          title="Follow-ups due"
+          hint="next step date is today or overdue"
+          people={weeklyLists.followUps}
+          empty="Nothing due. Set a next step + date when you meet someone."
+          busy={busy}
+          onOpen={toggleContactExpanded}
+          onNote={openContactNotes}
+          onReachedOut={markReachedOut}
+          onSkip={skipFollowUp}
+          onRelabel={updateContactType}
+        />
+        <WeeklyPeopleSection
+          title="New intros to make"
+          hint="3 connector / founder moves"
+          people={weeklyLists.intros}
+          empty="No intro candidates — log a connector or YC founder."
+          busy={busy}
+          onOpen={toggleContactExpanded}
+          onNote={openContactNotes}
+          onReachedOut={markReachedOut}
+          onSkip={skipFollowUp}
+          onRelabel={updateContactType}
+        />
+      </div>
 
       <div className="app-card min-w-0 overflow-hidden p-4">
         <div className="mb-3 flex items-center gap-2">
@@ -583,7 +900,7 @@ export function PeopleView() {
                 </button>
                 {contactTypes.map((type) => {
                   const count = contacts.filter(
-                    (contact) => (contact.relationshipType ?? "").toLowerCase() === type,
+                    (contact) => normalizeContactType(contact.relationshipType) === type,
                   ).length;
                   return (
                     <button
@@ -596,7 +913,7 @@ export function PeopleView() {
                           : "bg-white text-slate-600 ring-slate-200"
                       }`}
                     >
-                      {type} ({count})
+                      {contactTypeLabel(type)} ({count})
                     </button>
                   );
                 })}
@@ -615,7 +932,7 @@ export function PeopleView() {
                     entries[0]?.body?.trim() ||
                     (contact.notes?.trim() ? firstSentence(contact.notes, 90) : null);
                   const noteCount = entries.length > 0 ? entries.length : hasNotes ? 1 : 0;
-                  const typeValue = (contact.relationshipType ?? "unlabeled").toLowerCase();
+                  const typeValue = normalizeContactType(contact.relationshipType);
 
                   return (
                     <li
@@ -637,7 +954,7 @@ export function PeopleView() {
                             ) : null}
                           </div>
                           <p className="truncate text-xs text-slate-500">
-                            {contact.status}
+                            {contactTypeLabel(typeValue)} · {contactStatusLabel(contact.status)}
                             {contact.lastContactDate
                               ? ` · ${formatActivityDate(contact.lastContactDate)}`
                               : ""}
@@ -664,14 +981,9 @@ export function PeopleView() {
                           >
                             {CONTACT_TYPE_OPTIONS.map((type) => (
                               <option key={type} value={type}>
-                                {type}
+                                {contactTypeLabel(type)}
                               </option>
                             ))}
-                            {!CONTACT_TYPE_OPTIONS.includes(
-                              typeValue as (typeof CONTACT_TYPE_OPTIONS)[number],
-                            ) && contact.relationshipType ? (
-                              <option value={typeValue}>{contact.relationshipType}</option>
-                            ) : null}
                           </select>
                           <div className="flex shrink-0 items-center gap-1">
                             {contact.status === "dormant" ? (
@@ -709,6 +1021,81 @@ export function PeopleView() {
 
                       {expanded ? (
                         <div className="space-y-2 border-t border-slate-100 px-2.5 pt-2 pb-2.5">
+                          {isBuilderContactType(typeValue) ? (
+                            <div className="space-y-2 rounded-xl bg-slate-50/80 p-2.5">
+                              <p className="text-[11px] font-semibold text-slate-500">
+                                Leverage card — stage, what they need, your next move
+                              </p>
+                              <select
+                                className="app-input w-full px-2 py-2 text-xs"
+                                value={leverageDraft.status}
+                                onChange={(event) =>
+                                  setLeverageDraft((prev) => ({ ...prev, status: event.target.value }))
+                                }
+                                aria-label={`Heat for ${contact.name}`}
+                              >
+                                {CONTACT_STATUS_OPTIONS.map((status) => (
+                                  <option key={status} value={status}>
+                                    {contactStatusLabel(status)}
+                                  </option>
+                                ))}
+                              </select>
+                              <textarea
+                                className="app-input min-h-[56px] w-full resize-y px-2 py-2 text-xs"
+                                placeholder="Where they are + how you help"
+                                value={leverageDraft.mutualValue}
+                                onChange={(event) =>
+                                  setLeverageDraft((prev) => ({
+                                    ...prev,
+                                    mutualValue: event.target.value,
+                                  }))
+                                }
+                              />
+                              <textarea
+                                className="app-input min-h-[56px] w-full resize-y px-2 py-2 text-xs"
+                                placeholder="Asks / offers"
+                                value={leverageDraft.asksOffers}
+                                onChange={(event) =>
+                                  setLeverageDraft((prev) => ({
+                                    ...prev,
+                                    asksOffers: event.target.value,
+                                  }))
+                                }
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  className="app-input w-full px-2 py-2 text-xs"
+                                  placeholder="Next step (1 line)"
+                                  value={leverageDraft.suggestedNextAction}
+                                  onChange={(event) =>
+                                    setLeverageDraft((prev) => ({
+                                      ...prev,
+                                      suggestedNextAction: event.target.value,
+                                    }))
+                                  }
+                                />
+                                <input
+                                  type="date"
+                                  className="app-input w-full px-2 py-2 text-xs"
+                                  value={leverageDraft.nextActionDate}
+                                  onChange={(event) =>
+                                    setLeverageDraft((prev) => ({
+                                      ...prev,
+                                      nextActionDate: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                disabled={busy === `leverage-${contact.id}`}
+                                onClick={() => void saveLeverage(contact.id)}
+                                className="app-btn-primary min-h-11 w-full px-3 py-2 text-xs"
+                              >
+                                {busy === `leverage-${contact.id}` ? "Saving…" : "Save leverage"}
+                              </button>
+                            </div>
+                          ) : null}
                           {entries.length > 0 ? (
                             <ul className="max-h-40 space-y-2 overflow-x-hidden overflow-y-auto">
                               {entries.map((entry) => {

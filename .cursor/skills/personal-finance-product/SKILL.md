@@ -22,9 +22,9 @@ Single-user app to improve **long-term financial goals**. Connect daily spending
 | Correct | Wrong |
 |---------|-------|
 | Email → send 6-digit code → verify → session | Email + password login |
-| `PasscodeLock` after session for sensitive data | Generic signup / multi-user auth |
+| Stay signed in after that (no second unlock) | `PasscodeLock` after session / extra device PIN |
 
-Relevant code: `src/components/passcode-lock.tsx`, `/api/auth/passcode/*`
+Relevant code: login + NextAuth session. Do not wrap the dashboard in `PasscodeLock`.
 
 When touching login UI or auth, match email+code patterns. Never default to password fields.
 

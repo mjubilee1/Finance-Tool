@@ -3,6 +3,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatContactNotesForAgent } from "@/lib/growth-contact-notes";
+import {
+  normalizeContactStatus,
+  normalizeContactType,
+} from "@/lib/growth-contact-shared";
 
 const contactInclude = {
   noteEntries: {
@@ -38,7 +42,7 @@ export async function GET(request: Request) {
 
     const contacts = await prisma.growthContact.findMany({
       where: { userId: session.user.id },
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ lastContactDate: "desc" }, { name: "asc" }],
       include: contactInclude,
     });
 
@@ -65,6 +69,8 @@ export async function POST(request: Request) {
       collaborationPotential = 3,
       lastContactDate,
       suggestedNextAction,
+      nextActionDate,
+      asksOffers,
       mutualValue,
       notes,
       status = "active",
@@ -82,7 +88,9 @@ export async function POST(request: Request) {
         data: {
           userId,
           name: name.trim(),
-          relationshipType: relationshipType || null,
+          relationshipType: normalizeContactType(
+            typeof relationshipType === "string" ? relationshipType : null,
+          ),
           trustLevel: Math.max(1, Math.min(5, parseInt(String(trustLevel), 10) || 3)),
           sharedInterests: sharedInterests || null,
           collaborationPotential: Math.max(
@@ -91,9 +99,11 @@ export async function POST(request: Request) {
           ),
           lastContactDate: lastContactDate || null,
           suggestedNextAction: suggestedNextAction || null,
+          nextActionDate: typeof nextActionDate === "string" ? nextActionDate || null : null,
+          asksOffers: typeof asksOffers === "string" ? asksOffers.trim() || null : null,
           mutualValue: mutualValue || null,
           notes: initialNotes || null,
-          status: ["active", "fading", "dormant"].includes(status) ? status : "active",
+          status: normalizeContactStatus(typeof status === "string" ? status : "active"),
         },
       });
 
@@ -152,7 +162,9 @@ export async function PATCH(request: Request) {
 
     const data: Record<string, unknown> = {};
     if (typeof rest.name === "string") data.name = rest.name.trim();
-    if (typeof rest.relationshipType === "string") data.relationshipType = rest.relationshipType;
+    if (typeof rest.relationshipType === "string") {
+      data.relationshipType = normalizeContactType(rest.relationshipType);
+    }
     if (rest.trustLevel !== undefined) {
       data.trustLevel = Math.max(1, Math.min(5, parseInt(String(rest.trustLevel), 10) || 3));
     }
@@ -167,10 +179,14 @@ export async function PATCH(request: Request) {
     if (typeof rest.suggestedNextAction === "string") {
       data.suggestedNextAction = rest.suggestedNextAction;
     }
+    if (typeof rest.nextActionDate === "string") {
+      data.nextActionDate = rest.nextActionDate || null;
+    }
+    if (typeof rest.asksOffers === "string") data.asksOffers = rest.asksOffers.trim() || null;
     if (typeof rest.mutualValue === "string") data.mutualValue = rest.mutualValue;
     // Notes are append-only via POST /api/growth/contacts/notes
-    if (typeof rest.status === "string" && ["active", "fading", "dormant"].includes(rest.status)) {
-      data.status = rest.status;
+    if (typeof rest.status === "string") {
+      data.status = normalizeContactStatus(rest.status);
     }
 
     const updated = await prisma.growthContact.updateMany({

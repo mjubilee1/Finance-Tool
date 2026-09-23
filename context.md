@@ -125,9 +125,8 @@ When suggesting breaks, intentional joy, dating/social spots, errands, or recove
 Sign-in is **email + 6-digit code** (passcode sent to email), **not** email + password.
 
 - Login flow: enter email → receive code → verify code → session
-- After sign-in, the app may require a passcode unlock (`PasscodeLock`) for sensitive financial data
+- No second in-app passcode lock after sign-in. One user; stay logged in.
 - Do **not** build or assume email/password registration flows unless explicitly requested
-- Existing passcode APIs: `/api/auth/passcode/send`, `/api/auth/passcode/verify`
 
 ## Accounts & Money Flow
 

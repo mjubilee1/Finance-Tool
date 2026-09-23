@@ -1,5 +1,9 @@
 import { DateTime } from "luxon";
-import { loadCoachNetworkPack, type CoachNetworkContact } from "@/lib/coach-network";
+import {
+  loadCoachNetworkPack,
+  type CoachNetworkContact,
+} from "@/lib/coach-network";
+import type { TodaysNetworkMove } from "@/lib/network-leverage";
 import {
   ensureEntrepreneurshipRoutineForToday,
   isEntrepreneurshipNotes,
@@ -44,6 +48,16 @@ export type LifePulse = {
   network: {
     contacts: CoachNetworkContact[];
     withNotesCount: number;
+    todaysMove: TodaysNetworkMove | null;
+    opsTargets: Array<{
+      name: string;
+      type: string | null;
+      score: number;
+      reasons: string[];
+      nextAction: string | null;
+      nextActionDate: string | null;
+      asksOffers: string | null;
+    }>;
   } | null;
   relevantMemories: RelevantMemory[];
   entrepreneurship: {

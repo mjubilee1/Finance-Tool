@@ -36,6 +36,7 @@ function plainLabel(text: string) {
 
 type TodayViewProps = {
   onOpenSettings?: () => void;
+  onOpenPeople?: (contactId?: string) => void;
 };
 
 function itemStatus(
@@ -77,6 +78,7 @@ function itemKind(item: TimelineItem) {
 
 export function TodayView({
   onOpenSettings,
+  onOpenPeople,
 }: TodayViewProps) {
   const queryClient = useQueryClient();
   const [expandedRef, setExpandedRef] = useState<string | null>(null);
@@ -299,6 +301,7 @@ export function TodayView({
     (calendar.status === "needs_reconnect" || calendar.status === "not_connected" || Boolean(calendar.error));
 
   const recommendation = brief?.recommendation;
+  const networkMove = todayOverview?.networkMove ?? null;
 
   return (
     <div className="mx-auto max-w-lg space-y-3">
@@ -315,6 +318,35 @@ export function TodayView({
           {brief ? DAY_SHAPE_LABEL[brief.dayShape] : ""}
         </p>
       </header>
+
+      {networkMove ? (
+        <button
+          type="button"
+          onClick={() => {
+            try {
+              sessionStorage.setItem("life-os-people-focus", networkMove.contactId);
+            } catch {
+              /* ignore */
+            }
+            onOpenPeople?.(networkMove.contactId);
+          }}
+          className="flex min-h-14 w-full items-center justify-between gap-2 rounded-xl bg-[color-mix(in_srgb,var(--accent)_10%,var(--card-solid))] px-3 py-2.5 text-left ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]"
+        >
+          <span className="min-w-0">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-strong)]">
+              Network · {networkMove.reasonLabel}
+            </span>
+            <span className="mt-0.5 line-clamp-2 text-sm font-semibold text-[var(--ink)]">
+              {networkMove.action}
+            </span>
+            <span className="mt-0.5 block text-[11px] text-[var(--muted)]">
+              @{networkMove.name}
+              {networkMove.nextActionDate ? ` · due ${networkMove.nextActionDate}` : ""}
+            </span>
+          </span>
+          <ChevronRight size={16} className="shrink-0 text-[var(--accent-strong)]" />
+        </button>
+      ) : null}
 
       {calendarNeedsAction ? (
         <button

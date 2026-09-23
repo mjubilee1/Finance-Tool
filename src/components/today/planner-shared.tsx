@@ -55,6 +55,18 @@ export type TodayOverviewResponse = {
       overrides: Record<string, unknown>;
     };
   };
+  networkMove?: {
+    contactId: string;
+    name: string;
+    relationshipType: string | null;
+    reason: "overdue" | "top10_gap" | "fading" | "fill_leverage";
+    reasonLabel: string;
+    action: string;
+    nextActionDate: string | null;
+    asksOffers: string | null;
+    mutualValue: string | null;
+    daysSinceTouch: number | null;
+  } | null;
   calendar: GoogleCalendarOverview | null;
   weekPlan?: WeeklyOperatingPlanOverview | null;
   entrepreneurship?: {

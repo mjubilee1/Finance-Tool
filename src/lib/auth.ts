@@ -43,6 +43,8 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
+    // Single-user personal app — stay signed in; no extra unlock screen.
+    maxAge: 60 * 60 * 24 * 365,
   },
   pages: {
     signIn: '/login',

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getTrendDigestForDate, isTechTrendTheme, serializeTrendDigest } from "@/lib/trends";
 import { cleanupPromotionalProjectBlocks } from "@/lib/cleanup-promotion-blocks";
 import { buildLifePulse } from "@/lib/life-pulse";
+import { loadTodaysNetworkMove } from "@/lib/todays-network-move";
 import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
     await cleanupPromotionalProjectBlocks(session.user.id).catch((error) => {
       console.error("Promotion-block cleanup failed:", error);
     });
-    const [pulse, digest] = await Promise.all([
+    const [pulse, digest, networkMove] = await Promise.all([
       buildLifePulse(session.user.id, {
         query: "today priorities goals commitments growth entrepreneurship schedule",
         includeNetwork: false,
@@ -29,6 +30,10 @@ export async function GET() {
       }),
       getTrendDigestForDate(session.user.id, today).catch((error) => {
         console.error("Trend digest failed while loading today overview:", error);
+        return null;
+      }),
+      loadTodaysNetworkMove(session.user.id, today).catch((error) => {
+        console.error("Network move failed while loading today overview:", error);
         return null;
       }),
     ]);
@@ -68,6 +73,7 @@ export async function GET() {
         : null,
       calendar,
       weekPlan: pulse.weeklyPlan,
+      networkMove,
       entrepreneurship: pulse.entrepreneurship
         ? {
             sectionLabel: pulse.entrepreneurship.sectionLabel,

@@ -9,22 +9,15 @@ import {
   resolveContactMentions,
 } from "@/lib/growth-contact-mentions";
 import { userToday } from "@/lib/user-timezone";
+import {
+  CONTACT_TYPE_OPTIONS,
+  normalizeContactStatus,
+  normalizeContactType,
+  type ContactTypeOption,
+} from "@/lib/growth-contact-shared";
 
-export const COACH_CONTACT_TYPES = [
-  "unlabeled",
-  "family",
-  "peer",
-  "social",
-  "dating",
-  "mentor",
-  "founder",
-  "investor",
-  "colleague",
-  "tenant",
-  "other",
-] as const;
-
-export type CoachContactType = (typeof COACH_CONTACT_TYPES)[number];
+export const COACH_CONTACT_TYPES = CONTACT_TYPE_OPTIONS;
+export type CoachContactType = ContactTypeOption;
 
 export type CoachContactNoteUpdate = {
   /** @Name or plain contact name */
@@ -32,12 +25,16 @@ export type CoachContactNoteUpdate = {
   note: string;
   /** YYYY-MM-DD when the meet/outreach happened (optional). */
   lastContactDate?: string | null;
-  /** active | fading | dormant */
+  /** active | warm | quiet | dormant */
   status?: string | null;
   suggestedNextAction?: string | null;
+  /** YYYY-MM-DD when the next action is due. */
+  nextActionDate?: string | null;
   /** Relationship label — same options as Growth UI. */
   relationshipType?: CoachContactType | null;
   mutualValue?: string | null;
+  /** What they need / what Trell can offer. */
+  asksOffers?: string | null;
   /**
    * Create the contact if no @ match exists.
    * Default true when teaching "I met X" style facts.
@@ -58,10 +55,7 @@ function parseIsoDate(value: string | null | undefined) {
 
 function normalizeRelationshipType(value: unknown): CoachContactType | null {
   if (typeof value !== "string" || !value.trim()) return null;
-  const normalized = value.trim().toLowerCase();
-  return (COACH_CONTACT_TYPES as readonly string[]).includes(normalized)
-    ? (normalized as CoachContactType)
-    : null;
+  return normalizeContactType(value);
 }
 
 export function parseCoachContactNotes(value: unknown): CoachContactNoteUpdate[] {
@@ -84,10 +78,7 @@ export function parseCoachContactNotes(value: unknown): CoachContactNoteUpdate[]
 
     const statusRaw =
       typeof row.status === "string" ? row.status.trim().toLowerCase() : "";
-    const status =
-      statusRaw === "active" || statusRaw === "fading" || statusRaw === "dormant"
-        ? statusRaw
-        : null;
+    const status = statusRaw ? normalizeContactStatus(statusRaw) : null;
 
     const createIfMissing = row.createIfMissing !== false && row.action !== "update";
 
@@ -102,12 +93,19 @@ export function parseCoachContactNotes(value: unknown): CoachContactNoteUpdate[]
         typeof row.suggestedNextAction === "string"
           ? row.suggestedNextAction.trim().slice(0, 200) || null
           : null,
+      nextActionDate: parseIsoDate(
+        typeof row.nextActionDate === "string" ? row.nextActionDate : null,
+      ),
       relationshipType: normalizeRelationshipType(
         row.relationshipType ?? row.label ?? row.type,
       ),
       mutualValue:
         typeof row.mutualValue === "string"
           ? row.mutualValue.trim().slice(0, 300) || null
+          : null,
+      asksOffers:
+        typeof row.asksOffers === "string"
+          ? row.asksOffers.trim().slice(0, 400) || null
           : null,
       createIfMissing,
     });
@@ -149,8 +147,10 @@ async function appendNoteAndSync(
     lastContactDate?: string;
     status?: string;
     suggestedNextAction?: string | null;
+    nextActionDate?: string | null;
     relationshipType?: string | null;
     mutualValue?: string | null;
+    asksOffers?: string | null;
   } = {
     notes: formatContactNotesForAgent(allEntries, null),
   };
@@ -171,12 +171,20 @@ async function appendNoteAndSync(
     contactData.suggestedNextAction = update.suggestedNextAction;
   }
 
+  if (update.nextActionDate !== undefined && update.nextActionDate !== null) {
+    contactData.nextActionDate = update.nextActionDate;
+  }
+
   if (update.relationshipType) {
     contactData.relationshipType = update.relationshipType;
   }
 
   if (update.mutualValue) {
     contactData.mutualValue = update.mutualValue;
+  }
+
+  if (update.asksOffers) {
+    contactData.asksOffers = update.asksOffers;
   }
 
   await prisma.growthContact.update({
@@ -226,11 +234,13 @@ export async function applyCoachContactNotes(
         data: {
           userId,
           name: rawMention,
-          relationshipType: update.relationshipType ?? "peer",
+          relationshipType: update.relationshipType ?? "founder",
           trustLevel: 3,
           collaborationPotential: 3,
           lastContactDate: update.lastContactDate ?? userToday(),
           suggestedNextAction: update.suggestedNextAction ?? null,
+          nextActionDate: update.nextActionDate ?? null,
+          asksOffers: update.asksOffers ?? null,
           mutualValue: update.mutualValue ?? null,
           notes: null,
           status: update.status ?? "active",

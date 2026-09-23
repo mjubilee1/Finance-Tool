@@ -11,6 +11,10 @@ import {
   formatContactNotesForAgent,
   migrateLegacyContactNotes,
 } from "./growth-contact-notes";
+import {
+  pickTodaysNetworkMove,
+  rankNetworkOpsTargets,
+} from "@/lib/network-leverage";
 import { COACH_NORTH_STAR, goodWeekChecklistForPrompt } from "@/lib/life-os-north-star";
 import {
   getRecentCalendarContextForGrowth,
@@ -154,7 +158,8 @@ Active-context rules:
 - Dating/social contacts are valid relationship assets when notes/follow-ups exist; distinguish connection equity from pure nightlife spend.
 - Family/personal contacts can exist unlabeled or as "family" without notes — do not nag for notes or treat them as compounding bottlenecks. Prioritize notes on mentors, founders, peers, investors, dating-with-intent.
 - Mix money + life: career/build, fitness/body, startup leverage, relationships, and cash are one reinforcing system — not a finance-only coach.
-- When recommending outreach, pick real contacts from CONTEXT.contacts notes. Prefer founders/builders/YC/operators/connectors. Do NOT invent "reach out to your manager/EM/PM" unless the user explicitly asks about W2 promotion.
+- When recommending outreach, pick real contacts from CONTEXT.networkOps / CONTEXT.contacts. Prefer founders/builders/YC/operators/connectors. Do NOT invent "reach out to your manager/EM/PM" unless the user explicitly asks about W2 promotion.
+- If CONTEXT.networkOps.todaysMove is set, prefer that person for a network-themed daily move.
 - When the user shares screenshots (gym schedule, calendar, plans), treat extracted facts as durable context for recommendations — prefer schedule-feasible moves.
 - Home base is Oxon Hill / DMV. Suggest nearby leisure for breaks after logged effort; save longer trips for weekends or open days. Rest and local enjoyment are allowed when intentional.
 - Joy ideas are generated live (weather + day shape + date) — do not rely on a stale joyOptions list.
@@ -277,18 +282,22 @@ export async function calculateGrowthMetrics(userId: string): Promise<GrowthMetr
       // Mass imports often have no lastContactDate — that is "not tracked yet", not "overdue".
       // Only nudge follow-ups for people you're actively compounding with.
       const leverageType = [
-        "peer",
-        "social",
-        "dating",
-        "mentor",
         "founder",
+        "operator_buyer",
         "investor",
+        "tech_peer",
+        "connector",
+        "media_events",
+        "candidate",
+        "dating",
+        "peer",
+        "mentor",
         "colleague",
       ].includes(type);
       const overdue = days !== null && days >= 21;
-      const fading = c.status === "fading";
+      const cooling = c.status === "fading" || c.status === "quiet";
       // dormant = you already decided not to chase this person
-      const needsAttention = c.status !== "dormant" && (fading || (leverageType && overdue));
+      const needsAttention = c.status !== "dormant" && (cooling || (leverageType && overdue));
       return needsAttention
         ? {
             id: c.id,
@@ -669,7 +678,7 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       prisma.financialGoal.findMany({ where: { userId, status: "active" } }),
       prisma.growthContact.findMany({
         where: { userId },
-        take: 25,
+        take: 60,
         include: {
           noteEntries: {
             orderBy: { createdAt: "asc" },
@@ -716,6 +725,28 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       domain: m.domain,
     }));
 
+  const rankable = contacts.map((c) => ({
+    id: c.id,
+    name: c.name,
+    relationshipType: c.relationshipType,
+    status: c.status,
+    lastContactDate: c.lastContactDate,
+    suggestedNextAction: c.suggestedNextAction,
+    nextActionDate: c.nextActionDate,
+    mutualValue: c.mutualValue,
+    asksOffers: c.asksOffers,
+    trustLevel: c.trustLevel,
+    hasNotes: contactHasNotes(c),
+  }));
+  const rankedContacts = rankNetworkOpsTargets(rankable, today, 20);
+  const rankedIds = new Set(rankedContacts.map((c) => c.id));
+  const orderedContacts = [
+    ...rankedContacts
+      .map((r) => contacts.find((c) => c.id === r.id))
+      .filter((c): c is (typeof contacts)[number] => Boolean(c)),
+    ...contacts.filter((c) => !rankedIds.has(c.id)),
+  ].slice(0, 25);
+
   return {
     lifeLeverageProfile: profile,
     memories: memories.map((m) => ({ title: m.title, content: m.content, type: m.type })),
@@ -726,7 +757,19 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       targetDate: g.targetDate,
       category: g.category,
     })),
-    contacts: contacts.map((c) => ({
+    networkOps: {
+      todaysMove: pickTodaysNetworkMove(rankable, today),
+      opsTargets: rankedContacts.slice(0, 8).map((c) => ({
+        name: c.name,
+        type: c.relationshipType,
+        score: c.score,
+        reasons: c.reasons,
+        nextAction: c.suggestedNextAction,
+        nextActionDate: c.nextActionDate,
+        asksOffers: c.asksOffers,
+      })),
+    },
+    contacts: orderedContacts.map((c) => ({
       name: c.name,
       type: c.relationshipType,
       trust: c.trustLevel,
@@ -734,7 +777,9 @@ async function gatherGrowthContext(userId: string, metrics: GrowthMetrics) {
       status: c.status,
       notes: formatContactNotesForAgent(c.noteEntries, c.notes),
       suggestedNext: c.suggestedNextAction,
+      nextActionDate: c.nextActionDate,
       mutualValue: c.mutualValue,
+      asksOffers: c.asksOffers,
     })),
     recentActivities: recentActivities.map((a) => ({
       date: a.date,

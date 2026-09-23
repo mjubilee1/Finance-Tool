@@ -374,10 +374,14 @@ model GrowthContact {
   collaborationPotential Int      @default(3) // 1-5
   lastContactDate        String? // YYYY-MM-DD
   suggestedNextAction    String?
+  /// When the nextAction is due (YYYY-MM-DD)
+  nextActionDate         String?
+  /// What they need / what you can offer — leverage, not biography
+  asksOffers             String?  @db.Text
   mutualValue            String?  @db.Text
   /// Legacy flat notes blob — kept for migration; prefer noteEntries
   notes                  String?  @db.Text
-  status                 String   @default("active") // active | fading | dormant
+  status                 String   @default("active") // active | warm | quiet | dormant
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -385,6 +389,8 @@ model GrowthContact {
   noteEntries GrowthContactNote[]
 
   @@index([userId, status])
+  @@index([userId, relationshipType])
+  @@index([userId, lastContactDate])
 }
 
 /// Append-only timestamped notes (text and/or screenshot images) on a contact

@@ -6,6 +6,7 @@ import {
   formatContactNotesForAgent,
   sanitizeNoteImages,
 } from "@/lib/growth-contact-notes";
+import { normalizeContactStatus } from "@/lib/growth-contact-shared";
 import { userToday } from "@/lib/user-timezone";
 
 /** Append a timestamped note (text and/or screenshots) to a contact. */
@@ -20,6 +21,26 @@ export async function POST(request: Request) {
     const contactId = typeof body.contactId === "string" ? body.contactId : "";
     const noteBody = typeof body.body === "string" ? body.body.trim() : "";
     const images = sanitizeNoteImages(body.images);
+    const suggestedNextAction =
+      typeof body.suggestedNextAction === "string"
+        ? body.suggestedNextAction.trim().slice(0, 200) || null
+        : undefined;
+    const nextActionDate =
+      typeof body.nextActionDate === "string" ? body.nextActionDate.trim() || null : undefined;
+    const asksOffers =
+      typeof body.asksOffers === "string"
+        ? body.asksOffers.trim().slice(0, 400) || null
+        : undefined;
+    const mutualValue =
+      typeof body.mutualValue === "string"
+        ? body.mutualValue.trim().slice(0, 300) || null
+        : undefined;
+    const statusRaw = typeof body.status === "string" ? body.status.trim() : "";
+    const status = statusRaw ? normalizeContactStatus(statusRaw) : undefined;
+    const lastContactDate =
+      typeof body.lastContactDate === "string" && body.lastContactDate.trim()
+        ? body.lastContactDate.trim()
+        : undefined;
 
     if (!contactId) {
       return NextResponse.json({ error: "Missing contactId" }, { status: 400 });
@@ -75,7 +96,14 @@ export async function POST(request: Request) {
         where: { id: contactId },
         data: {
           notes: formatContactNotesForAgent(allEntries, null),
-          ...(today ? { lastContactDate: today } : {}),
+          lastContactDate: lastContactDate ?? today ?? contact.lastContactDate,
+          ...(suggestedNextAction !== undefined
+            ? { suggestedNextAction }
+            : {}),
+          ...(nextActionDate !== undefined ? { nextActionDate } : {}),
+          ...(asksOffers !== undefined ? { asksOffers } : {}),
+          ...(mutualValue !== undefined ? { mutualValue } : {}),
+          ...(status ? { status } : {}),
         },
       });
 

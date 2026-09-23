@@ -119,6 +119,23 @@ type CalendarContext = {
 type NetworkPack = {
   contacts: CoachNetworkContact[];
   withNotesCount: number;
+  todaysMove: {
+    contactId: string;
+    name: string;
+    reason: string;
+    action: string;
+    nextActionDate: string | null;
+    asksOffers: string | null;
+  } | null;
+  opsTargets: Array<{
+    name: string;
+    type: string | null;
+    score: number;
+    reasons: string[];
+    nextAction: string | null;
+    nextActionDate: string | null;
+    asksOffers: string | null;
+  }>;
 };
 
 export function buildCoachSystemPrompt(params: {
@@ -234,6 +251,19 @@ Primary leverage path = build/startup/founder network. W2 promotion is secondary
     sections.push(`
 GROWTH_CONTACTS (source of truth for who to reach out to — ${networkPack.withNotesCount} have notes):
 ${JSON.stringify(networkPack.contacts)}
+
+NETWORK_OPS_TODAY (deterministic ranking — prefer this over inventing outreach):
+${JSON.stringify({
+  todaysMove: networkPack.todaysMove,
+  opsTargets: networkPack.opsTargets,
+})}
+
+Network ops protocol (follow when recommending or logging people):
+1. Pick from NETWORK_OPS_TODAY.opsTargets / todaysMove first — do not invent "reach out to your manager" or random names.
+2. One concrete ask per suggestion (message angle + what you want). No vague "reconnect".
+3. When logging a touch in contactNotesToStore, always set: note + suggestedNextAction + nextActionDate (YYYY-MM-DD within 3–14 days) + asksOffers (or mutualValue). Biography-only notes are incomplete.
+4. After a touch, prefer status "active" or "warm"; use "quiet" when cooling; "dormant" only when parking them.
+5. If todaysMove is present and the user asks who to contact / what's the network move, lead with that person.
 `);
   }
 
@@ -315,7 +345,9 @@ Return JSON only with this exact shape:
       "status": "active",
       "relationshipType": "founder",
       "mutualValue": "Builder intros / fintech feedback",
+      "asksOffers": "Needs pilot customers; can intro to DMV operators",
       "suggestedNextAction": "Send LinkedIn + offer 15-min feedback swap",
+      "nextActionDate": "2026-07-30",
       "createIfMissing": true
     }
   ],
@@ -360,10 +392,10 @@ contactNotesToStore rules:
 - contactMention: preferred @Name. For new people, use the name they said (e.g. "@Alex Rivera").
 - note: 1–2 short sentences capturing what happened / who they are.
 - createIfMissing: true when this is a new person not already in GROWTH_CONTACTS (meeting someone, first intro). false/omit when clearly updating an existing contact.
-- relationshipType (label): one of unlabeled, family, peer, social, dating, mentor, founder, investor, colleague, tenant, other. Prefer founder/peer/mentor/investor for builder network; dating/social when that fits; colleague only for work peers.
+- relationshipType (label): founder, operator_buyer, investor, tech_peer, connector, media_events, candidate, dating, social, family, unlabeled. Prefer founder / operator_buyer / connector for YC and builder leverage. Dating/social/family stay in personal lanes.
 - lastContactDate: YYYY-MM-DD when they say when it happened. Default today for "just met".
-- status: active for new/warm; fading when no reply / going cold; dormant when clearly dead.
-- suggestedNextAction / mutualValue: optional short strings.
+- status: active (in motion), warm, quiet, dormant. Do not use fading.
+- REQUIRED for builder/dating leverage touches: suggestedNextAction (one line), nextActionDate (YYYY-MM-DD, usually 3–14 days out), and asksOffers or mutualValue. Do not store a note-only update when the user just did outreach — close the loop with the next move.
 - If the person already exists, match them and append the note (still set relationshipType if the user is labeling them).
 - Return [] when they are only asking questions and not teaching contact facts.
 - Max 5 contacts per turn.
