@@ -21,6 +21,7 @@ import { GoalSuggestionCard } from "./chat/goal-suggestion-card";
 import type { GoalSuggestion } from "@/lib/goal-suggestion";
 import { ChatComposer } from "./chat/chat-composer";
 import { CoachMessageContent } from "./chat/coach-message-content";
+import type { DriveAttachment } from "./chat/drive-file-picker";
 import { useCoachSpeech } from "@/hooks/use-coach-speech";
 import { READ_ALOUD_STORAGE_KEY } from "@/lib/coach-speech";
 import { fetchWithRetry, friendlyChatFetchError } from "@/lib/fetch-with-retry";
@@ -42,6 +43,7 @@ function buildChatRequestMessages(messages: ChatMessage[], hasSession: boolean):
             role: latestUser.role,
             content: latestUser.content,
             images: latestUser.images,
+            driveFiles: latestUser.driveFiles,
           },
         ]
       : [];
@@ -53,6 +55,7 @@ function buildChatRequestMessages(messages: ChatMessage[], hasSession: boolean):
     content: message.content,
     // Avoid re-uploading earlier screenshots on flaky mobile connections.
     images: index === latestUserIndex ? message.images : undefined,
+    driveFiles: index === latestUserIndex ? message.driveFiles : undefined,
   }));
 }
 
@@ -60,6 +63,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   images?: string[];
+  driveFiles?: DriveAttachment[];
   spotlight?: TransactionSpotlight | null;
   goalSuggestion?: GoalSuggestion | null;
 };
@@ -151,6 +155,7 @@ export function ChatInterface({
   const [activeCoachTab, setActiveCoachTab] = useState<"chat" | "history">("chat");
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [pendingDriveFiles, setPendingDriveFiles] = useState<DriveAttachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingHistorySessionId, setLoadingHistorySessionId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
@@ -430,17 +435,29 @@ export function ChatInterface({
   const sendMessage = async () => {
     const userMessage = input.trim();
     const images = [...pendingImages];
+    const driveFiles = [...pendingDriveFiles];
 
-    if ((!userMessage && images.length === 0) || isLoading) return;
+    if ((!userMessage && images.length === 0 && driveFiles.length === 0) || isLoading) return;
 
     stopSpeech();
     setInput("");
     setPendingImages([]);
+    setPendingDriveFiles([]);
+
+    const driveNote =
+      driveFiles.length > 0
+        ? `\n\nAttached from Drive: ${driveFiles.map((file) => file.name).join(", ")}`
+        : "";
 
     const userChatMessage: ChatMessage = {
       role: "user",
-      content: userMessage || "Please review the attached photo(s).",
+      content:
+        (userMessage ||
+          (images.length > 0
+            ? "Please review the attached photo(s)."
+            : "Please review the attached Drive file(s).")) + driveNote,
       images: images.length > 0 ? images : undefined,
+      driveFiles: driveFiles.length > 0 ? driveFiles : undefined,
     };
 
     const nextMessages: ChatMessage[] = [...messages, userChatMessage];
@@ -458,6 +475,7 @@ export function ChatInterface({
           sessionId,
           model: chatModel,
           messages: buildChatRequestMessages(nextMessages, Boolean(sessionId)),
+          driveFileIds: driveFiles.map((file) => file.id),
         }),
         // Only retry thrown network failures (e.g. Safari "Load failed"), not HTTP
         // errors — the coach may create calendar events before responding.
@@ -855,6 +873,8 @@ export function ChatInterface({
               onChange={setInput}
               pendingImages={pendingImages}
               onPendingImagesChange={setPendingImages}
+              pendingDriveFiles={pendingDriveFiles}
+              onPendingDriveFilesChange={setPendingDriveFiles}
               onSubmit={() => {
                 void sendMessage();
               }}

@@ -18,6 +18,7 @@ import {
   type CreateGoogleCalendarEventInput,
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
+import { readGoogleDriveFileContent } from "@/lib/google-drive";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
 import {
   applyCoachContactNotes,
@@ -117,9 +118,50 @@ type ChatResponsePayload = {
 
 const MAX_CONTEXT_MESSAGES = 10;
 const MAX_HISTORY_MESSAGES = 50;
+const MAX_DRIVE_CHAT_FILES = 3;
+const MAX_DRIVE_CHARS_PER_FILE = 20_000;
+const MAX_DRIVE_CHARS_TOTAL = 40_000;
 
 /** Vercel / serverless: allow vision + calendar coach turns enough time to finish. */
 export const maxDuration = 60;
+
+async function loadDriveContextForChat(userId: string, fileIds: unknown) {
+  const ids = (Array.isArray(fileIds) ? fileIds : [])
+    .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    .map((id) => id.trim())
+    .slice(0, MAX_DRIVE_CHAT_FILES);
+
+  if (ids.length === 0) return null;
+
+  const chunks: string[] = [];
+  let total = 0;
+
+  for (const id of ids) {
+    try {
+      const result = await readGoogleDriveFileContent(userId, id);
+      const body =
+        result.content?.slice(0, MAX_DRIVE_CHARS_PER_FILE) ??
+        result.note ??
+        "(no extractable text — open in Drive if needed)";
+      let chunk = `--- Drive file: ${result.file.name} (${result.file.mimeType}) ---\n${body}`;
+      const remaining = MAX_DRIVE_CHARS_TOTAL - total;
+      if (remaining <= 0) break;
+      if (chunk.length > remaining) {
+        chunk = `${chunk.slice(0, remaining)}\n…[truncated]`;
+      }
+      chunks.push(chunk);
+      total += chunk.length;
+    } catch (error) {
+      chunks.push(
+        `--- Drive file id ${id}: could not read (${error instanceof Error ? error.message : "error"}) ---`,
+      );
+    }
+  }
+
+  if (chunks.length === 0) return null;
+
+  return `GOOGLE_DRIVE_ATTACHMENTS (user attached these for this turn — treat as primary context when relevant):\n\n${chunks.join("\n\n")}`;
+}
 
 function sanitizeChatMessages(messages: unknown): ChatMessage[] {
   return (Array.isArray(messages) ? messages : [])
@@ -659,8 +701,13 @@ export async function POST(req: Request) {
     const chatModel = resolveChatModel(body.model);
     const latestUserMessage = [...requestMessages].reverse().find((message) => message.role === "user");
     if (!latestUserMessage) {
-      return NextResponse.json({ error: "Send a message or upload a screenshot first." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Send a message, photo, or Drive file first." },
+        { status: 400 },
+      );
     }
+
+    const driveContext = await loadDriveContextForChat(session.user.id, body.driveFileIds);
 
     const requestedSessionId = typeof body.sessionId === "string" ? body.sessionId : null;
     let coachSession = requestedSessionId
@@ -697,6 +744,16 @@ export async function POST(req: Request) {
           : requestMessages
       ).slice(-MAX_CONTEXT_MESSAGES),
     );
+
+    const messagesForModel = recentMessages.map((message, index) => {
+      if (!driveContext || index !== recentMessages.length - 1 || message.role !== "user") {
+        return message;
+      }
+      return {
+        ...message,
+        content: `${message.content}\n\n${driveContext}`,
+      };
+    });
 
     const coachIntent = classifyCoachIntent(latestUserMessage.content);
     const todayIso = userNow().toISODate()!;
@@ -880,7 +937,7 @@ export async function POST(req: Request) {
 
     const openAiMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...toOpenAiMessages(recentMessages),
+      ...toOpenAiMessages(messagesForModel),
     ];
 
     let response = (await openai.chat.completions.create({

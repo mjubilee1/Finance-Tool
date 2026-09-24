@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Camera, ImagePlus, Mic, MicOff, Plus, X } from "lucide-react";
+import { ArrowUp, Camera, FileText, HardDrive, ImagePlus, Mic, MicOff, Plus, X } from "lucide-react";
 import { readImageAsDataUrl } from "@/lib/chat-images";
 import {
   ensureMicrophoneAccess,
@@ -9,6 +9,7 @@ import {
   pauseMicrophoneAccess,
 } from "@/lib/media-permissions";
 import { ContactMentionMenu } from "@/components/contact-mention-menu";
+import { DriveFilePicker, type DriveAttachment } from "@/components/chat/drive-file-picker";
 import { useContactMention } from "@/hooks/use-contact-mention";
 
 type Props = {
@@ -16,18 +17,23 @@ type Props = {
   onChange: (value: string) => void;
   pendingImages: string[];
   onPendingImagesChange: (images: string[]) => void;
+  pendingDriveFiles: DriveAttachment[];
+  onPendingDriveFilesChange: (files: DriveAttachment[]) => void;
   onSubmit: () => void;
   disabled?: boolean;
   isLoading?: boolean;
 };
 
 const MAX_IMAGES = 2;
+const MAX_DRIVE_FILES = 3;
 
 export function ChatComposer({
   value,
   onChange,
   pendingImages,
   onPendingImagesChange,
+  pendingDriveFiles,
+  onPendingDriveFilesChange,
   onSubmit,
   disabled = false,
   isLoading = false,
@@ -44,6 +50,7 @@ export function ChatComposer({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
 
   const mention = useContactMention({
     value,
@@ -71,7 +78,7 @@ export function ChatComposer({
 
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
-  }, [value, pendingImages.length]);
+  }, [value, pendingImages.length, pendingDriveFiles.length]);
 
   useEffect(() => {
     if (!showAttachMenu) return;
@@ -86,7 +93,10 @@ export function ChatComposer({
   }, [showAttachMenu]);
 
   const canSend =
-    (value.trim().length > 0 || pendingImages.length > 0) && !disabled && !isLoading && !isTranscribing;
+    (value.trim().length > 0 || pendingImages.length > 0 || pendingDriveFiles.length > 0) &&
+    !disabled &&
+    !isLoading &&
+    !isTranscribing;
 
   const addImages = async (files: File[]) => {
     if (!files.length) return;
@@ -221,14 +231,33 @@ export function ChatComposer({
     onPendingImagesChange(pendingImages.filter((_, imageIndex) => imageIndex !== index));
   };
 
-  const attachDisabled =
-    disabled || isLoading || isTranscribing || pendingImages.length >= MAX_IMAGES;
+  const removeDriveFile = (fileId: string) => {
+    onPendingDriveFilesChange(pendingDriveFiles.filter((file) => file.id !== fileId));
+  };
+
+  const toggleDriveFile = (file: DriveAttachment) => {
+    const exists = pendingDriveFiles.some((item) => item.id === file.id);
+    if (exists) {
+      removeDriveFile(file.id);
+      return;
+    }
+    if (pendingDriveFiles.length >= MAX_DRIVE_FILES) {
+      setComposerError(`You can attach up to ${MAX_DRIVE_FILES} Drive files per message.`);
+      return;
+    }
+    setComposerError(null);
+    onPendingDriveFilesChange([...pendingDriveFiles, file]);
+  };
+
+  const attachDisabled = disabled || isLoading || isTranscribing;
 
   const placeholder = isTranscribing
     ? "Transcribing voice..."
     : isRecording
       ? "Listening..."
-      : "Ask your coach, @tag a contact, paste a screenshot, or tap the mic";
+      : "Ask your coach, @tag a contact, attach Drive/photos, or tap the mic";
+
+  const hasAttachments = pendingImages.length > 0 || pendingDriveFiles.length > 0;
 
   return (
     <div className="border-t border-[var(--card-border)] bg-[color-mix(in_srgb,var(--ink)_5%,var(--card-solid))] p-2 sm:p-3">
@@ -251,7 +280,7 @@ export function ChatComposer({
             }
           />
         ) : null}
-        {pendingImages.length > 0 ? (
+        {hasAttachments ? (
           <div className="flex flex-wrap gap-2 border-b border-[var(--card-border)] px-3 py-2.5">
             {pendingImages.map((image, index) => (
               <div key={`${image.slice(0, 24)}-${index}`} className="relative">
@@ -266,6 +295,23 @@ export function ChatComposer({
                   onClick={() => removeImage(index)}
                   className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--ink)] text-[var(--card-solid)] p-0.5"
                   aria-label="Remove photo"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            {pendingDriveFiles.map((file) => (
+              <div
+                key={file.id}
+                className="relative flex max-w-[11rem] items-center gap-1.5 rounded-lg bg-[var(--accent-soft)] px-2.5 py-2 ring-1 ring-[var(--card-border)]"
+              >
+                <FileText size={14} className="shrink-0 text-[var(--accent-strong)]" />
+                <span className="truncate text-xs font-medium text-[var(--ink)]">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeDriveFile(file.id)}
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-[var(--ink)] text-[var(--card-solid)] p-0.5"
+                  aria-label={`Remove ${file.name}`}
                 >
                   <X size={12} />
                 </button>
@@ -302,8 +348,8 @@ export function ChatComposer({
               onClick={() => setShowAttachMenu((open) => !open)}
               disabled={attachDisabled}
               className="rounded-full p-2 text-[var(--ink-soft)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] disabled:opacity-50"
-              title="Add photo"
-              aria-label="Add photo"
+              title="Add attachment"
+              aria-label="Add attachment"
               aria-expanded={showAttachMenu}
               aria-haspopup="menu"
             >
@@ -313,12 +359,25 @@ export function ChatComposer({
             {showAttachMenu ? (
               <div
                 role="menu"
-                className="absolute bottom-full left-0 z-20 mb-2 min-w-[10.5rem] overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card-solid)] shadow-lg"
+                className="absolute bottom-full left-0 z-20 mb-2 min-w-[11.5rem] overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card-solid)] shadow-lg"
               >
                 <button
                   type="button"
                   role="menuitem"
                   className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--ink)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
+                  onClick={() => {
+                    setShowAttachMenu(false);
+                    setShowDrivePicker(true);
+                  }}
+                >
+                  <HardDrive size={16} className="text-[var(--ink-soft)]" />
+                  Google Drive
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={pendingImages.length >= MAX_IMAGES}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--ink)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] disabled:opacity-50"
                   onClick={() => {
                     setShowAttachMenu(false);
                     cameraInputRef.current?.click();
@@ -330,7 +389,8 @@ export function ChatComposer({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--ink)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)]"
+                  disabled={pendingImages.length >= MAX_IMAGES}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--ink)] transition hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] disabled:opacity-50"
                   onClick={() => {
                     setShowAttachMenu(false);
                     libraryInputRef.current?.click();
@@ -396,6 +456,14 @@ export function ChatComposer({
       {composerError ? (
         <p className="mt-1.5 px-1 text-xs text-rose-600 dark:text-rose-300">{composerError}</p>
       ) : null}
+
+      <DriveFilePicker
+        open={showDrivePicker}
+        onClose={() => setShowDrivePicker(false)}
+        selected={pendingDriveFiles}
+        onToggle={toggleDriveFile}
+        maxFiles={MAX_DRIVE_FILES}
+      />
     </div>
   );
 }

@@ -85,6 +85,7 @@ When the user teaches facts about a person (met someone new, outreach, no reply,
 - New people: set createIfMissing true, include relationshipType label + note so Growth gets a new contact.
 Joy preferences are options, not automatic assignments.
 When the user uploads photo(s), read them carefully and store durable schedule/money facts in memoriesToStore.
+When GOOGLE_DRIVE_ATTACHMENTS are present, treat those files as primary context for the turn — summarize what matters, extract durable facts into memoriesToStore when useful, and answer from the file content before asking the user to restate it.
 If MEMORIES include "Charge reviewed:" entries, respect that context and do not re-flag those merchants unless asked.
 
 ${MESSAGE_FORMAT_RULES}

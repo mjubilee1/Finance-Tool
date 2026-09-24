@@ -18,7 +18,6 @@ import {
   Target,
   TrendingUp,
   Users,
-  Utensils,
   Wallet,
   X,
   type LucideIcon,
@@ -41,7 +40,6 @@ export type TabType =
   | "events"
   | "car"
   | "home"
-  | "calories"
   | "people";
 
 export type NavItem = {
@@ -87,7 +85,6 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Life",
     items: [
       { tab: "people", label: "People", Icon: Users },
-      { tab: "calories", label: "Calories", Icon: Utensils },
       { tab: "learning", label: "Learning", Icon: BookOpen },
       { tab: "events", label: "Events", Icon: CalendarDays },
     ],
