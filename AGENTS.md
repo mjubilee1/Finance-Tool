@@ -24,3 +24,5 @@ When asked to push / ship / release, **ask Trell: patch, minor, or major?** unle
 ## Founder (OnLocalAI)
 
 Trell is founder of OnLocalAI (employee onboarding). For daily/weekly startup plans, outreach, discovery, evidence, and build-vs-sell decisions, read **`.cursor/skills/onlocalai-founder-os/SKILL.md`**. Customer discovery outranks speculative product work; code freeze rules apply.
+
+For zero-to-one learning, closed DMV accelerators, and school-of-business / capitalism framing, read **`.cursor/skills/founder-zero-to-one/SKILL.md`**.

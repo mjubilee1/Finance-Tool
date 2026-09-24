@@ -65,6 +65,8 @@ Feature and coach logic should respect which account holds which money.
 
 When planning startup / outreach / build decisions for OnLocalAI, follow **`.cursor/skills/onlocalai-founder-os/SKILL.md`**. Customer evidence and pilot progress beat feature building. Protect W2 + cash floor while coaching founder leverage.
 
+When Trell is learning **zero-to-one**, hitting closed accelerators (ALX, Pitchu, Oxon Hill, etc.), or framing himself in the school of business and capitalism, also follow **`.cursor/skills/founder-zero-to-one/SKILL.md`**.
+
 ## Goals & plans
 
 - User adds goals/plans to future-proof earmarked money

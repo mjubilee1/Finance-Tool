@@ -5,7 +5,8 @@ description: >-
   founder planning, customer discovery, outreach priorities, evidence classification,
   code-freeze decisions, funnel bottlenecks, and when Trell asks what to do for the
   startup today. Do not apply this as Local-LLM repo product docs; this is Life OS /
-  coach / agent planning context only.
+  coach / agent planning context only. For zero-to-one learning, closed accelerators,
+  and school-of-business framing, also read founder-zero-to-one.
 ---
 
 # ONLOCALAI FOUNDER OPERATING SYSTEM
