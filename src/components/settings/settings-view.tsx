@@ -1,14 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Landmark, Loader2, LogOut, Palette, X } from "lucide-react";
+import { CalendarDays, HardDrive, Landmark, Loader2, LogOut, Palette, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppVersion } from "@/components/app-version";
 import { ConnectBankButton } from "@/components/connect-bank-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 
-type CalendarStatus = {
+type GoogleConnectionStatus = {
   connected: boolean;
   connectAvailable: boolean;
   status: "active" | "needs_reconnect" | "not_connected";
@@ -16,6 +16,9 @@ type CalendarStatus = {
   lastSyncAt: string | null;
   error?: string;
 };
+
+type CalendarStatus = GoogleConnectionStatus;
+type DriveStatus = GoogleConnectionStatus;
 
 type SettingsViewProps = {
   userName?: string | null;
@@ -44,7 +47,26 @@ function calendarCopy(calendar: CalendarStatus) {
   }
   return {
     title: "Google Calendar not connected",
-      body: "Connect so Today and Coach can use your real calendar.",
+    body: "Connect so Today and Coach can use your real calendar.",
+  };
+}
+
+function driveCopy(drive: DriveStatus) {
+  if (drive.status === "active") {
+    return {
+      title: "Google Drive connected",
+      body: "App can list, search, and read Docs/Sheets you already have (read-only).",
+    };
+  }
+  if (drive.status === "needs_reconnect") {
+    return {
+      title: "Google Drive needs reconnect",
+      body: "Saved credentials expired or can’t be used. Reconnect once to restore access.",
+    };
+  }
+  return {
+    title: "Google Drive not connected",
+    body: "Connect so the app can read files from your Drive.",
   };
 }
 
@@ -71,35 +93,67 @@ export function SettingsView({
     },
   });
 
+  const driveQuery = useQuery({
+    queryKey: ["google-drive-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/integrations/google-drive");
+      if (!res.ok) throw new Error("Could not load Drive status");
+      return res.json() as Promise<DriveStatus>;
+    },
+  });
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const status = params.get("google_calendar");
-    if (!status) return;
+    const calendarStatus = params.get("google_calendar");
+    const driveStatusParam = params.get("google_drive");
+    if (!calendarStatus && !driveStatusParam) return;
 
-    const reason = params.get("google_calendar_reason");
-    if (status === "connected") {
-      setConnectMessage("Google Calendar connected. Coach can create events now.");
-      void queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
-      void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
-    } else {
-      setConnectMessage(
-        reason === "state"
-          ? "OAuth session expired or cookies were blocked. Try Connect again."
-          : reason === "denied"
-            ? "Google access was denied."
-            : reason === "exchange"
-              ? "Google token exchange failed. Check GOOGLE_CLIENT_SECRET and redirect URI on Vercel."
-              : "Google Calendar connection failed. Try Connect again.",
-      );
+    if (calendarStatus) {
+      const reason = params.get("google_calendar_reason");
+      if (calendarStatus === "connected") {
+        setConnectMessage("Google Calendar connected. Coach can create events now.");
+        void queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
+        void queryClient.invalidateQueries({ queryKey: ["overview-today"] });
+      } else {
+        setConnectMessage(
+          reason === "state"
+            ? "OAuth session expired or cookies were blocked. Try Connect again."
+            : reason === "denied"
+              ? "Google access was denied."
+              : reason === "exchange"
+                ? "Google token exchange failed. Check GOOGLE_CLIENT_SECRET and redirect URI on Vercel."
+                : "Google Calendar connection failed. Try Connect again.",
+        );
+      }
+      params.delete("google_calendar");
+      params.delete("google_calendar_reason");
     }
 
-    params.delete("google_calendar");
-    params.delete("google_calendar_reason");
+    if (driveStatusParam) {
+      const reason = params.get("google_drive_reason");
+      if (driveStatusParam === "connected") {
+        setConnectMessage("Google Drive connected. App can read your files now.");
+        void queryClient.invalidateQueries({ queryKey: ["google-drive-status"] });
+      } else {
+        setConnectMessage(
+          reason === "state"
+            ? "OAuth session expired or cookies were blocked. Try Connect again."
+            : reason === "denied"
+              ? "Google Drive access was denied."
+              : reason === "exchange"
+                ? "Google token exchange failed. Check GOOGLE_DRIVE_SECRET and GOOGLE_DRIVE_REDIRECT_URI."
+                : "Google Drive connection failed. Try Connect again.",
+        );
+      }
+      params.delete("google_drive");
+      params.delete("google_drive_reason");
+    }
+
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
     window.history.replaceState({}, "", next);
   }, [queryClient]);
 
-  const disconnectMutation = useMutation({
+  const disconnectCalendarMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/integrations/google-calendar", { method: "DELETE" });
       if (!res.ok) throw new Error("Could not disconnect calendar");
@@ -111,10 +165,26 @@ export function SettingsView({
     },
   });
 
+  const disconnectDriveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/integrations/google-drive", { method: "DELETE" });
+      if (!res.ok) throw new Error("Could not disconnect Drive");
+    },
+    onSuccess: async () => {
+      setConnectMessage("Google Drive disconnected.");
+      await queryClient.invalidateQueries({ queryKey: ["google-drive-status"] });
+    },
+  });
+
   const calendar = calendarQuery.data;
   const copy = calendar ? calendarCopy(calendar) : null;
   const needsAction =
     calendar?.status === "needs_reconnect" || calendar?.status === "not_connected";
+
+  const drive = driveQuery.data;
+  const driveText = drive ? driveCopy(drive) : null;
+  const driveNeedsAction =
+    drive?.status === "needs_reconnect" || drive?.status === "not_connected";
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-5">
@@ -139,7 +209,8 @@ export function SettingsView({
       {connectMessage ? (
         <div
           className={`rounded-xl px-4 py-3 text-sm ring-1 ${
-            connectMessage.startsWith("Google Calendar connected")
+            connectMessage.startsWith("Google Calendar connected") ||
+            connectMessage.startsWith("Google Drive connected")
               ? "bg-teal-500/15 text-teal-950 ring-teal-400/35 dark:text-teal-100"
               : "bg-amber-500/15 text-amber-950 ring-amber-400/35 dark:text-amber-100"
           }`}
@@ -178,8 +249,8 @@ export function SettingsView({
               {calendar.status !== "not_connected" ? (
                 <button
                   type="button"
-                  onClick={() => disconnectMutation.mutate()}
-                  disabled={disconnectMutation.isPending}
+                  onClick={() => disconnectCalendarMutation.mutate()}
+                  disabled={disconnectCalendarMutation.isPending}
                   className="rounded-full px-3.5 py-2 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)] disabled:opacity-60"
                 >
                   Disconnect
@@ -194,6 +265,55 @@ export function SettingsView({
           </>
         ) : (
           <p className="text-sm text-[var(--muted)]">Couldn’t load calendar status.</p>
+        )}
+      </section>
+
+      <section className="app-card space-y-3 p-4">
+        <div className="flex items-center gap-2">
+          <HardDrive size={18} className="text-[var(--accent-strong)]" />
+          <h2 className="text-sm font-semibold text-[var(--ink)]">Google Drive</h2>
+        </div>
+        {driveQuery.isLoading ? (
+          <p className="flex items-center gap-2 text-sm text-[var(--muted)]">
+            <Loader2 size={14} className="animate-spin" />
+            Checking connection…
+          </p>
+        ) : drive && driveText ? (
+          <>
+            <p className="text-sm font-medium text-[var(--ink)]">{driveText.title}</p>
+            <p className="text-xs leading-relaxed text-[var(--muted)]">{driveText.body}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => window.location.assign("/api/integrations/google-drive/connect")}
+                disabled={!drive.connectAvailable}
+                className="app-btn-primary rounded-full px-3.5 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {driveNeedsAction
+                  ? drive.status === "needs_reconnect"
+                    ? "Reconnect"
+                    : "Connect"
+                  : "Reconnect"}
+              </button>
+              {drive.status !== "not_connected" ? (
+                <button
+                  type="button"
+                  onClick={() => disconnectDriveMutation.mutate()}
+                  disabled={disconnectDriveMutation.isPending}
+                  className="rounded-full px-3.5 py-2 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)] disabled:opacity-60"
+                >
+                  Disconnect
+                </button>
+              ) : null}
+            </div>
+            {!drive.connectAvailable ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Add GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_SECRET to enable this.
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-sm text-[var(--muted)]">Couldn’t load Drive status.</p>
         )}
       </section>
 

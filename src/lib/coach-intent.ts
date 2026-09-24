@@ -42,7 +42,7 @@ export function classifyCoachIntent(message: string): CoachIntent {
     /\b(promotion|network|contact|contacts|follow.?up|leverage|growth tab|startup|founder|founders|entrepreneur|yc|outreach|mentor|senior|manager|colleague|reconnect|intro)\b/.test(
       text,
     ) ||
-    /\b(accelerator|incubator|cohort|pitchu|pitch\s*u|alx|applications?\s+closed|no longer taking|zero.?to.?one|0\s*→\s*1|0\s*to\s*1|venture\s*program|business\s*school)\b/.test(
+    /\b(accelerator|incubator|cohort|pitchu|pitch\s*u|alx|applications?\s+closed|no longer taking|zero.?to.?one|0\s*→\s*1|0\s*to\s*1|venture\s*program|business\s*school|grant|grants|funding|non.?dilutive|sbir|sttr|seed\s*grant|micro.?grant)\b/.test(
       text,
     ) ||
     /\bwho (should|do|would|can|you think)\b/.test(text) ||
