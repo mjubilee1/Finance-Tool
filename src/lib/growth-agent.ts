@@ -16,6 +16,7 @@ import {
   rankNetworkOpsTargets,
 } from "@/lib/network-leverage";
 import { COACH_NORTH_STAR, goodWeekChecklistForPrompt } from "@/lib/life-os-north-star";
+import { COACH_FOUNDER_ZERO_TO_ONE } from "@/lib/founder-zero-to-one";
 import {
   getRecentCalendarContextForGrowth,
   syncCalendarEventsToGrowth,
@@ -116,6 +117,8 @@ Mindset: hungry go-getter on offense. Impact over penny-pinching. Short rest/res
 
 NORTH STAR:
 ${COACH_NORTH_STAR}
+
+${COACH_FOUNDER_ZERO_TO_ONE}
 
 Core philosophy: everything compounds — relationships, skills, reputation, income,
 investments, businesses, health, knowledge, opportunities, and time.

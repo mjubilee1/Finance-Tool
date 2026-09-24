@@ -1,5 +1,6 @@
 import { CFO_AGENT_INSTRUCTIONS } from "@/lib/cfo-agent";
 import { COACH_NORTH_STAR } from "@/lib/life-os-north-star";
+import { COACH_FOUNDER_ZERO_TO_ONE } from "@/lib/founder-zero-to-one";
 import { GOAL_SUGGESTION_RULES } from "@/lib/goal-suggestion";
 import type { CoachIntent } from "@/lib/coach-intent";
 import type { CoachNetworkContact } from "@/lib/coach-network";
@@ -89,6 +90,8 @@ If MEMORIES include "Charge reviewed:" entries, respect that context and do not 
 ${MESSAGE_FORMAT_RULES}
 
 ${ENTREPRENEUR_NETWORK_RULES}
+
+${COACH_FOUNDER_ZERO_TO_ONE}
 
 NORTH STAR:
 ${COACH_NORTH_STAR}
