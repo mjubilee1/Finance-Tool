@@ -13,9 +13,6 @@ import {
   ChevronDown,
   Sparkles,
 } from "lucide-react";
-import type { SpendingAlert } from "@/lib/spending-alerts";
-import type { ChargeReviewDisposition } from "@/lib/charge-review";
-import { SpendingRadar } from "./chat/spending-radar";
 import { TransactionSpotlightCard, type TransactionSpotlight } from "./chat/transaction-spotlight";
 import { GoalSuggestionCard } from "./chat/goal-suggestion-card";
 import type { GoalSuggestion } from "@/lib/goal-suggestion";
@@ -87,11 +84,6 @@ type ChatHistoryResponse = {
   messages: Array<ChatMessage & { id: string; createdAt: string }>;
 };
 
-type SpendingAlertsResponse = {
-  alerts: SpendingAlert[];
-  estimatedMonthlyLeak: number;
-};
-
 const initialCoachMessages: ChatMessage[] = [
   {
     role: "assistant",
@@ -128,15 +120,6 @@ function previewText(value: string | null) {
   return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
-function fetchSpendingAlerts() {
-  return fetch("/api/spending-alerts").then(async (res) => {
-    if (!res.ok) {
-      throw new Error("Failed to load spending alerts.");
-    }
-    return res.json() as Promise<SpendingAlertsResponse>;
-  });
-}
-
 export function ChatInterface({
   seedPrompt = null,
   onSeedPromptUsed,
@@ -158,38 +141,11 @@ export function ChatInterface({
   const [pendingDriveFiles, setPendingDriveFiles] = useState<DriveAttachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingHistorySessionId, setLoadingHistorySessionId] = useState<string | null>(null);
-  const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [readAloudEnabled, setReadAloudEnabled] = useState(false);
   const [chatModel, setChatModel] = useState<ChatModelId>(DEFAULT_CHAT_MODEL);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  // Let chat UI paint first; spending radar is secondary to the conversation.
-  const [radarEnabled, setRadarEnabled] = useState(false);
   const readAloudBaselineRef = useRef(0);
   const prevMessageCountRef = useRef(initialCoachMessages.length);
-
-  useEffect(() => {
-    let cancelled = false;
-    let idleId: number | undefined;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    const enable = () => {
-      if (!cancelled) setRadarEnabled(true);
-    };
-
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      idleId = window.requestIdleCallback(enable, { timeout: 1200 });
-    } else {
-      timeoutId = setTimeout(enable, 0);
-    }
-
-    return () => {
-      cancelled = true;
-      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
-        window.cancelIdleCallback(idleId);
-      }
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-    };
-  }, []);
 
   const {
     speak,
@@ -206,12 +162,6 @@ export function ChatInterface({
     queryFn: () => fetchChatHistory(),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
-  });
-
-  const { data: radarData, isLoading: radarLoading } = useQuery({
-    queryKey: ["spending-alerts"],
-    queryFn: fetchSpendingAlerts,
-    enabled: radarEnabled,
   });
 
   useEffect(() => {
@@ -323,13 +273,6 @@ export function ChatInterface({
     });
   };
 
-  const handleAskAboutAlert = (alert: SpendingAlert) => {
-    const label = alert.merchantName ?? alert.name;
-    const prompt = `What is the ${label} transaction for ${alert.amount.toFixed(2)} on ${alert.date}? Is this something I should keep paying or cancel?`;
-    setInput(prompt);
-    setActiveCoachTab("chat");
-  };
-
   const applyChatHistory = (history: ChatHistoryResponse) => {
     setSessionId(history.session?.id ?? null);
     setMessages(
@@ -379,57 +322,8 @@ export function ChatInterface({
     setMessages(initialCoachMessages);
     setInput("");
     setPendingImages([]);
+    setPendingDriveFiles([]);
     setActiveCoachTab("chat");
-  };
-
-  const handleDismissAlert = async (
-    alert: SpendingAlert,
-    disposition: ChargeReviewDisposition,
-    note?: string,
-  ) => {
-    setDismissingId(alert.id);
-
-    try {
-      const response = await fetch("/api/spending-alerts/dismiss", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transactionId: alert.id,
-          merchantLabel: alert.merchantName ?? alert.name,
-          amount: alert.amount,
-          date: alert.date,
-          disposition,
-          note,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Failed to save review.");
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ["spending-alerts"] });
-
-      hasLocalInteractionRef.current = true;
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `Got it — I saved that "${alert.merchantName ?? alert.name}" is reviewed and won't keep flagging it in Spending radar.${note?.trim() ? ` Note saved: ${note.trim()}` : ""}`,
-        },
-      ]);
-    } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: err instanceof Error ? err.message : "Couldn't save that review. Try again.",
-        },
-      ]);
-    } finally {
-      setDismissingId(null);
-    }
   };
 
   const sendMessage = async () => {
@@ -584,17 +478,6 @@ export function ChatInterface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
-      <div className="shrink-0 empty:hidden">
-        <SpendingRadar
-          alerts={radarData?.alerts ?? []}
-          estimatedMonthlyLeak={radarData?.estimatedMonthlyLeak ?? 0}
-          isLoading={!radarEnabled || radarLoading}
-          dismissingId={dismissingId}
-          onAskAbout={handleAskAboutAlert}
-          onDismiss={handleDismissAlert}
-        />
-      </div>
-
       <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-[var(--card-border)] bg-[color-mix(in_srgb,var(--card-solid)_82%,transparent)] p-1.5 shadow-sm backdrop-blur-xl">
         <div className="inline-flex min-w-0 rounded-xl bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] p-0.5">
           <button
