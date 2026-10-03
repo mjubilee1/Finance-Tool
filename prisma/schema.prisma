@@ -77,6 +77,8 @@ model User {
   growthOpportunities     GrowthOpportunity[]
   lifeLeverageProfile     LifeLeverageProfile?
   plannerDayLayouts       PlannerDayLayout[]
+  dailyPlanningSettings   DailyPlanningSettings?
+  routineScheduleItems    RoutineScheduleItem[]
   carProfile              CarProfile?
   carMaintenanceLogs      CarMaintenanceLog[]
   homeProfile             HomeProfile?
@@ -379,6 +381,39 @@ model PlannerDayLayout {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+/// Morning email preference and send-once state for the user's daily plan.
+model DailyPlanningSettings {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  emailEnabled      Boolean  @default(false)
+  lastEmailDate     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Real-life commitments that repeat on selected weekdays.
+model RoutineScheduleItem {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  /// Luxon weekday numbers: 1=Monday ... 7=Sunday.
+  weekdays    Int[]
+  /// Local America/New_York wall-clock time in HH:mm.
+  startTime   String
+  endTime     String?
+  notes       String?  @db.Text
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
 }
 
 model GrowthContact {

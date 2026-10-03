@@ -72,6 +72,7 @@ export async function GET() {
           }
         : null,
       calendar,
+      routineSchedule: pulse.todayRoutineEvents,
       weekPlan: pulse.weeklyPlan,
       networkMove,
       entrepreneurship: pulse.entrepreneurship

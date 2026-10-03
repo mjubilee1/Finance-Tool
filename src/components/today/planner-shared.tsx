@@ -68,6 +68,7 @@ export type TodayOverviewResponse = {
     daysSinceTouch: number | null;
   } | null;
   calendar: GoogleCalendarOverview | null;
+  routineSchedule?: GoogleCalendarOverview["events"];
   weekPlan?: WeeklyOperatingPlanOverview | null;
   entrepreneurship?: {
     sectionLabel: string;
@@ -441,7 +442,9 @@ export function timelinePriorityRank(item: TimelineItem): number {
 }
 
 export function timelinePriorityLabel(item: TimelineItem): string {
-  if (item.type === "calendar") return "Booked";
+  if (item.type === "calendar") {
+    return item.event.id.startsWith("routine:") ? "Routine" : "Booked";
+  }
   if (item.type === "plan") {
     if (item.block.key === "leverage" || item.block.priority === "protect") return "Main";
     if (item.block.priority === "locked") return "Locked";

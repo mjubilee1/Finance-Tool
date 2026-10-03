@@ -124,7 +124,10 @@ export function TodayView({
       block.status === "planned" && (isEntrepreneurshipBlock(block) || block.domain === "startup"),
   );
   const calendar = todayOverview?.calendar ?? null;
-  const calendarEvents = calendar?.connected ? calendar.events : [];
+  const calendarEvents = [
+    ...(calendar?.connected ? calendar.events : []),
+    ...(todayOverview?.routineSchedule ?? []),
+  ];
   const todayDate = brief?.date ?? userNow().toISODate()!;
   const timelineItems = useMemo(() => {
     const built = buildTimelineItems(
