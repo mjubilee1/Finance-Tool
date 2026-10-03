@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
+import { getAppUser } from "@/lib/app-user";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import {
   exchangeGoogleCalendarCode,
   getGoogleCalendarRedirectUri,
@@ -25,9 +24,9 @@ function appRedirect(
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  const user = await getAppUser();
+  if (!user) {
+    return appRedirect(request, "error", "user");
   }
 
   const state = request.nextUrl.searchParams.get("state");
@@ -49,7 +48,7 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = getGoogleCalendarRedirectUri(request);
     const token = await exchangeGoogleCalendarCode(code, redirectUri);
-    await saveGoogleCalendarConnection(session.user.id, token);
+    await saveGoogleCalendarConnection(user.id, token);
     return appRedirect(request, "connected");
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange";

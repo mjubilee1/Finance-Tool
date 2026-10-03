@@ -6,6 +6,7 @@ import type { DayShape } from "@/lib/joy-ideas-shared";
 export type TodayPlanBlockKey = "lyft" | "work" | "gym" | "leverage" | "joy";
 export type TodayPlanBlockRole = "training" | "focus" | "recovery";
 export type TodayPlanBlockPriority = "locked" | "protect" | "optional";
+export type TodayPlanBlockLayer = "autopilot" | "flex";
 
 export type TodayPlanBlock = {
   key: TodayPlanBlockKey;
@@ -22,6 +23,7 @@ export type TodayPlanBlock = {
   role: TodayPlanBlockRole;
   priority: TodayPlanBlockPriority;
   evidence: string | null;
+  layer: TodayPlanBlockLayer;
 };
 
 type RecommendationLike = {
@@ -42,6 +44,10 @@ type ProfileLike = {
 
 type BuildTodayPlanOptions = {
   memorySnippets?: string[];
+  lyftDailyTarget?: number;
+  lyftEarnedToday?: number;
+  gymWeeklyTarget?: number;
+  gymDaysCompletedThisWeek?: number;
 };
 
 const GYM_CONTEXT_RE =
@@ -117,6 +123,12 @@ export function buildTodayPlan(
   const isWeekend = shape === "weekend";
   const isOffice = shape === "office";
   const gymFit = gymFitFor(shape);
+  const lyftTarget = options.lyftDailyTarget ?? 100;
+  const lyftEarned = Math.max(0, options.lyftEarnedToday ?? 0);
+  const lyftRemaining = Math.max(0, lyftTarget - lyftEarned);
+  const gymTarget = options.gymWeeklyTarget ?? 3;
+  const gymDone = options.gymDaysCompletedThisWeek ?? 0;
+  const gymStillUseful = gymDone < gymTarget;
   const gymRoutine = gymRoutineFrom(profile, options.memorySnippets);
   void metrics;
   // Highest-leverage move stays on its own card — not a daily standing block.
@@ -140,10 +152,10 @@ export function buildTodayPlan(
       : "This is a capped reset after training and critical commitments are handled.";
   const summary =
     shape === "weekend"
-      ? "Protect one meaningful move, then make room for body, relationships, and recovery."
+      ? "Autopilot first, then protect a named Nearby block; flex gets only what remains."
       : shape === "office"
-        ? "Office day: protect the highest-leverage move around the locked 9-5."
-        : "WFH day: protect the highest-leverage move and use a real flex pocket for training.";
+        ? "AM Lyft first, W-2 stays locked, and only a named calendar growth block owns the evening."
+        : "AM Lyft first, W-2 stays locked, then protect the named growth block on Calendar.";
 
   return {
     dayLabel: now.toFormat("cccc"),
@@ -151,14 +163,56 @@ export function buildTodayPlan(
     dayShape: shape,
     summary,
     blocks: [
-      ...(isOffice ? [] : [{
+      {
+        key: "lyft" as const,
+        label:
+          lyftRemaining <= 0
+            ? `Lyft target hit · $${lyftEarned.toFixed(0)}`
+            : now.hour >= 12
+              ? `Lyft catch-up · $${lyftRemaining.toFixed(0)} left`
+              : `Lyft until $${lyftTarget.toFixed(0)}`,
+        time: lyftRemaining <= 0 ? "Complete" : now.hour >= 12 ? "After work only if short" : "AM first",
+        fit:
+          lyftRemaining <= 0
+            ? "Do not add an after-work drive."
+            : "Drive in the morning first; use after-work only for the remaining gap.",
+        why: `$${lyftEarned.toFixed(0)} logged against today's $${lyftTarget.toFixed(0)} target.`,
+        domain: "financial",
+        category: "lyft",
+        leverage: "immediate_income" as const,
+        minutes: 60,
+        impact: 7,
+        tone: "sky" as const,
+        role: "focus" as const,
+        priority: "locked" as const,
+        evidence: "Daily Lyft earnings logs set the catch-up amount.",
+        layer: "autopilot" as const,
+      },
+      ...(!isWeekend ? [{
+        key: "work" as const,
+        label: "W-2 commitments",
+        time: "Use Google Calendar",
+        fit: "Calendar meetings and work boxes are the source of truth.",
+        why: "Protect the primary job; growth blocks fit around it.",
+        domain: "career",
+        category: "work",
+        leverage: "immediate_income" as const,
+        minutes: 480,
+        impact: 9,
+        tone: "slate" as const,
+        role: "focus" as const,
+        priority: "locked" as const,
+        evidence: "Weekday autopilot.",
+        layer: "autopilot" as const,
+      }] : []),
+      ...(gymStillUseful ? [{
         key: "gym" as const,
-        label: gymRoutine ? "Training from routine" : gymFit.label,
+        label: gymRoutine ? "Optional training from routine" : `Optional ${gymFit.label.toLowerCase()}`,
         time: gymFit.time,
         fit: gymFit.fit,
         why: gymRoutine
-          ? `${gymRoutine}${weightTarget(profile)}`
-          : `Detailed gym split is not saved yet. Add your real days/times once, then this block will stop being generic.${weightTarget(profile)}`,
+          ? `${gymRoutine}${weightTarget(profile)} ${gymDone}/${gymTarget} gym days complete this week.`
+          : `${gymDone}/${gymTarget} gym days complete this week. Add your real split once to make this specific.${weightTarget(profile)}`,
         domain: "fitness",
         category: "gym",
         leverage: "long_term_leverage" as const,
@@ -166,9 +220,10 @@ export function buildTodayPlan(
         impact: 8,
         tone: "teal" as const,
         role: "training" as const,
-        priority: "protect" as const,
+        priority: "optional" as const,
         evidence: gymRoutine ? "Pulled from profile or stored gym memory." : "Needs your actual gym split saved.",
-      }]),
+        layer: "autopilot" as const,
+      }] : []),
       {
         key: "joy" as const,
         label: recoveryLabel,
@@ -184,6 +239,7 @@ export function buildTodayPlan(
         role: "recovery" as const,
         priority: "optional" as const,
         evidence: "Live ideas still come from weather and day shape.",
+        layer: "flex" as const,
       },
     ],
   };

@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildGoogleCalendarAuthUrl,
@@ -12,28 +11,26 @@ import {
 } from "@/lib/google-calendar";
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set(
-      "callbackUrl",
-      "/api/integrations/google-calendar/connect",
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: "App user is not configured." },
+      { status: 503 },
     );
-    return NextResponse.redirect(loginUrl);
   }
 
   try {
     const existing = await prisma.googleCalendarConnection.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
     });
     const hasUsableRefresh =
       Boolean(existing?.encryptedRefreshToken) &&
       existing?.status !== "needs_reconnect";
 
-    const calendarStatus = await getGoogleCalendarStatus(session.user.id);
+    const calendarStatus = await getGoogleCalendarStatus(user.id);
     if (calendarStatus.status === "needs_reconnect") {
       // Wipe stale tokens so Google issues a fresh refresh token on re-approval.
-      await disconnectGoogleCalendar(session.user.id);
+      await disconnectGoogleCalendar(user.id);
     }
 
     const state = createGoogleCalendarOAuthState();

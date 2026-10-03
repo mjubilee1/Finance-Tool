@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildGoogleDriveAuthUrl,
@@ -12,23 +11,24 @@ import {
 } from "@/lib/google-drive";
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", "/api/integrations/google-drive/connect");
-    return NextResponse.redirect(loginUrl);
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: "App user is not configured." },
+      { status: 503 },
+    );
   }
 
   try {
     const existing = await prisma.googleDriveConnection.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
     });
     const hasUsableRefresh =
       Boolean(existing?.encryptedRefreshToken) && existing?.status !== "needs_reconnect";
 
-    const driveStatus = await getGoogleDriveStatus(session.user.id);
+    const driveStatus = await getGoogleDriveStatus(user.id);
     if (driveStatus.status === "needs_reconnect") {
-      await disconnectGoogleDrive(session.user.id);
+      await disconnectGoogleDrive(user.id);
     }
 
     const state = createGoogleDriveOAuthState();

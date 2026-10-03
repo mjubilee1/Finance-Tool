@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getAppUser } from "@/lib/app-user";
 import {
   createFinancialVaultUnlockValue,
   FINANCIAL_VAULT_COOKIE,
@@ -19,21 +18,21 @@ function vaultCookieOptions(maxAge: number) {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
-  return NextResponse.json(await getFinancialVaultStatus(session.user.id));
+  return NextResponse.json(await getFinancialVaultStatus(user.id));
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
-  const status = await getFinancialVaultStatus(session.user.id);
+  const status = await getFinancialVaultStatus(user.id);
   if (!status.configured) {
     return NextResponse.json({
       configured: false,
@@ -49,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Wrong code." }, { status: 403 });
   }
 
-  const unlock = createFinancialVaultUnlockValue(session.user.id);
+  const unlock = createFinancialVaultUnlockValue(user.id);
   const response = NextResponse.json({
     configured: true,
     unlocked: true,
@@ -60,9 +59,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
   const response = NextResponse.json({

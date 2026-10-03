@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getAppUser } from "@/lib/app-user";
 import {
   disconnectGoogleDrive,
   getGoogleDriveStatus,
@@ -10,9 +9,9 @@ import {
 } from "@/lib/google-drive";
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
   const fileId = request.nextUrl.searchParams.get("fileId")?.trim();
@@ -20,22 +19,22 @@ export async function GET(request: NextRequest) {
 
   try {
     if (fileId) {
-      const result = await readGoogleDriveFileContent(session.user.id, fileId);
+      const result = await readGoogleDriveFileContent(user.id, fileId);
       return NextResponse.json({
-        ...(await getGoogleDriveStatus(session.user.id)),
+        ...(await getGoogleDriveStatus(user.id)),
         ...result,
       });
     }
 
     if (q) {
-      const result = await searchGoogleDriveFiles(session.user.id, q, { maxResults: 20 });
+      const result = await searchGoogleDriveFiles(user.id, q, { maxResults: 20 });
       return NextResponse.json(result);
     }
 
-    const result = await listRecentGoogleDriveFiles(session.user.id, { maxResults: 12 });
+    const result = await listRecentGoogleDriveFiles(user.id, { maxResults: 12 });
     return NextResponse.json(result);
   } catch (error) {
-    const status = await getGoogleDriveStatus(session.user.id);
+    const status = await getGoogleDriveStatus(user.id);
     return NextResponse.json({
       ...status,
       files: [],
@@ -45,11 +44,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
-  await disconnectGoogleDrive(session.user.id);
+  await disconnectGoogleDrive(user.id);
   return NextResponse.json({ connected: false, status: "not_connected" });
 }

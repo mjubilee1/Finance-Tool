@@ -1,5 +1,5 @@
 ---
-description: Personal finance app context — single user, email+code auth, Chase/Capital One accounts
+description: Personal finance app context — single-user access, Chase/Capital One accounts
 alwaysApply: true
 ---
 
@@ -23,10 +23,11 @@ Read [context.md](context.md) for full product context.
 - Income growth and career leverage matter as much as — often more than — expense cuts when the system needs more inflow
 - Floor first, then stay on offense; impact often beats pinching small discretionary spend
 
-## Authentication
+## Access
 
-- **Email + 6-digit code** (passcode), **not** email + password
-- Use passcode send/verify flows; do not add password fields or bcrypt login unless explicitly requested
+- No in-app sign-in, registration, password, or emailed passcode gate
+- Resolve the owner through `src/lib/app-user.ts`; do not add a login flow unless explicitly requested
+- Keep connected-service credentials encrypted and server-side
 
 ## Accounts
 

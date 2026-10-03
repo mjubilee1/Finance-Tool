@@ -1,13 +1,12 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { recordLearningVideoWatched } from "@/lib/learning-youtube";
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => null);
@@ -20,7 +19,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "videoId is required." }, { status: 400 });
     }
 
-    const result = await recordLearningVideoWatched(session.user.id, {
+    const result = await recordLearningVideoWatched(user.id, {
       videoId,
       title: typeof body.title === "string" ? body.title : null,
       queueItemId: typeof body.queueItemId === "string" ? body.queueItemId : null,

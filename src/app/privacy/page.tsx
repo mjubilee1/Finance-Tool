@@ -70,8 +70,8 @@ export default function PrivacyPage() {
       </div>
 
       <p className="mt-10 text-sm">
-        <Link href="/login" className="text-[var(--accent-strong)] underline">
-          Back to sign in
+        <Link href="/" className="text-[var(--accent-strong)] underline">
+          Back to Life OS
         </Link>
       </p>
     </main>

@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getTrendDigestForDate, isTechTrendTheme, serializeTrendDigest } from "@/lib/trends";
 import { cleanupPromotionalProjectBlocks } from "@/lib/cleanup-promotion-blocks";
 import { buildLifePulse } from "@/lib/life-pulse";
@@ -9,30 +8,30 @@ import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const now = userNow();
     const today = now.toISODate()!;
     // Strip leftover auto-injected promotion rails from the DB before building Today.
-    await cleanupPromotionalProjectBlocks(session.user.id).catch((error) => {
+    await cleanupPromotionalProjectBlocks(user.id).catch((error) => {
       console.error("Promotion-block cleanup failed:", error);
     });
     const [pulse, digest, networkMove] = await Promise.all([
-      buildLifePulse(session.user.id, {
+      buildLifePulse(user.id, {
         query: "today priorities goals commitments growth entrepreneurship schedule",
         includeNetwork: false,
         ensureEntrepreneurship: false,
         calendarDaysAhead: 7,
         memoryLimit: 6,
       }),
-      getTrendDigestForDate(session.user.id, today).catch((error) => {
+      getTrendDigestForDate(user.id, today).catch((error) => {
         console.error("Trend digest failed while loading today overview:", error);
         return null;
       }),
-      loadTodaysNetworkMove(session.user.id, today).catch((error) => {
+      loadTodaysNetworkMove(user.id, today).catch((error) => {
         console.error("Network move failed while loading today overview:", error);
         return null;
       }),
@@ -72,6 +71,17 @@ export async function GET() {
           }
         : null,
       calendar,
+      routineSchedule: pulse.todayRoutineEvents,
+      grokbotCeoBriefing: {
+        title: "For Grokbot CEO",
+        contactName: user.name?.trim() || "Montrell",
+        contactEmail: user.email ?? null,
+        guidance: [
+          "Use Today as the source of truth for Montrell's real schedule and daily tasks.",
+          "If the next action is unclear, a task conflicts with his schedule, or you need an update on what he has been working on, ask Montrell in the Grokbot app.",
+          "If he is unavailable in Grokbot, send him an email instead of guessing.",
+        ],
+      },
       weekPlan: pulse.weeklyPlan,
       networkMove,
       entrepreneurship: pulse.entrepreneurship

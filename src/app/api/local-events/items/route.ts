@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   LOCAL_EVENT_STATUSES,
@@ -8,6 +7,14 @@ import {
 } from "@/lib/local-events-shared";
 import { DateTime } from "luxon";
 import { USER_TIME_ZONE } from "@/lib/user-timezone";
+import {
+  buildCeoEventDescription,
+  saturdayEventDecision,
+} from "@/lib/agenda-policy";
+import {
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+} from "@/lib/google-calendar";
 
 function themeToDomain(
   theme: string
@@ -24,16 +31,18 @@ function themeToDomain(
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
-    const { id, status, logToGrowth } = body as {
+    const { id, status, logToGrowth, plannedStart, plannedEnd } = body as {
       id?: string;
       status?: string;
       logToGrowth?: boolean;
+      plannedStart?: string;
+      plannedEnd?: string;
     };
 
     if (!id || typeof id !== "string") {
@@ -41,7 +50,7 @@ export async function PATCH(request: Request) {
     }
 
     const item = await prisma.localEventItem.findFirst({
-      where: { id, digest: { userId: session.user.id } },
+      where: { id, digest: { userId: user.id } },
       include: { digest: true },
     });
     if (!item) {
@@ -51,6 +60,9 @@ export async function PATCH(request: Request) {
     const data: {
       status?: LocalEventStatus;
       loggedActivityId?: string | null;
+      plannedStart?: Date | null;
+      plannedEnd?: Date | null;
+      calendarEventId?: string | null;
     } = {};
 
     if (status != null) {
@@ -60,13 +72,60 @@ export async function PATCH(request: Request) {
       data.status = status as LocalEventStatus;
     }
 
+    if (status === "planned") {
+      const start = DateTime.fromISO(plannedStart ?? "", { zone: USER_TIME_ZONE });
+      const end = DateTime.fromISO(plannedEnd ?? "", { zone: USER_TIME_ZONE });
+      if (!start.isValid || !end.isValid || end <= start) {
+        return NextResponse.json(
+          { error: "Plan needs a real start and end time." },
+          { status: 400 },
+        );
+      }
+      if (item.relevanceScore < 8) {
+        return NextResponse.json(
+          { error: "Keep this as Interested. Only high-signal events go on the growth calendar." },
+          { status: 409 },
+        );
+      }
+      const saturday = saturdayEventDecision({ startsAt: start, endsAt: end, signal: "high" });
+      if (!saturday.allowed) {
+        return NextResponse.json({ error: saturday.reason }, { status: 409 });
+      }
+
+      const calendarInput = {
+        summary: `High-signal event — ${item.title}`.slice(0, 160),
+        start: start.toISO()!,
+        end: end.toISO()!,
+        timeZone: USER_TIME_ZONE,
+        location: [item.venue, item.city].filter(Boolean).join(", ") || null,
+        description: buildCeoEventDescription({
+          blockType: "high_signal_event",
+          externalId: `local-event:${item.id}`,
+          outcome: item.whyItMatters,
+          notes: item.sourceUrl ? `Source: ${item.sourceUrl}` : item.summary,
+        }),
+      };
+      const event = item.calendarEventId
+        ? await updateGoogleCalendarEvent(user.id, {
+            ...calendarInput,
+            eventId: item.calendarEventId,
+          })
+        : await createGoogleCalendarEvent(user.id, calendarInput);
+      if (!event) {
+        return NextResponse.json({ error: "Google Calendar did not return the event." }, { status: 502 });
+      }
+      data.plannedStart = start.toJSDate();
+      data.plannedEnd = end.toJSDate();
+      data.calendarEventId = event.id;
+    }
+
     let activityId = item.loggedActivityId;
 
     if (logToGrowth && !item.loggedActivityId) {
       const today = DateTime.now().setZone(USER_TIME_ZONE).toISODate()!;
       const activity = await prisma.growthActivity.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           date: today,
           domain: themeToDomain(item.theme),
           category: "event",
@@ -100,6 +159,9 @@ export async function PATCH(request: Request) {
         id: updated.id,
         status: updated.status,
         loggedActivityId: updated.loggedActivityId,
+        plannedStart: updated.plannedStart?.toISOString() ?? null,
+        plannedEnd: updated.plannedEnd?.toISOString() ?? null,
+        calendarEventId: updated.calendarEventId,
       },
       activityId,
     });

@@ -2,6 +2,7 @@
 
 import { type ReactNode } from "react";
 import { calendarDateTime } from "@/lib/user-timezone";
+import { isCeoGrowthCalendarEvent } from "@/lib/agenda-policy";
 
 export type TodayOverviewResponse = {
   brief: {
@@ -19,6 +20,7 @@ export type TodayOverviewResponse = {
         role: string;
         priority: string;
         evidence: string | null;
+        layer: "autopilot" | "flex";
       }>;
     };
     recommendation: {
@@ -68,6 +70,13 @@ export type TodayOverviewResponse = {
     daysSinceTouch: number | null;
   } | null;
   calendar: GoogleCalendarOverview | null;
+  routineSchedule?: GoogleCalendarOverview["events"];
+  grokbotCeoBriefing?: {
+    title: string;
+    contactName: string;
+    contactEmail: string | null;
+    guidance: string[];
+  };
   weekPlan?: WeeklyOperatingPlanOverview | null;
   entrepreneurship?: {
     sectionLabel: string;
@@ -97,6 +106,7 @@ export type GoogleCalendarOverview = {
     end: string | null;
     allDay: boolean;
     location: string | null;
+    description: string | null;
     htmlLink: string | null;
   }>;
   error?: string;
@@ -426,9 +436,8 @@ function planBlockSortKey(block: PlanBlock, dayShape: TodayOverviewResponse["bri
 
 /** Lower = higher on the list. Main thing first (Covey: protect leverage before optional). */
 export function timelinePriorityRank(item: TimelineItem): number {
-  if (item.type === "calendar") return 2;
+  if (item.type === "calendar") return isCeoGrowthCalendarEvent(item.event) ? 1 : 3;
   if (item.type === "plan") {
-    if (item.block.key === "leverage" || item.block.priority === "protect") return 1;
     if (item.block.priority === "locked") return 2;
     if (item.block.key === "joy" || item.block.priority === "optional") return 8;
     return 5;
@@ -441,11 +450,14 @@ export function timelinePriorityRank(item: TimelineItem): number {
 }
 
 export function timelinePriorityLabel(item: TimelineItem): string {
-  if (item.type === "calendar") return "Booked";
+  if (item.type === "calendar") {
+    if (isCeoGrowthCalendarEvent(item.event)) return "CEO growth";
+    if (item.event.id.startsWith("routine:")) return "Routine";
+    return "Calendar";
+  }
   if (item.type === "plan") {
-    if (item.block.key === "leverage" || item.block.priority === "protect") return "Main";
-    if (item.block.priority === "locked") return "Locked";
-    if (item.block.key === "joy" || item.block.priority === "optional") return "Optional";
+    if (item.block.layer === "autopilot") return item.block.priority === "optional" ? "Autopilot · optional" : "Autopilot";
+    if (item.block.layer === "flex") return "Flex · leftover only";
     return formatPlanRole(item.block.role);
   }
   if (item.block.domain === "startup") return "Business";

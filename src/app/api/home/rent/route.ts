@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { parseIsoDate } from "@/lib/home";
 import { getOrCreateHomeProfile } from "@/lib/home-profile";
 import { prisma } from "@/lib/prisma";
@@ -39,14 +38,14 @@ function serializePayment(payment: {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const profile = await getOrCreateHomeProfile(session.user.id);
+    const profile = await getOrCreateHomeProfile(user.id);
     const payments = await prisma.homeRentPayment.findMany({
-      where: { userId: session.user.id, homeProfileId: profile.id },
+      where: { userId: user.id, homeProfileId: profile.id },
       include: {
         tenant: { select: { id: true, name: true, unitLabel: true } },
       },
@@ -63,9 +62,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -86,7 +85,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Invalid tenant." }, { status: 400 });
       }
       const tenant = await prisma.homeTenant.findFirst({
-        where: { id: body.tenantId, userId: session.user.id },
+        where: { id: body.tenantId, userId: user.id },
       });
       if (!tenant) {
         return NextResponse.json({ error: "Tenant not found." }, { status: 404 });
@@ -101,10 +100,10 @@ export async function POST(request: Request) {
     const notes =
       typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
 
-    const profile = await getOrCreateHomeProfile(session.user.id);
+    const profile = await getOrCreateHomeProfile(user.id);
     const payment = await prisma.homeRentPayment.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         homeProfileId: profile.id,
         tenantId,
         amount,
@@ -126,9 +125,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -138,7 +137,7 @@ export async function DELETE(request: Request) {
     }
 
     const existing = await prisma.homeRentPayment.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Payment not found." }, { status: 404 });

@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function optionalString(value: unknown) {
@@ -29,9 +28,9 @@ function joyOptionsFrom(value: unknown) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -47,8 +46,8 @@ export async function PATCH(request: Request) {
     };
 
     const profile = await prisma.lifeLeverageProfile.upsert({
-      where: { userId: session.user.id },
-      create: { userId: session.user.id, ...data },
+      where: { userId: user.id },
+      create: { userId: user.id, ...data },
       update: data,
     });
 

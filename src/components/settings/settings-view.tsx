@@ -1,10 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, HardDrive, Landmark, Loader2, Lock, LogOut, Palette, X } from "lucide-react";
+import { CalendarDays, HardDrive, Landmark, Loader2, Lock, Palette, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppVersion } from "@/components/app-version";
 import { ConnectBankButton } from "@/components/connect-bank-button";
+import { DailyPlanningSettings } from "@/components/settings/daily-planning-settings";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 
@@ -21,14 +22,11 @@ type CalendarStatus = GoogleConnectionStatus;
 type DriveStatus = GoogleConnectionStatus;
 
 type SettingsViewProps = {
-  userName?: string | null;
-  userEmail?: string | null;
   accountsCount: number;
   syncStatus: "idle" | "loading" | "success" | "error";
   syncFeedback: { tone: SyncFeedbackTone; message: string } | null;
   onBankLinked: () => void;
   onSync: () => void;
-  onSignOut: () => void;
   onClose: () => void;
 };
 
@@ -71,14 +69,11 @@ function driveCopy(drive: DriveStatus) {
 }
 
 export function SettingsView({
-  userName,
-  userEmail,
   accountsCount,
   syncStatus,
   syncFeedback,
   onBankLinked,
   onSync,
-  onSignOut,
   onClose,
 }: SettingsViewProps) {
   const queryClient = useQueryClient();
@@ -214,7 +209,7 @@ export function SettingsView({
           <p className="app-label text-[var(--accent-strong)] mb-1">App</p>
           <h1 className="app-display text-2xl text-[var(--ink)]">Settings</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Connections, theme, and account — one place.
+            Connections, theme, and app details — one place.
           </p>
         </div>
         <button
@@ -289,6 +284,8 @@ export function SettingsView({
           <p className="text-sm text-[var(--muted)]">Couldn’t load calendar status.</p>
         )}
       </section>
+
+      <DailyPlanningSettings />
 
       <section className="app-card space-y-3 p-4">
         <div className="flex items-center gap-2">
@@ -412,17 +409,8 @@ export function SettingsView({
       </section>
 
       <section className="app-card space-y-3 p-4">
-        <h2 className="text-sm font-semibold text-[var(--ink)]">Account</h2>
-        <p className="truncate text-sm text-[var(--ink-soft)]">{userName || "User"}</p>
-        {userEmail ? <p className="truncate text-xs text-[var(--muted)]">{userEmail}</p> : null}
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--muted)] ring-1 ring-[var(--card-border)] hover:text-[var(--ink)]"
-        >
-          <LogOut size={16} />
-          Sign out
-        </button>
+        <h2 className="text-sm font-semibold text-[var(--ink)]">App</h2>
+        <p className="text-sm text-[var(--ink-soft)]">Single-user Life OS</p>
         <AppVersion />
       </section>
     </div>

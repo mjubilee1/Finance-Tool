@@ -1,13 +1,12 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -18,7 +17,7 @@ export async function PATCH(request: Request) {
     }
 
     const account = await prisma.financialAccount.findFirst({
-      where: { id: accountId, userId: session.user.id },
+      where: { id: accountId, userId: user.id },
     });
 
     if (!account) {
@@ -31,7 +30,7 @@ export async function PATCH(request: Request) {
     });
 
     const primaryCount = await prisma.financialAccount.count({
-      where: { userId: session.user.id, isPrimary: true },
+      where: { userId: user.id, isPrimary: true },
     });
 
     return NextResponse.json({
