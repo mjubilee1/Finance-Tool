@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Clock3, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Clock3, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 type ScheduleItem = {
@@ -14,8 +14,6 @@ type ScheduleItem = {
 };
 
 type DailyPlanningResponse = {
-  emailEnabled: boolean;
-  emailConfigured: boolean;
   items: ScheduleItem[];
 };
 
@@ -87,16 +85,6 @@ export function DailyPlanningSettings() {
     await queryClient.invalidateQueries({ queryKey: ["overview-today"] });
   };
 
-  const emailMutation = useMutation({
-    mutationFn: (emailEnabled: boolean) =>
-      requestDailyPlanning("PATCH", { action: "email", emailEnabled }),
-    onSuccess: async () => {
-      setFeedback(query.data?.emailEnabled ? "Morning email turned off." : "Morning email turned on.");
-      await refresh();
-    },
-    onError: (error) => setFeedback(error instanceof Error ? error.message : "Could not save."),
-  });
-
   const saveMutation = useMutation({
     mutationFn: () =>
       requestDailyPlanning(editingId ? "PATCH" : "POST", {
@@ -155,43 +143,6 @@ export function DailyPlanningSettings() {
         <p className="text-sm text-rose-700 dark:text-rose-300">Couldn&apos;t load daily schedule.</p>
       ) : (
         <>
-          <div className="rounded-xl bg-[var(--accent-soft)] p-3 ring-1 ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]">
-            <div className="flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
-                  <BellRing size={16} className="text-[var(--accent-strong)]" />
-                  Morning plan email
-                </span>
-                <span className="mt-1 block text-xs leading-relaxed text-[var(--muted)]">
-                  Main thing, fixed schedule, and saved tasks once each morning.
-                </span>
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={query.data?.emailEnabled ?? false}
-                disabled={emailMutation.isPending || !query.data?.emailConfigured}
-                onClick={() => emailMutation.mutate(!(query.data?.emailEnabled ?? false))}
-                className={`relative h-11 w-16 shrink-0 rounded-full ring-1 transition ${
-                  query.data?.emailEnabled
-                    ? "bg-[var(--accent)] ring-[var(--accent)]"
-                    : "bg-[var(--card-solid)] ring-[var(--card-border)]"
-                } disabled:opacity-50`}
-              >
-                <span
-                  className={`absolute top-1.5 h-8 w-8 rounded-full bg-white shadow transition ${
-                    query.data?.emailEnabled ? "left-7" : "left-1.5"
-                  }`}
-                />
-              </button>
-            </div>
-            {!query.data?.emailConfigured ? (
-              <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                Add RESEND_API_KEY to enable email.
-              </p>
-            ) : null}
-          </div>
-
           {query.data?.items.length ? (
             <ul className="divide-y divide-[var(--card-border)] rounded-xl ring-1 ring-[var(--card-border)]">
               {query.data.items.map((item) => (

@@ -16,17 +16,12 @@ export async function GET() {
   const userId = await requireUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [settings, items] = await Promise.all([
-    prisma.dailyPlanningSettings.findUnique({ where: { userId } }),
-    prisma.routineScheduleItem.findMany({
-      where: { userId },
-      orderBy: [{ sortOrder: "asc" }, { startTime: "asc" }, { createdAt: "asc" }],
-    }),
-  ]);
+  const items = await prisma.routineScheduleItem.findMany({
+    where: { userId },
+    orderBy: [{ sortOrder: "asc" }, { startTime: "asc" }, { createdAt: "asc" }],
+  });
 
   return NextResponse.json({
-    emailEnabled: settings?.emailEnabled ?? false,
-    emailConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
     items: items.map(routineItemToJson),
   });
 }
@@ -63,16 +58,6 @@ export async function PATCH(request: Request) {
 
   try {
     const body = await request.json();
-    if (body.action === "email") {
-      const emailEnabled = body.emailEnabled === true;
-      const settings = await prisma.dailyPlanningSettings.upsert({
-        where: { userId },
-        create: { userId, emailEnabled },
-        update: { emailEnabled },
-      });
-      return NextResponse.json({ emailEnabled: settings.emailEnabled });
-    }
-
     if (typeof body.id !== "string" || !body.id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }

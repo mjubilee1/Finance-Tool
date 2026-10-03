@@ -9,7 +9,6 @@ import {
   persistGrowthSnapshot,
 } from "@/lib/growth-agent";
 import { maybeSendHeartbeatEmail } from "@/lib/growth-heartbeat";
-import { maybeSendDailyPlanEmail } from "@/lib/daily-plan-email";
 import { userWeekday } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +32,6 @@ async function runDailyCron(req: Request) {
     let growthRecommendations = 0;
     let weeklyReviews = 0;
     let heartbeatEmails = 0;
-    let dailyPlanEmails = 0;
     const isSunday = userWeekday() === 7;
 
     for (const user of users) {
@@ -55,12 +53,6 @@ async function runDailyCron(req: Request) {
 
           await generateHighLeverageRecommendation(user.id);
           growthRecommendations++;
-          try {
-            const dailyPlanEmail = await maybeSendDailyPlanEmail(user);
-            if (dailyPlanEmail.sent) dailyPlanEmails++;
-          } catch (emailError) {
-            console.error(`Daily plan email failed for user ${user.id}:`, emailError);
-          }
           if (isSunday) {
             await generateWeeklyGrowthReview(user.id);
             weeklyReviews++;
@@ -82,7 +74,6 @@ async function runDailyCron(req: Request) {
       growthRecommendations,
       weeklyReviews,
       heartbeatEmails,
-      dailyPlanEmails,
     });
   } catch (error) {
     console.error("Cron failed:", error);

@@ -69,6 +69,12 @@ export type TodayOverviewResponse = {
   } | null;
   calendar: GoogleCalendarOverview | null;
   routineSchedule?: GoogleCalendarOverview["events"];
+  grokbotCeoBriefing?: {
+    title: string;
+    contactName: string;
+    contactEmail: string | null;
+    guidance: string[];
+  };
   weekPlan?: WeeklyOperatingPlanOverview | null;
   entrepreneurship?: {
     sectionLabel: string;
