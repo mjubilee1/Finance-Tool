@@ -33,7 +33,7 @@ const SettingsView = dynamic(
 );
 /** Daily surfaces and secondary tabs load on demand to keep the shell small. */
 const OverviewHome = dynamic(
-  () => import("./overview/execution-overview").then((m) => m.OverviewHome),
+  () => import("./overview/executive-dashboard").then((m) => m.ExecutiveDashboard),
   { loading: () => <DashboardSkeleton /> },
 );
 const FinanceHome = dynamic(
@@ -258,7 +258,10 @@ export function Dashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session, status } = useSession();
-  
+  const [activeTab, setActiveTab] = useState<TabType>("overview");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+
   const vaultQuery = useQuery({
     queryKey: ["financial-vault"],
     queryFn: async () => {
@@ -271,16 +274,26 @@ export function Dashboard() {
   });
 
   const moneyLocked = vaultQuery.data?.locked === true;
+  const moneyTabNeedsDashboard = [
+    "finance",
+    "accounts",
+    "transactions",
+    "projections",
+    "financial-trends",
+    "goals",
+    "recurring",
+  ].includes(activeTab);
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: fetchDashboard,
-    enabled: status === "authenticated" && vaultQuery.isSuccess && !moneyLocked,
+    enabled:
+      status === "authenticated" &&
+      vaultQuery.isSuccess &&
+      !moneyLocked &&
+      (settingsOpen || moneyTabNeedsDashboard),
   });
 
-  const [activeTab, setActiveTab] = useState<TabType>("today");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingBalances, setIsRefreshingBalances] = useState(false);
   const [balanceMeta, setBalanceMeta] = useState<BalanceRefreshMeta | null>(null);
@@ -619,7 +632,7 @@ export function Dashboard() {
             <div className="leading-tight">
               <span className="app-display block text-[1.05rem] text-slate-900">Life OS</span>
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700/80">
-                Daily execution
+                Personal growth
               </span>
             </div>
           </div>
@@ -778,23 +791,13 @@ export function Dashboard() {
               />
             )}
 
-            {/* View: OVERVIEW */}
-            {!settingsOpen && !moneyLocked && activeTab === 'overview' && (
-              isLoading && !data ? (
-                <DashboardSkeleton />
-              ) : (
-                <OverviewHome
-                  goals={goals}
-                  financialActions={{
-                    upcomingBills: displayInsight.cfoBrief?.upcomingBills,
-                    spendingWarning: displayInsight.cfoBrief?.spendingWarning,
-                  }}
-                  onOpenToday={() => selectTab('today')}
-                  onOpenGrowth={() => selectTab("growth")}
-                  onOpenGoals={() => selectTab("goals")}
-                  onOpenFinance={() => selectTab("finance")}
-                />
-              )
+            {/* View: OVERVIEW — executive growth dashboard (money stays vault-gated elsewhere) */}
+            {!settingsOpen && activeTab === "overview" && (
+              <OverviewHome
+                onOpenGrowth={() => selectTab("growth")}
+                onOpenGoals={() => selectTab("goals")}
+                onOpenFinance={() => selectTab("finance")}
+              />
             )}
 
             {/* View: FINANCE */}
