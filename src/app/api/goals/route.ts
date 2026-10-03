@@ -1,23 +1,22 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { currentGoalMonthKey } from "@/lib/debt-paydown";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const goals = await prisma.financialGoal.findMany({
-      where: { userId: session.user.id, status: "active" },
+      where: { userId: user.id, status: "active" },
       orderBy: { createdAt: "asc" },
     });
 
-    const withMonth = await attachGoalMonthPaid(session.user.id, goals);
+    const withMonth = await attachGoalMonthPaid(user.id, goals);
     return NextResponse.json({ goals: withMonth });
   } catch (error) {
     console.error("Failed to fetch goals:", error);
@@ -30,9 +29,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -84,7 +83,7 @@ export async function POST(request: Request) {
 
     const goal = await prisma.financialGoal.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         name: name.trim(),
         targetAmount: parsedTarget,
         currentAmount: parsedCurrent,
@@ -98,7 +97,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const [withMonth] = await attachGoalMonthPaid(session.user.id, [goal]);
+    const [withMonth] = await attachGoalMonthPaid(user.id, [goal]);
     return NextResponse.json({ goal: withMonth });
   } catch (error) {
     console.error("Failed to create goal:", error);
@@ -111,9 +110,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -138,7 +137,7 @@ export async function PATCH(request: Request) {
     }
 
     const existing = await prisma.financialGoal.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -194,7 +193,7 @@ export async function PATCH(request: Request) {
 
     await prisma.$transaction(async (tx) => {
       const updated = await tx.financialGoal.updateMany({
-        where: { id, userId: session.user.id },
+        where: { id, userId: user.id },
         data,
       });
       if (updated.count === 0) {
@@ -204,7 +203,7 @@ export async function PATCH(request: Request) {
       if (contributionAmount != null && contributionAmount !== 0) {
         await tx.goalContribution.create({
           data: {
-            userId: session.user.id,
+            userId: user.id,
             goalId: id,
             amount: contributionAmount,
             monthKey,
@@ -216,10 +215,10 @@ export async function PATCH(request: Request) {
     });
 
     const goal = await prisma.financialGoal.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     const [withMonth] = goal
-      ? await attachGoalMonthPaid(session.user.id, [goal])
+      ? await attachGoalMonthPaid(user.id, [goal])
       : [null];
 
     return NextResponse.json({ success: true, goal: withMonth });
@@ -234,9 +233,9 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -247,7 +246,7 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.financialGoal.update({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
       data: { status: "abandoned" },
     });
 

@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatContactNotesForAgent } from "@/lib/growth-contact-notes";
 import {
@@ -17,9 +16,9 @@ const contactInclude = {
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -27,7 +26,7 @@ export async function GET(request: Request) {
 
     if (lite) {
       const contacts = await prisma.growthContact.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         orderBy: [{ lastContactDate: "desc" }, { name: "asc" }],
         select: {
           id: true,
@@ -41,7 +40,7 @@ export async function GET(request: Request) {
     }
 
     const contacts = await prisma.growthContact.findMany({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
       orderBy: [{ lastContactDate: "desc" }, { name: "asc" }],
       include: contactInclude,
     });
@@ -55,9 +54,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -80,7 +79,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
     const initialNotes = typeof notes === "string" ? notes.trim() : "";
 
     const contact = await prisma.$transaction(async (tx) => {
@@ -149,9 +148,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -190,7 +189,7 @@ export async function PATCH(request: Request) {
     }
 
     const updated = await prisma.growthContact.updateMany({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
       data,
     });
 
@@ -207,9 +206,9 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -219,7 +218,7 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.growthContact.deleteMany({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
 
     return NextResponse.json({ success: true });

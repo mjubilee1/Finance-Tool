@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { userNow } from "@/lib/user-timezone";
 import { prisma } from "@/lib/prisma";
 import { filterTransactionsByFocus } from "@/lib/account-focus";
@@ -20,12 +19,12 @@ type CfoRecurringReview = {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
     const ninetyDaysAgo = userNow().minus({ days: 90 }).toISODate();
 
     await detectRecurringPatterns(userId);

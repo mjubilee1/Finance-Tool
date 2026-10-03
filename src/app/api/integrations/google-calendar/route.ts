@@ -1,7 +1,5 @@
-import { DateTime } from "luxon";
-import { getServerSession } from "next-auth";
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { userNow } from "@/lib/user-timezone";
 import {
   disconnectGoogleCalendar,
@@ -10,16 +8,16 @@ import {
 } from "@/lib/google-calendar";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
   const now = userNow();
   const endOfDay = now.endOf("day");
 
   try {
-    const calendar = await fetchUpcomingGoogleCalendarEvents(session.user.id, {
+    const calendar = await fetchUpcomingGoogleCalendarEvents(user.id, {
       timeMin: now.toJSDate(),
       timeMax: endOfDay.toJSDate(),
       maxResults: 8,
@@ -27,7 +25,7 @@ export async function GET() {
 
     return NextResponse.json(calendar);
   } catch (error) {
-    const status = await getGoogleCalendarStatus(session.user.id);
+    const status = await getGoogleCalendarStatus(user.id);
     return NextResponse.json({
       ...status,
       events: [],
@@ -37,11 +35,11 @@ export async function GET() {
 }
 
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
-  await disconnectGoogleCalendar(session.user.id);
+  await disconnectGoogleCalendar(user.id);
   return NextResponse.json({ connected: false, status: "not_connected" });
 }

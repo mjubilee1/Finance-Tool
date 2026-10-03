@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAppUser } from "@/lib/app-user";
 import { getExecutiveDashboard } from "@/lib/executive-dashboard";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
+  }
 
-    return NextResponse.json(await getExecutiveDashboard(session.user.id));
+    return NextResponse.json(await getExecutiveDashboard(user.id));
   } catch (error) {
     console.error("Failed to load executive dashboard:", error);
     return NextResponse.json(

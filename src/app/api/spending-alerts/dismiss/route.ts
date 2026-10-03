@@ -1,7 +1,6 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildChargeReviewMemoryContent,
@@ -23,16 +22,16 @@ const dismissSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = dismissSchema.parse(await req.json());
     const transaction = await prisma.transaction.findFirst({
       where: {
         id: body.transactionId,
-        userId: session.user.id,
+        userId: user.id,
       },
     });
 
@@ -52,7 +51,7 @@ export async function POST(req: Request) {
     });
 
     await storeFinancialMemories(
-      session.user.id,
+      user.id,
       [
         {
           title: memoryTitle,

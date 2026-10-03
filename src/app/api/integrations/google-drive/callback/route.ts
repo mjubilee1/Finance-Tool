@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getAppUser } from "@/lib/app-user";
 import {
   exchangeGoogleDriveCode,
   getGoogleDriveRedirectUri,
@@ -25,9 +24,9 @@ function appRedirect(
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
   const state = request.nextUrl.searchParams.get("state");
@@ -49,7 +48,7 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = getGoogleDriveRedirectUri(request);
     const token = await exchangeGoogleDriveCode(code, redirectUri);
-    await saveGoogleDriveConnection(session.user.id, token);
+    await saveGoogleDriveConnection(user.id, token);
     return appRedirect(request, "connected");
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange";

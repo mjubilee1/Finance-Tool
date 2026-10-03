@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getAppUser } from "@/lib/app-user";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userToday } from "@/lib/user-timezone";
 
@@ -21,12 +20,12 @@ const winSchema = z.object({
 });
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
   const wins = await prisma.growthWin.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     take: 50,
   });
@@ -35,10 +34,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
+  }
     const parsed = winSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -48,7 +47,7 @@ export async function POST(request: Request) {
     }
     const win = await prisma.growthWin.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         date: parsed.data.date || userToday(),
         title: parsed.data.title,
         domain: parsed.data.domain,
@@ -63,14 +62,14 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
   const id = new URL(request.url).searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "Missing win ID." }, { status: 400 });
   }
-  await prisma.growthWin.deleteMany({ where: { id, userId: session.user.id } });
+  await prisma.growthWin.deleteMany({ where: { id, userId: user.id } });
   return NextResponse.json({ success: true });
 }

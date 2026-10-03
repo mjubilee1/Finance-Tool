@@ -1,20 +1,19 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { generateHighLeverageRecommendation } from "@/lib/growth-agent";
 import { storeFinancialMemories } from "@/lib/financial-memory";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => ({}));
     const force = Boolean(body?.force);
-    const recommendation = await generateHighLeverageRecommendation(session.user.id, { force });
+    const recommendation = await generateHighLeverageRecommendation(user.id, { force });
     return NextResponse.json({ recommendation });
   } catch (error) {
     console.error("Failed to generate growth recommendation:", error);
@@ -24,9 +23,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -36,7 +35,7 @@ export async function PATCH(request: Request) {
     }
 
     const existing = await prisma.growthRecommendation.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -49,7 +48,7 @@ export async function PATCH(request: Request) {
 
     if (status === "skipped" || status === "done") {
       await storeFinancialMemories(
-        session.user.id,
+        user.id,
         [
           {
             title:

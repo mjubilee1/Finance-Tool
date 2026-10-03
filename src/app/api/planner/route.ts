@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import {
   createPlannerItem,
   deletePlannerItem,
@@ -13,13 +12,13 @@ import {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
-    const activity = await createPlannerItem(session.user.id, {
+    const activity = await createPlannerItem(user.id, {
       date: body.date,
       title: body.title,
       domain: body.domain,
@@ -43,9 +42,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -55,7 +54,7 @@ export async function PATCH(request: Request) {
       if (!isIsoDate(body.date) || !Array.isArray(body.order)) {
         return NextResponse.json({ error: "date and order are required" }, { status: 400 });
       }
-      const order = await reorderPlannerDay(session.user.id, body.date, body.order);
+      const order = await reorderPlannerDay(user.id, body.date, body.order);
       return NextResponse.json({ order });
     }
 
@@ -73,7 +72,7 @@ export async function PATCH(request: Request) {
       if (lyftGross != null && (!Number.isFinite(lyftGross) || lyftGross < 0)) {
         return NextResponse.json({ error: "Invalid Lyft earnings amount" }, { status: 400 });
       }
-      const override = await setSystemBlockOverride(session.user.id, body.date, body.blockKey, {
+      const override = await setSystemBlockOverride(user.id, body.date, body.blockKey, {
         status: body.status,
         label: body.label,
         timeLabel: body.timeLabel,
@@ -87,7 +86,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
 
-    const item = await updatePlannerItem(session.user.id, body.id, {
+    const item = await updatePlannerItem(user.id, body.id, {
       title: body.title,
       domain: body.domain,
       notes: body.notes,
@@ -116,9 +115,9 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -127,7 +126,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Missing ID" }, { status: 400 });
     }
 
-    const result = await deletePlannerItem(session.user.id, id);
+    const result = await deletePlannerItem(user.id, id);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete planner item.";

@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import {
   isLearningCategoryId,
   isLearningPriority,
@@ -23,9 +22,9 @@ function isValidUrl(value: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => null);
@@ -76,7 +75,7 @@ export async function POST(request: Request) {
 
     const item = await prisma.learningContentItem.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         title: title.slice(0, 200),
         url: storedUrl,
         category,
@@ -98,9 +97,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json().catch(() => null);
@@ -114,7 +113,7 @@ export async function PATCH(request: Request) {
     }
 
     const existing = await prisma.learningContentItem.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Content not found." }, { status: 404 });
@@ -197,7 +196,7 @@ export async function PATCH(request: Request) {
     if (item.status === "completed") {
       const videoId = item.externalId || youtubeVideoIdFromUrl(item.url);
       if (videoId) {
-        await recordLearningVideoWatched(session.user.id, {
+        await recordLearningVideoWatched(user.id, {
           videoId,
           title: item.title,
           queueItemId: item.id,
@@ -214,9 +213,9 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -226,7 +225,7 @@ export async function DELETE(request: Request) {
     }
 
     const existing = await prisma.learningContentItem.findFirst({
-      where: { id, userId: session.user.id },
+      where: { id, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ error: "Content not found." }, { status: 404 });

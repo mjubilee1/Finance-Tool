@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   LOCAL_EVENT_STATUSES,
@@ -32,9 +31,9 @@ function themeToDomain(
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const body = await request.json();
@@ -51,7 +50,7 @@ export async function PATCH(request: Request) {
     }
 
     const item = await prisma.localEventItem.findFirst({
-      where: { id, digest: { userId: session.user.id } },
+      where: { id, digest: { userId: user.id } },
       include: { digest: true },
     });
     if (!item) {
@@ -107,11 +106,11 @@ export async function PATCH(request: Request) {
         }),
       };
       const event = item.calendarEventId
-        ? await updateGoogleCalendarEvent(session.user.id, {
+        ? await updateGoogleCalendarEvent(user.id, {
             ...calendarInput,
             eventId: item.calendarEventId,
           })
-        : await createGoogleCalendarEvent(session.user.id, calendarInput);
+        : await createGoogleCalendarEvent(user.id, calendarInput);
       if (!event) {
         return NextResponse.json({ error: "Google Calendar did not return the event." }, { status: 502 });
       }
@@ -126,7 +125,7 @@ export async function PATCH(request: Request) {
       const today = DateTime.now().setZone(USER_TIME_ZONE).toISODate()!;
       const activity = await prisma.growthActivity.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           date: today,
           domain: themeToDomain(item.theme),
           category: "event",

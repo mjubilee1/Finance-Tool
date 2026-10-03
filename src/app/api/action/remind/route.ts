@@ -1,13 +1,12 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getResend } from "@/lib/resend";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     if (!process.env.RESEND_API_KEY?.trim()) {
@@ -22,7 +21,7 @@ export async function POST(req: Request) {
     const emailHtml = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #18181b;">
         <h2 style="color: #059669;">Action Required: Subscription Review</h2>
-        <p>Hi ${session.user.name || "there"},</p>
+        <p>Hi ${user.name || "there"},</p>
         <p>This is your reminder from the <strong>Daily Financial Coach</strong> to review and potentially cancel your <strong>${merchant}</strong> subscription.</p>
         
         <div style="background-color: #f4f4f5; padding: 16px; border-radius: 8px; margin: 24px 0;">

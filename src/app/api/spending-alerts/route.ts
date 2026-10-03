@@ -1,6 +1,5 @@
+import { getAppUser } from "@/lib/app-user";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { filterTransactionsByFocus } from "@/lib/account-focus";
 import { getDismissedMerchantKeys } from "@/lib/charge-review";
@@ -9,26 +8,26 @@ import { userNow } from "@/lib/user-timezone";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getAppUser();
+    if (!user) {
+      return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
     }
 
     const sixtyDaysAgo = userNow().minus({ days: 60 }).toISODate();
     const [transactions, accounts, reviewMemories] = await Promise.all([
       prisma.transaction.findMany({
         where: {
-          userId: session.user.id,
+          userId: user.id,
           date: { gte: sixtyDaysAgo ?? undefined },
           amount: { gt: 0 },
         },
         orderBy: { date: "desc" },
       }),
       prisma.financialAccount.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
       }),
       prisma.financialMemory.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         select: { title: true, type: true },
       }),
     ]);

@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getAppUser } from "@/lib/app-user";
 import {
   normalizeRoutineScheduleInput,
   routineItemToJson,
@@ -8,8 +7,8 @@ import {
 import { prisma } from "@/lib/prisma";
 
 async function requireUserId() {
-  const session = await getServerSession(authOptions);
-  return session?.user?.id ?? null;
+  const user = await getAppUser();
+  return user?.id ?? null;
 }
 
 export async function GET() {

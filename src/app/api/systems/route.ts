@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getAppUser } from "@/lib/app-user";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const domains = [
@@ -40,13 +39,13 @@ function emptyToNull(value: string | null | undefined) {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
   }
 
   const systems = await prisma.operatingSystem.findMany({
-    where: { userId: session.user.id, isArchived: false },
+    where: { userId: user.id, isArchived: false },
     orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
     include: { history: { orderBy: { createdAt: "desc" }, take: 10 } },
   });
@@ -55,10 +54,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
+  }
     const parsed = createSystemSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -71,7 +70,7 @@ export async function POST(request: Request) {
     const system = await prisma.$transaction(async (tx) => {
       const created = await tx.operatingSystem.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           name: input.name,
           domain: input.domain,
           status: input.status,
@@ -85,7 +84,7 @@ export async function POST(request: Request) {
       });
       await tx.operatingSystemUpdate.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           systemId: created.id,
           status: created.status,
           progress: created.progress,
@@ -105,10 +104,10 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await getAppUser();
+  if (!user) {
+    return NextResponse.json({ error: "App user is not configured." }, { status: 503 });
+  }
     const parsed = updateSystemSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -120,7 +119,7 @@ export async function PATCH(request: Request) {
     const { id, note, ...changes } = parsed.data;
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.operatingSystem.findFirst({
-        where: { id, userId: session.user.id },
+        where: { id, userId: user.id },
       });
       if (!existing) return null;
 
@@ -140,7 +139,7 @@ export async function PATCH(request: Request) {
       });
       await tx.operatingSystemUpdate.create({
         data: {
-          userId: session.user.id,
+          userId: user.id,
           systemId: system.id,
           status: system.status,
           progress: system.progress,
