@@ -9,6 +9,7 @@ import { storeFinancialMemories } from "@/lib/financial-memory";
 import { dayShapeFor } from "@/lib/joy-ideas-shared";
 import { buildTodayPlan, type TodayPlanBlockKey } from "@/lib/today-plan";
 import { applyMentionsToActivityText } from "@/lib/growth-calendar-sync";
+import { parseLyftGrossEarnings } from "@/lib/lyft";
 import {
   getPlannerDayLayout,
   loadGrowthActivitiesForDate,
@@ -76,6 +77,7 @@ export type TodayBriefContext = {
     role: string;
     priority: string;
     evidence: string | null;
+    layer: "autopilot" | "flex";
     status: "planned" | "done" | "skipped" | "hidden";
     ref: string;
     hidden: boolean;
@@ -173,7 +175,8 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
   const today = now.toISODate()!;
   const shape = dayShapeFor(now.weekday);
 
-  const [metrics, recommendation, profile, snapshot, activities, gymMemories, plannerLayout] =
+  const weekStart = now.startOf("week").toISODate()!;
+  const [metrics, recommendation, profile, snapshot, activities, weekActivities, gymMemories, plannerLayout, agendaSettings] =
     await Promise.all([
       calculateGrowthMetrics(userId),
       prisma.growthRecommendation.findUnique({
@@ -184,6 +187,10 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
         where: { userId_date: { userId, date: today } },
       }),
       loadGrowthActivitiesForDate(userId, today),
+      prisma.growthActivity.findMany({
+        where: { userId, date: { gte: weekStart, lte: today } },
+        select: { date: true, category: true, title: true, notes: true, status: true },
+      }),
       prisma.financialMemory.findMany({
         where: {
           userId,
@@ -202,10 +209,28 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
         select: { title: true, content: true },
       }),
       getPlannerDayLayout(userId, today),
+      prisma.agendaSettings.upsert({
+        where: { userId },
+        create: { userId },
+        update: {},
+      }),
     ]);
 
+  const lyftEarnedToday = activities.reduce(
+    (sum, activity) => sum + (parseLyftGrossEarnings(activity) ?? 0),
+    0,
+  );
+  const gymDaysCompletedThisWeek = new Set(
+    weekActivities
+      .filter((activity) => activity.category === "gym" && activity.status !== "skipped")
+      .map((activity) => activity.date),
+  ).size;
   const plan = buildTodayPlan(metrics, recommendation, profile, {
     memorySnippets: gymMemories.map((memory) => `${memory.title}: ${memory.content}`),
+    lyftDailyTarget: agendaSettings.lyftDailyTarget,
+    lyftEarnedToday,
+    gymWeeklyTarget: agendaSettings.gymWeeklyTarget,
+    gymDaysCompletedThisWeek,
   });
   const todayActivities = activities.map((activity) => ({
     title: activity.title,
@@ -218,6 +243,9 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
 
   const completedBlockKeys = new Set<TodayPlanBlockKey>();
   const skippedBlockKeys = new Set<TodayPlanBlockKey>();
+  if (lyftEarnedToday >= agendaSettings.lyftDailyTarget) {
+    completedBlockKeys.add("lyft");
+  }
 
   for (const activity of activities) {
     if (activity.category === "user_plan") continue;
@@ -284,6 +312,7 @@ export async function buildTodayBriefContext(userId: string): Promise<TodayBrief
         role: block.role,
         priority: block.priority,
         evidence: block.evidence,
+        layer: block.layer,
         status: status as "planned" | "done" | "skipped" | "hidden",
         ref: systemPlanRef(block.key),
         hidden: status === "hidden",
