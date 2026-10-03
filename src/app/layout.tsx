@@ -27,6 +27,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Life OS",
   description: "Personal life OS with a money core — career, body, network, and cash",
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+    },
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

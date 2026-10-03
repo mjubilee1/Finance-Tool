@@ -20,6 +20,7 @@ import {
   sumDepositoryCash,
 } from "@/lib/account-focus";
 import { attachGoalMonthPaid } from "@/lib/goal-month";
+import { getFinancialVaultStatus } from "@/lib/financial-vault";
 import { userNow, userToday } from "@/lib/user-timezone";
 
 export async function GET() {
@@ -30,6 +31,23 @@ export async function GET() {
     }
 
     const userId = session.user.id;
+    const vault = await getFinancialVaultStatus(userId);
+    if (vault.locked) {
+      return NextResponse.json({
+        financialVaultLocked: true,
+        transactions: [],
+        snapshots: [],
+        dailySpendSeries: [],
+        monthlyCashFlowSeries: [],
+        monthlyCashFlowByChecking: null,
+        aiInsight: null,
+        accounts: [],
+        goals: [],
+        briefRefresh: null,
+        cashFlow: null,
+        plaidUsage: null,
+      });
+    }
     const twoWeeksAgo = userNow().minus({ days: 14 }).toISODate();
     const thirtyDaysAgo = userNow().minus({ days: 29 }).toISODate();
     const sixMonthsAgo = userNow().minus({ months: 6 }).startOf("month").toISODate();

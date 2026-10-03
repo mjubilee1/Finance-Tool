@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, HardDrive, Landmark, Loader2, LogOut, Palette, X } from "lucide-react";
+import { CalendarDays, HardDrive, Landmark, Loader2, Lock, LogOut, Palette, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppVersion } from "@/components/app-version";
 import { ConnectBankButton } from "@/components/connect-bank-button";
@@ -99,6 +99,27 @@ export function SettingsView({
       const res = await fetch("/api/integrations/google-drive");
       if (!res.ok) throw new Error("Could not load Drive status");
       return res.json() as Promise<DriveStatus>;
+    },
+  });
+
+  const vaultQuery = useQuery({
+    queryKey: ["financial-vault"],
+    queryFn: async () => {
+      const res = await fetch("/api/financial-vault");
+      if (!res.ok) throw new Error("Could not load money vault status");
+      return res.json() as Promise<{ configured: boolean; unlocked: boolean; locked: boolean }>;
+    },
+  });
+
+  const lockVaultMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/financial-vault", { method: "DELETE" });
+      if (!res.ok) throw new Error("Could not lock money");
+    },
+    onSuccess: async () => {
+      setConnectMessage("Money locked. Vault code required to view finances again.");
+      await queryClient.invalidateQueries({ queryKey: ["financial-vault"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 
@@ -210,7 +231,8 @@ export function SettingsView({
         <div
           className={`rounded-xl px-4 py-3 text-sm ring-1 ${
             connectMessage.startsWith("Google Calendar connected") ||
-            connectMessage.startsWith("Google Drive connected")
+            connectMessage.startsWith("Google Drive connected") ||
+            connectMessage.startsWith("Money locked")
               ? "bg-teal-500/15 text-teal-950 ring-teal-400/35 dark:text-teal-100"
               : "bg-amber-500/15 text-amber-950 ring-amber-400/35 dark:text-amber-100"
           }`}
@@ -314,6 +336,42 @@ export function SettingsView({
           </>
         ) : (
           <p className="text-sm text-[var(--muted)]">Couldn’t load Drive status.</p>
+        )}
+      </section>
+
+      <section className="app-card space-y-3 p-4">
+        <div className="flex items-center gap-2">
+          <Lock size={18} className="text-[var(--accent-strong)]" />
+          <h2 className="text-sm font-semibold text-[var(--ink)]">Money vault</h2>
+        </div>
+        {vaultQuery.isLoading ? (
+          <p className="flex items-center gap-2 text-sm text-[var(--muted)]">
+            <Loader2 size={14} className="animate-spin" />
+            Checking vault…
+          </p>
+        ) : !vaultQuery.data?.configured ? (
+          <p className="text-xs leading-relaxed text-[var(--muted)]">
+            Add FINANCIAL_VAULT_CODE to hide balances from bots/browsers until you unlock.
+          </p>
+        ) : vaultQuery.data.locked ? (
+          <p className="text-xs leading-relaxed text-[var(--muted)]">
+            Money is locked. Open Finance / Goals / Overview and enter your vault code to unlock
+            (stays open ~8 hours).
+          </p>
+        ) : (
+          <>
+            <p className="text-xs leading-relaxed text-[var(--muted)]">
+              Money is unlocked on this device. Lock it before handing the phone or a bot the app.
+            </p>
+            <button
+              type="button"
+              onClick={() => lockVaultMutation.mutate()}
+              disabled={lockVaultMutation.isPending}
+              className="rounded-full px-3.5 py-2 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)] hover:bg-[var(--accent-soft)] disabled:opacity-60"
+            >
+              {lockVaultMutation.isPending ? "Locking…" : "Lock money now"}
+            </button>
+          </>
         )}
       </section>
 

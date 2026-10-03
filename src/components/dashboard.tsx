@@ -6,6 +6,7 @@ import {
     refreshPlaidBalances,
     type BalanceRefreshMeta,
 } from "@/lib/plaid-balances";
+import { isFinancialVaultTab } from "@/lib/financial-vault-tabs";
 import { getSyncFeedback, postPlaidSync, type SyncFeedbackTone } from "@/lib/sync-messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownUp, BrainCircuit, RefreshCw, RotateCcw, Search, Settings, Wallet } from "lucide-react";
@@ -23,6 +24,7 @@ import {
 import { AppVersion } from "./app-version";
 import { ChatInterface } from "./chat-interface";
 import { DashboardSkeleton } from "./dashboard-skeleton";
+import { FinancialVaultGate } from "./financial-vault-gate";
 import { LazyPlaidOAuthHandler } from "./lazy-plaid-oauth-handler";
 import { ThemeToggle } from "./theme-toggle";
 const SettingsView = dynamic(
@@ -257,10 +259,23 @@ export function Dashboard() {
   const queryClient = useQueryClient();
   const { data: session, status } = useSession();
   
+  const vaultQuery = useQuery({
+    queryKey: ["financial-vault"],
+    queryFn: async () => {
+      const res = await fetch("/api/financial-vault");
+      if (!res.ok) throw new Error("Could not load money vault status.");
+      return res.json() as Promise<{ configured: boolean; unlocked: boolean; locked: boolean }>;
+    },
+    enabled: status === "authenticated",
+    staleTime: 30_000,
+  });
+
+  const moneyLocked = vaultQuery.data?.locked === true;
+
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["dashboard"],
     queryFn: fetchDashboard,
-    enabled: status === "authenticated",
+    enabled: status === "authenticated" && vaultQuery.isSuccess && !moneyLocked,
   });
 
   const [activeTab, setActiveTab] = useState<TabType>("today");
@@ -728,6 +743,10 @@ export function Dashboard() {
               />
             ) : null}
 
+            {!settingsOpen && moneyLocked && isFinancialVaultTab(activeTab) ? (
+              <FinancialVaultGate />
+            ) : null}
+
             {!settingsOpen && activeTab === 'chat' && (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="mb-2 hidden shrink-0 md:block">
@@ -760,7 +779,7 @@ export function Dashboard() {
             )}
 
             {/* View: OVERVIEW */}
-            {!settingsOpen && activeTab === 'overview' && (
+            {!settingsOpen && !moneyLocked && activeTab === 'overview' && (
               isLoading && !data ? (
                 <DashboardSkeleton />
               ) : (
@@ -779,7 +798,7 @@ export function Dashboard() {
             )}
 
             {/* View: FINANCE */}
-            {!settingsOpen && activeTab === "finance" && (
+            {!settingsOpen && !moneyLocked && activeTab === "finance" && (
               isLoading && !data ? (
                 <DashboardSkeleton />
               ) : cashFlow ? (
@@ -821,12 +840,12 @@ export function Dashboard() {
 
             {!settingsOpen && activeTab === "events" && <LocalEventsView />}
 
-            {!settingsOpen && activeTab === "car" && <CarView />}
-            {!settingsOpen && activeTab === "home" && <HomeView />}
+            {!settingsOpen && !moneyLocked && activeTab === "car" && <CarView />}
+            {!settingsOpen && !moneyLocked && activeTab === "home" && <HomeView />}
             {!settingsOpen && activeTab === "people" && <PeopleView />}
 
             {/* View: ACCOUNTS */}
-            {!settingsOpen && activeTab === 'accounts' && (
+            {!settingsOpen && !moneyLocked && activeTab === 'accounts' && (
               <AccountsView
                 accounts={accounts}
                 onBankLinked={handleBankLinked}
@@ -850,7 +869,7 @@ export function Dashboard() {
             )}
 
             {/* View: RECURRING */}
-            {!settingsOpen && activeTab === 'recurring' && (
+            {!settingsOpen && !moneyLocked && activeTab === 'recurring' && (
               <RecurringView
                 onAskCfo={(prompt) => {
                   setChatSeedPrompt(prompt);
@@ -866,7 +885,7 @@ export function Dashboard() {
             )}
 
             {/* View: TRANSACTIONS */}
-            {!settingsOpen && activeTab === 'transactions' && (
+            {!settingsOpen && !moneyLocked && activeTab === 'transactions' && (
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                   <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block">Transactions</h1>
@@ -982,7 +1001,7 @@ export function Dashboard() {
             )}
 
             {/* View: PROJECTIONS */}
-            {!settingsOpen && activeTab === 'projections' && (
+            {!settingsOpen && !moneyLocked && activeTab === 'projections' && (
               <div className="space-y-6">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block mb-6">Projections</h1>
                 <div className="app-card p-6">
@@ -992,7 +1011,7 @@ export function Dashboard() {
             )}
 
             {/* View: FINANCIAL TRENDS */}
-            {!settingsOpen && activeTab === "financial-trends" && (
+            {!settingsOpen && !moneyLocked && activeTab === "financial-trends" && (
               <div className="space-y-6">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight hidden md:block mb-6">
                   Financial Trends
@@ -1008,7 +1027,7 @@ export function Dashboard() {
             )}
 
             {/* View: GOALS */}
-            {!settingsOpen && activeTab === 'goals' && (
+            {!settingsOpen && !moneyLocked && activeTab === 'goals' && (
               <GoalsView
                 goals={goals}
                 netDailyAverage={cashFlow?.netDailyAverage ?? 0}

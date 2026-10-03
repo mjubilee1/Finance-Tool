@@ -19,6 +19,7 @@ import {
   type GoogleCalendarEvent,
 } from "@/lib/google-calendar";
 import { readGoogleDriveFileContent } from "@/lib/google-drive";
+import { getFinancialVaultStatus } from "@/lib/financial-vault";
 import { syncCalendarEventsToGrowth } from "@/lib/growth-calendar-sync";
 import {
   applyCoachContactNotes,
@@ -763,6 +764,9 @@ export async function POST(req: Request) {
       .map((message) => message.content)
       .join("\n");
     const twoYearsAgo = userNow().minus({ years: 2 }).toISODate();
+    const vault = await getFinancialVaultStatus(session.user.id);
+    const financesLocked = vault.locked;
+
     const [
       accounts,
       goals,
@@ -774,66 +778,84 @@ export async function POST(req: Request) {
       lifePulse,
       localEventDigest,
     ] = await Promise.all([
-      prisma.financialAccount.findMany({
-        where: { userId: session.user.id },
-      }),
-      loadCoachGoals(session.user.id),
-      prisma.transaction.findMany({
-        where: { userId: session.user.id },
-        orderBy: { date: "desc" },
-        take: 20,
-      }),
-      prisma.transaction.findMany({
-        where: {
-          userId: session.user.id,
-          date: { gte: twoYearsAgo || undefined },
-        },
-        orderBy: { date: "asc" },
-      }),
-      prisma.recurringPattern.findMany({
-        where: { userId: session.user.id },
-        take: 25,
-      }),
-      getOrCreateCarProfile(session.user.id),
-      getOrCreateHomeProfile(session.user.id),
+      financesLocked
+        ? Promise.resolve([])
+        : prisma.financialAccount.findMany({
+            where: { userId: session.user.id },
+          }),
+      financesLocked ? Promise.resolve([]) : loadCoachGoals(session.user.id),
+      financesLocked
+        ? Promise.resolve([])
+        : prisma.transaction.findMany({
+            where: { userId: session.user.id },
+            orderBy: { date: "desc" },
+            take: 20,
+          }),
+      financesLocked
+        ? Promise.resolve([])
+        : prisma.transaction.findMany({
+            where: {
+              userId: session.user.id,
+              date: { gte: twoYearsAgo || undefined },
+            },
+            orderBy: { date: "asc" },
+          }),
+      financesLocked
+        ? Promise.resolve([])
+        : prisma.recurringPattern.findMany({
+            where: { userId: session.user.id },
+            take: 25,
+          }),
+      financesLocked ? Promise.resolve(null) : getOrCreateCarProfile(session.user.id),
+      financesLocked ? Promise.resolve(null) : getOrCreateHomeProfile(session.user.id),
       buildLifePulse(session.user.id, {
         query: memoryQuery,
         includeNetwork: true,
         ensureEntrepreneurship: true,
         calendarDaysBack: 2,
         calendarDaysAhead: 21,
-        memoryLimit: 8,
+        memoryLimit: financesLocked ? 0 : 8,
       }),
       getLocalEventDigestForDate(session.user.id, todayIso),
     ]);
 
-    const [homeTenants, homeRentPayments, homeOpenIssues] = await Promise.all([
-      prisma.homeTenant.findMany({
-        where: { userId: session.user.id, homeProfileId: homeProfile.id },
-        orderBy: [{ status: "asc" }, { unitLabel: "asc" }],
-      }),
-      prisma.homeRentPayment.findMany({
-        where: { userId: session.user.id, homeProfileId: homeProfile.id },
-        orderBy: { paidOn: "desc" },
-        take: 40,
-      }),
-      prisma.homeMaintenanceLog.count({
-        where: {
-          userId: session.user.id,
-          homeProfileId: homeProfile.id,
-          status: { not: "resolved" },
-        },
-      }),
-    ]);
+    const homeTenants =
+      financesLocked || !homeProfile
+        ? []
+        : await prisma.homeTenant.findMany({
+            where: { userId: session.user.id, homeProfileId: homeProfile.id },
+            orderBy: [{ status: "asc" }, { unitLabel: "asc" }],
+          });
+    const homeRentPayments =
+      financesLocked || !homeProfile
+        ? []
+        : await prisma.homeRentPayment.findMany({
+            where: { userId: session.user.id, homeProfileId: homeProfile.id },
+            orderBy: { paidOn: "desc" },
+            take: 40,
+          });
+    const homeOpenIssues =
+      financesLocked || !homeProfile
+        ? 0
+        : await prisma.homeMaintenanceLog.count({
+            where: {
+              userId: session.user.id,
+              homeProfileId: homeProfile.id,
+              status: { not: "resolved" },
+            },
+          });
 
     const projectionContext = {
       debtExcluded: buildProjectionSummary(accounts, projectionTransactions, true),
       debtIncluded: buildProjectionSummary(accounts, projectionTransactions, false),
-      note: "Projection math treats Plaid positive amounts as spending and negative amounts as income. Transfers are excluded by categoryPrimary when it contains 'transfer'.",
+      note: financesLocked
+        ? "FINANCIAL_VAULT_LOCKED: do not invent balances, bills, or bank details. Tell the user Money is locked and they need to unlock in the app."
+        : "Projection math treats Plaid positive amounts as spending and negative amounts as income. Transfers are excluded by categoryPrimary when it contains 'transfer'.",
       debtRule: "Debt accounts affect current balance/net worth only. Mortgage/loan transactions are excluded from daily income/spend.",
     };
 
     const typicalPaycheck = (() => {
+      if (financesLocked) return null;
       const payroll = recentTransactions.find((t) => {
         if (t.amount >= 0) return false;
         const label = `${t.name} ${t.merchantName ?? ""}`.toLowerCase();
@@ -918,19 +940,21 @@ export async function POST(req: Request) {
           confidence: pattern.confidenceScore,
         })),
         projectionContext,
-        cashSchedule: [
-          buildKnownCashScheduleContext(userNow(), {
-            typicalPaycheck,
-            carProfile,
-            homeProfile,
-          }),
-          buildHomePropertyContext({
-            profile: homeProfile,
-            tenants: homeTenants,
-            payments: homeRentPayments,
-            openIssueCount: homeOpenIssues,
-          }),
-        ].join("\n"),
+        cashSchedule: financesLocked
+          ? "FINANCIAL_VAULT_LOCKED — no cash schedule, car dues, or home rent data available this turn."
+          : [
+              buildKnownCashScheduleContext(userNow(), {
+                typicalPaycheck,
+                carProfile: carProfile!,
+                homeProfile: homeProfile!,
+              }),
+              buildHomePropertyContext({
+                profile: homeProfile!,
+                tenants: homeTenants,
+                payments: homeRentPayments,
+                openIssueCount: homeOpenIssues,
+              }),
+            ].join("\n"),
         typicalPaycheck,
       },
     });

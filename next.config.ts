@@ -33,6 +33,7 @@ const nextConfig: NextConfig = {
     "/api/car/documents/[id]": ["./storage/car-documents/**/*"],
   },
   // Single-user app: always allow mic + camera for voice input and photo uploads.
+  // Also tell crawlers not to index (robots.txt + meta robots alone are polite requests).
   async headers() {
     return [
       {
@@ -41,6 +42,10 @@ const nextConfig: NextConfig = {
           {
             key: "Permissions-Policy",
             value: "microphone=(self), camera=(self)",
+          },
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow, noarchive, nosnippet, noimageindex",
           },
         ],
       },
