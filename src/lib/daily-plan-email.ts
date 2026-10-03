@@ -96,7 +96,7 @@ export async function maybeSendDailyPlanEmail(user: {
     ? `<p style="margin-top: 24px;"><a href="${escapeHtml(url)}" style="display:inline-block;background:#0f766e;color:white;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700;">Open Today</a></p>`
     : "";
 
-  await sendEmail({
+  const delivery = await sendEmail({
     to: user.email,
     subject: `Your plan for ${brief.dateLabel}`,
     html: `
@@ -114,6 +114,9 @@ export async function maybeSendDailyPlanEmail(user: {
       </div>
     `,
   });
+  if (delivery?.error) {
+    throw new Error("Daily plan email provider rejected delivery.");
+  }
 
   await prisma.dailyPlanningSettings.update({
     where: { userId: user.id },
