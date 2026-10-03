@@ -129,7 +129,7 @@ export function TodayView({
       ...(calendar?.connected ? calendar.events : []),
       ...(todayOverview?.routineSchedule ?? []),
     ],
-    [calendar?.connected, calendar?.events, todayOverview?.routineSchedule],
+    [calendar, todayOverview?.routineSchedule],
   );
   const todayDate = brief?.date ?? userNow().toISODate()!;
   const timelineItems = useMemo(() => {
