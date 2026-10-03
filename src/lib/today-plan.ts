@@ -223,7 +223,7 @@ export function buildTodayPlan(
         priority: "optional" as const,
         evidence: gymRoutine ? "Pulled from profile or stored gym memory." : "Needs your actual gym split saved.",
         layer: "autopilot" as const,
-      }]),
+      }] : []),
       {
         key: "joy" as const,
         label: recoveryLabel,
