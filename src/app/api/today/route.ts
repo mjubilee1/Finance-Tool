@@ -72,6 +72,17 @@ export async function GET() {
           }
         : null,
       calendar,
+      routineSchedule: pulse.todayRoutineEvents,
+      grokbotCeoBriefing: {
+        title: "For Grokbot CEO",
+        contactName: session.user.name?.trim() || "Montrell",
+        contactEmail: session.user.email ?? null,
+        guidance: [
+          "Use Today as the source of truth for Montrell's real schedule and daily tasks.",
+          "If the next action is unclear, a task conflicts with his schedule, or you need an update on what he has been working on, ask Montrell in the Grokbot app.",
+          "If he is unavailable in Grokbot, send him an email instead of guessing.",
+        ],
+      },
       weekPlan: pulse.weeklyPlan,
       networkMove,
       entrepreneurship: pulse.entrepreneurship

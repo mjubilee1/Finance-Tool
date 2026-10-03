@@ -70,6 +70,13 @@ export type TodayOverviewResponse = {
     daysSinceTouch: number | null;
   } | null;
   calendar: GoogleCalendarOverview | null;
+  routineSchedule?: GoogleCalendarOverview["events"];
+  grokbotCeoBriefing?: {
+    title: string;
+    contactName: string;
+    contactEmail: string | null;
+    guidance: string[];
+  };
   weekPlan?: WeeklyOperatingPlanOverview | null;
   entrepreneurship?: {
     sectionLabel: string;
@@ -444,7 +451,9 @@ export function timelinePriorityRank(item: TimelineItem): number {
 
 export function timelinePriorityLabel(item: TimelineItem): string {
   if (item.type === "calendar") {
-    return isCeoGrowthCalendarEvent(item.event) ? "CEO growth" : "Calendar";
+    if (isCeoGrowthCalendarEvent(item.event)) return "CEO growth";
+    if (item.event.id.startsWith("routine:")) return "Routine";
+    return "Calendar";
   }
   if (item.type === "plan") {
     if (item.block.layer === "autopilot") return item.block.priority === "optional" ? "Autopilot · optional" : "Autopilot";

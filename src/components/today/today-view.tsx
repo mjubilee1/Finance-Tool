@@ -2,11 +2,14 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Bot,
   CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Mail,
+  MessageCircle,
   Plus,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -118,7 +121,13 @@ export function TodayView({
   const allUserBlocks = brief?.userPlanBlocks ?? [];
   const todayUserBlocks = pickTodayUserBlocks(allUserBlocks);
   const calendar = todayOverview?.calendar ?? null;
-  const calendarEvents = calendar?.connected ? calendar.events : [];
+  const calendarEvents = useMemo(
+    () => [
+      ...(calendar?.connected ? calendar.events : []),
+      ...(todayOverview?.routineSchedule ?? []),
+    ],
+    [calendar, todayOverview?.routineSchedule],
+  );
   const todayDate = brief?.date ?? userNow().toISODate()!;
   const timelineItems = useMemo(() => {
     const built = buildTimelineItems(
@@ -665,6 +674,37 @@ export function TodayView({
               ))}
             </ol>
           ) : null}
+        </section>
+      ) : null}
+
+      {todayOverview?.grokbotCeoBriefing ? (
+        <section className="rounded-2xl bg-[var(--card-solid)] p-4 ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,var(--card-border))]">
+          <div className="flex items-center gap-2">
+            <Bot size={18} className="text-[var(--accent-strong)]" />
+            <h2 className="text-sm font-semibold text-[var(--ink)]">
+              {todayOverview.grokbotCeoBriefing.title}
+            </h2>
+          </div>
+          <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[var(--ink-soft)]">
+            {todayOverview.grokbotCeoBriefing.guidance.map((line) => (
+              <li key={line}>• {line}</li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <div className="flex min-h-11 items-center gap-2 rounded-xl bg-[var(--accent-soft)] px-3 text-xs font-semibold text-[var(--accent-strong)]">
+              <MessageCircle size={16} />
+              Ping {todayOverview.grokbotCeoBriefing.contactName} in Grokbot
+            </div>
+            {todayOverview.grokbotCeoBriefing.contactEmail ? (
+              <a
+                href={`mailto:${todayOverview.grokbotCeoBriefing.contactEmail}?subject=${encodeURIComponent("Question about today's plan")}`}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-semibold text-[var(--ink-soft)] ring-1 ring-[var(--card-border)]"
+              >
+                <Mail size={16} />
+                Send email
+              </a>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

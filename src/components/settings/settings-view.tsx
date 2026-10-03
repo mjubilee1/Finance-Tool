@@ -5,6 +5,7 @@ import { CalendarDays, HardDrive, Landmark, Loader2, Lock, LogOut, Palette, X } 
 import { useEffect, useState } from "react";
 import { AppVersion } from "@/components/app-version";
 import { ConnectBankButton } from "@/components/connect-bank-button";
+import { DailyPlanningSettings } from "@/components/settings/daily-planning-settings";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { syncFeedbackClassName, type SyncFeedbackTone } from "@/lib/sync-messages";
 
@@ -289,6 +290,8 @@ export function SettingsView({
           <p className="text-sm text-[var(--muted)]">Couldn’t load calendar status.</p>
         )}
       </section>
+
+      <DailyPlanningSettings />
 
       <section className="app-card space-y-3 p-4">
         <div className="flex items-center gap-2">

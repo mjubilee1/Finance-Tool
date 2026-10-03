@@ -15,6 +15,7 @@ import {
   type GoogleCalendarEvent,
   type GoogleCalendarStatus,
 } from "@/lib/google-calendar";
+import { loadRoutineScheduleEventsBetween } from "@/lib/daily-planning";
 import {
   getPlannerDayLayouts,
   loadUserPlanActivitiesBetween,
@@ -45,6 +46,7 @@ export type LifePulse = {
   weeklyPlan: WeeklyOperatingPlan;
   calendar: PulseCalendar;
   todayCalendarEvents: GoogleCalendarEvent[];
+  todayRoutineEvents: GoogleCalendarEvent[];
   network: {
     contacts: CoachNetworkContact[];
     withNotesCount: number;
@@ -121,13 +123,17 @@ export async function buildLifePulse(
   const now = userNow();
   const date = now.toISODate()!;
   const weekEnd = now.plus({ days: 6 }).toISODate()!;
-  const calendar = await loadPulseCalendar(userId, now, options);
+  const [calendar, routineEvents] = await Promise.all([
+    loadPulseCalendar(userId, now, options),
+    loadRoutineScheduleEventsBetween(userId, date, weekEnd),
+  ]);
+  const allScheduleEvents = [...calendar.events, ...routineEvents];
 
   const entrepreneurship =
     options.ensureEntrepreneurship === false
       ? null
       : await ensureEntrepreneurshipRoutineForToday(userId, {
-          calendarEvents: calendar.events,
+          calendarEvents: allScheduleEvents,
         }).catch((error) => {
           console.error("Entrepreneurship routine pulse failed:", error);
           return null;
@@ -149,11 +155,15 @@ export async function buildLifePulse(
 
   const weeklyPlan = buildWeeklyOperatingPlan({
     start: now,
-    calendarEvents: calendar.events,
+    calendarEvents: allScheduleEvents,
     userPlanActivities,
     layoutsByDate,
   });
   const todayCalendarEvents = calendar.events.filter((event) => {
+    const start = calendarDateTime(event.start);
+    return start.isValid && start.hasSame(now, "day");
+  });
+  const todayRoutineEvents = routineEvents.filter((event) => {
     const start = calendarDateTime(event.start);
     return start.isValid && start.hasSame(now, "day");
   });
@@ -165,6 +175,7 @@ export async function buildLifePulse(
     weeklyPlan,
     calendar,
     todayCalendarEvents,
+    todayRoutineEvents,
     network,
     relevantMemories,
     entrepreneurship: entrepreneurship
