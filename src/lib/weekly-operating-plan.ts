@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import type { GoogleCalendarEvent } from "@/lib/google-calendar";
 import { calendarDateTime, userNow } from "@/lib/user-timezone";
 import { dayShapeFor, type DayShape } from "@/lib/joy-ideas-shared";
+import { isCeoGrowthCalendarEvent } from "@/lib/agenda-policy";
 import {
   applyCustomOrder,
   calendarPlanRef,
@@ -195,10 +196,10 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       {
         id: `${day.toISODate()}-lyft`,
         type: "cash",
-        priority: "optional",
-        label: "Morning Lyft",
-        time: "Before commute",
-        why: "Optional cash block before 9-5 — drive when it fits without stealing the workday.",
+        priority: "locked",
+        label: "Lyft until $100",
+        time: "AM first",
+        why: "Autopilot: target $100 in the morning; after-work driving is catch-up only.",
         source: "weekly_template",
         sortKey: 6.5,
         ref: weekPlanRef(`${day.toISODate()}-lyft`),
@@ -208,9 +209,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         id: `${day.toISODate()}-work`,
         type: "work",
         priority: "locked",
-        label: "9-5 work",
-        time: "9 AM-5 PM",
-        why: "W2 job is the locked block Mon-Fri. Midday is desk-only.",
+        label: "W-2 commitments",
+        time: "Use Google Calendar",
+        why: "W-2 is locked; Calendar owns the exact time boxes.",
         source: "weekly_template",
         sortKey: 9,
         ref: weekPlanRef(`${day.toISODate()}-work`),
@@ -220,9 +221,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         id: `${day.toISODate()}-evening`,
         type: "recovery",
         priority: "optional",
-        label: "Evening reset or Lyft",
+        label: "Flex or Lyft catch-up",
         time: "After commute",
-        why: "Use the evening intentionally: recovery if the floor is handled, or another Lyft block if you want extra cash. Add promotion only when you deliberately protect it.",
+        why: "Drive only for the gap below $100. A named CEO growth calendar block beats vague suggestions; flex gets the remainder.",
         source: "weekly_template",
         sortKey: 19,
         ref: weekPlanRef(`${day.toISODate()}-evening`),
@@ -236,10 +237,10 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       {
         id: `${day.toISODate()}-lyft`,
         type: "cash",
-        priority: "protect",
-        label: "Morning Lyft before 9-5",
-        time: "Before work starts",
-        why: "Thu-Fri rhythm: drive before the locked job block when you want the cash.",
+        priority: "locked",
+        label: "Lyft until $100",
+        time: "AM first",
+        why: "Autopilot: target $100 in the morning; after-work driving is catch-up only.",
         source: "weekly_template",
         sortKey: 6.5,
         ref: weekPlanRef(`${day.toISODate()}-lyft`),
@@ -249,9 +250,9 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         id: `${day.toISODate()}-work`,
         type: "work",
         priority: "locked",
-        label: "9-5 work",
-        time: "9 AM-5 PM",
-        why: "W2 job stays locked. WFH flex pockets — like gym — sit inside this block when meetings allow.",
+        label: "W-2 commitments",
+        time: "Use Google Calendar",
+        why: "W-2 stays locked; Calendar owns the exact time boxes.",
         source: "weekly_template",
         sortKey: 9,
         ref: weekPlanRef(`${day.toISODate()}-work`),
@@ -260,10 +261,10 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       {
         id: `${day.toISODate()}-training`,
         type: "training",
-        priority: "protect",
-        label: "Gym in midday flex",
+        priority: "optional",
+        label: "Optional gym",
         time: "Lunch or meeting gap",
-        why: "On Thu-Fri WFH, fit training inside 9-5 using a flex pocket — not after the whole day is gone.",
+        why: "Use a real flex pocket only when needed to reach three gym days this week.",
         source: "weekly_template",
         sortKey: 12,
         ref: weekPlanRef(`${day.toISODate()}-training`),
@@ -275,7 +276,7 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
         priority: "optional",
         label: "Evening reset",
         time: "After work",
-        why: "Optional recovery if cash and training are handled. Add promotion only when you deliberately protect it.",
+        why: "Leftover only after Lyft, W-2, and named CEO growth blocks.",
         source: "weekly_template",
         sortKey: 18,
         ref: weekPlanRef(`${day.toISODate()}-evening`),
@@ -288,10 +289,10 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
     {
       id: `${day.toISODate()}-lyft`,
       type: "cash",
-      priority: "protect",
-      label: "Morning Lyft",
-      time: "AM before the day starts",
-      why: "Weekend rhythm: morning Lyft when you want cash, then gym/social/recovery.",
+      priority: "locked",
+      label: "Lyft until $100",
+      time: "AM first",
+      why: "Autopilot: target $100 in the morning; later driving is catch-up only.",
       source: "weekly_template",
       sortKey: 6.5,
       ref: weekPlanRef(`${day.toISODate()}-lyft`),
@@ -301,9 +302,11 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
       id: `${day.toISODate()}-review`,
       type: "review",
       priority: "protect",
-      label: "Weekly review / setup",
-      time: day.weekday === 7 ? "After morning Lyft" : "Morning",
-      why: "Review what is ahead, what needs prep, and which blocks actually create value.",
+      label: day.weekday === 6 ? "Nearby deep work" : "Weekly review / setup",
+      time: "After morning Lyft",
+      why: day.weekday === 6
+        ? "Saturday default: advance Nearby story → demo. Replace only with a high-signal event that has a real time."
+        : "Review what is ahead and put named growth blocks on Google Calendar.",
       source: "weekly_template",
       sortKey: day.weekday === 7 ? 9 : 8,
       ref: weekPlanRef(`${day.toISODate()}-review`),
@@ -312,8 +315,8 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
     {
       id: `${day.toISODate()}-training`,
       type: "training",
-      priority: "protect",
-      label: "Gym + recovery",
+      priority: "optional",
+      label: "Optional gym + recovery",
       time: "Late morning or afternoon",
       why: "A longer body/recovery block fits better on weekends than office days.",
       source: "weekly_template",
@@ -337,17 +340,17 @@ function defaultBlocksFor(day: DateTime, shape: DayShape): WeeklyOperatingBlock[
 }
 
 function headlineFor(shape: DayShape) {
-  if (shape === "office") return "Office rails: optional morning Lyft, then 9-5 locked.";
-  if (shape === "wfh") return "WFH rails: morning Lyft, 9-5 work locked, gym in midday flex.";
-  return "Weekend rails: morning Lyft AM, then gym, social, and recovery.";
+  if (shape === "office") return "Autopilot: Lyft AM first, W-2 locked; CEO growth owns named evening blocks.";
+  if (shape === "wfh") return "Autopilot: Lyft AM first, W-2 locked; gym is optional.";
+  return "Weekend: Lyft AM first, then Nearby deep work unless a high-signal timed event wins.";
 }
 
 function valueFocusFor(shape: DayShape) {
   if (shape === "office") {
-    return "Protect 9-5 work. Add promotion only when you deliberately protect it — not every day.";
+    return "Protect W-2 and the named Calendar growth block. After-work Lyft exists only for a shortfall.";
   }
-  if (shape === "wfh") return "Morning Lyft when you want cash, then 9-5; gym uses a midday flex pocket.";
-  return "Morning Lyft AM like other days, then gym, events, and recovery.";
+  if (shape === "wfh") return "Hit Lyft in the AM, protect W-2, then execute the named growth block; gym stays optional.";
+  return "Saturday defaults to Nearby story/demo; attend only high-signal events with a real time.";
 }
 
 export function buildWeeklyOperatingPlan(
@@ -373,10 +376,12 @@ export function buildWeeklyOperatingPlan(
     const calendarBlocks = (eventsByDate.get(date) ?? []).map((event) => ({
       id: `calendar-${event.id}`,
       type: "calendar" as const,
-      priority: "locked" as const,
+      priority: isCeoGrowthCalendarEvent(event) ? "protect" as const : "locked" as const,
       label: event.title,
       time: formatEventTime(event),
-      why: "Real Google Calendar commitment; plan around it.",
+      why: isCeoGrowthCalendarEvent(event)
+        ? "Named CEO growth block; this overrides vague Life OS suggestions."
+        : "Real Google Calendar commitment; plan around it.",
       source: "google_calendar" as const,
       sortKey: eventSortKey(event),
       ref: calendarPlanRef(event.id),

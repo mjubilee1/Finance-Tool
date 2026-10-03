@@ -77,6 +77,8 @@ model User {
   growthOpportunities     GrowthOpportunity[]
   lifeLeverageProfile     LifeLeverageProfile?
   plannerDayLayouts       PlannerDayLayout[]
+  agendaSettings          AgendaSettings?
+  agentGrowthBlocks       AgentGrowthBlock[]
   carProfile              CarProfile?
   carMaintenanceLogs      CarMaintenanceLog[]
   homeProfile             HomeProfile?
@@ -379,6 +381,43 @@ model PlannerDayLayout {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+/// Stable agenda defaults. Google Calendar remains the source of truth for timed work.
+model AgendaSettings {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  primaryVenture      String   @default("Nearby")
+  secondaryVenture    String   @default("OnLocalAI")
+  lyftDailyTarget     Float    @default(100)
+  lyftMorningStart    String   @default("05:00")
+  lyftMorningEnd      String   @default("12:00")
+  gymWeeklyTarget     Int      @default(3)
+  morningBriefingTime String   @default("08:48")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Idempotency and audit record for CEO-agent blocks written to Google Calendar.
+model AgentGrowthBlock {
+  id              String   @id @default(cuid())
+  userId          String
+  externalId      String
+  calendarEventId String?
+  blockType       String // nearby_story | nearby_demo | people | high_signal_event
+  title           String
+  startsAt        DateTime
+  endsAt          DateTime
+  status          String   @default("scheduled") // scheduled | cancelled
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, externalId])
+  @@index([userId, startsAt])
 }
 
 model GrowthContact {
@@ -882,6 +921,10 @@ model LocalEventItem {
   /// new | interested | planned | dismissed | attended
   status           String   @default("new")
   loggedActivityId String?
+  /// Exact calendar commitment. "Interested" never populates these.
+  plannedStart     DateTime?
+  plannedEnd       DateTime?
+  calendarEventId  String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

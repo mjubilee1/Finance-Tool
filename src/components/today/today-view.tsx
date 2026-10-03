@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ChevronUp,
   Plus,
-  SkipForward,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { userNow } from "@/lib/user-timezone";
@@ -87,7 +86,6 @@ export function TodayView({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [plannerBusy, setPlannerBusy] = useState<string | null>(null);
   const [plannerError, setPlannerError] = useState<string | null>(null);
-  const [moveBusy, setMoveBusy] = useState<"done" | "skipped" | "recommend" | null>(null);
   const [todaySkipTarget, setTodaySkipTarget] = useState<{
     kind: "system" | "user";
     key: string;
@@ -119,10 +117,6 @@ export function TodayView({
   const systemBlocks = brief?.plan.blocks ?? [];
   const allUserBlocks = brief?.userPlanBlocks ?? [];
   const todayUserBlocks = pickTodayUserBlocks(allUserBlocks);
-  const hasOpenBusiness = todayUserBlocks.some(
-    (block) =>
-      block.status === "planned" && (isEntrepreneurshipBlock(block) || block.domain === "startup"),
-  );
   const calendar = todayOverview?.calendar ?? null;
   const calendarEvents = calendar?.connected ? calendar.events : [];
   const todayDate = brief?.date ?? userNow().toISODate()!;
@@ -268,39 +262,10 @@ export function TodayView({
     });
   };
 
-  const updateMoveStatus = (id: string, status: "done" | "skipped") => {
-    const previous = patchTodayCache((current) => {
-      if (!current.brief.recommendation) return current;
-      return {
-        ...current,
-        brief: {
-          ...current.brief,
-          recommendation: { ...current.brief.recommendation, status },
-        },
-      };
-    });
-    setMoveBusy(status);
-    void fetch("/api/growth/recommend", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Could not update move");
-        refreshPlanner();
-      })
-      .catch((err) => {
-        if (previous) queryClient.setQueryData(["overview-today"], previous);
-        setPlannerError(err instanceof Error ? err.message : "Something went wrong");
-      })
-      .finally(() => setMoveBusy(null));
-  };
-
   const calendarNeedsAction =
     calendar &&
     (calendar.status === "needs_reconnect" || calendar.status === "not_connected" || Boolean(calendar.error));
 
-  const recommendation = brief?.recommendation;
   const networkMove = todayOverview?.networkMove ?? null;
 
   return (
@@ -373,7 +338,12 @@ export function TodayView({
       ) : (
         <section className="overflow-hidden rounded-2xl bg-[var(--card-solid)] ring-1 ring-[var(--card-border)]">
           <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-            <p className="text-sm font-semibold text-[var(--ink)]">To-do</p>
+            <div>
+              <p className="text-sm font-semibold text-[var(--ink)]">Agenda</p>
+              <p className="mt-0.5 text-[10px] text-[var(--muted)]">
+                Autopilot → CEO growth → flex
+              </p>
+            </div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
               Today · {doneCount}/{timelineItems.length || 0}
             </p>
@@ -384,43 +354,10 @@ export function TodayView({
             </p>
           ) : null}
 
-          {timelineItems.length === 0 && !recommendation?.action ? (
+          {timelineItems.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">Nothing for today yet.</p>
           ) : (
             <ol>
-              {recommendation?.action && recommendation.status === "pending" && !hasOpenBusiness ? (
-                <li className="border-b border-[var(--card-border)] bg-[color-mix(in_srgb,var(--accent)_12%,var(--card-solid))]">
-                  <div className="flex min-h-16 items-center">
-                    <button
-                      type="button"
-                      aria-label="Mark done"
-                      disabled={moveBusy !== null}
-                      onClick={() => updateMoveStatus(recommendation.id, "done")}
-                      className="m-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--card-solid)] text-[var(--accent-strong)] ring-2 ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
-                    >
-                      <Check size={18} strokeWidth={2.5} />
-                    </button>
-                    <div className="min-w-0 flex-1 py-2.5 pr-1">
-                      <span className="line-clamp-2 text-[15px] font-semibold leading-5 text-[var(--ink)]">
-                        {plainLabel(recommendation.action)}
-                      </span>
-                      <span className="mt-1 block text-[11px] font-semibold text-[var(--accent-strong)]">
-                        {recommendation.timeRequiredMinutes ? `${recommendation.timeRequiredMinutes} min` : "Now"}
-                        {" · Main thing"}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="Skip"
-                      disabled={moveBusy !== null}
-                      onClick={() => updateMoveStatus(recommendation.id, "skipped")}
-                      className="m-2 ml-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--muted)] ring-1 ring-[var(--card-border)]"
-                    >
-                      <SkipForward size={18} />
-                    </button>
-                  </div>
-                </li>
-              ) : null}
               {timelineItems.map((item) => {
                 const status = itemStatus(item, completed, skipped);
                 const expanded = openRow === item.ref;
