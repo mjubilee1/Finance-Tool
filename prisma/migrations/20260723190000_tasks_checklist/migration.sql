@@ -1,0 +1,2 @@
+-- Historical migration already applied in production.
+-- SQL file was missing from the repo; restored as a no-op placeholder for Prisma migrate status.
